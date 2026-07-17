@@ -274,7 +274,9 @@ def draw_everything():
         for i in range(7):
             pygame.draw.line(screen, GRID_DARK, (int(i * 24 * SCALE), 0), (int(i * 24 * SCALE), FIELD_PIXELS), 1)
             pygame.draw.line(screen, GRID_DARK, (0, FIELD_PIXELS - int(i * 24 * SCALE)), (FIELD_PIXELS, FIELD_PIXELS - int(i * 24 * SCALE)), 1)
-
+    
+    pygame.draw.rect(screen, (50, 50, 60), (0, 0, FIELD_PIXELS, FIELD_PIXELS), 5) #Drawing a border around the field (5px)
+    
     # Elements Layer
     if sim.settings["field_source"] == "custom":
         for i, s in enumerate(sim.shapes):
@@ -299,6 +301,22 @@ def draw_everything():
     screen.blit(rot_bot, bot_rect)
     if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
+    # Tracks and indicates if user is in Driver vs Edit Mode
+    mode_label = f"SYSTEM STATUS: {sim.current_mode.upper()} MODE"
+    if sim.current_mode == "edit":
+        status_color = ORANGE  
+    else:
+        status_color = CYAN
+    
+    # If autonomous scripting routine loop execution layer is active
+    if sim.auton_running:
+        mode_label = "SYSTEM STATUS: RUNNING AUTONOMOUS ROUTINE"
+        status_color = GREEN
+
+    # Draws a clean dark background strip for text readability over bright field assets
+    pygame.draw.rect(screen, (20, 20, 25), (10, 10, 395, 30), border_radius=4)
+    draw_small(mode_label, 18, 18, status_color)
+    
     # Control Side UI Column Render Processing
     pygame.draw.rect(screen, (25, 25, 25), (FIELD_PIXELS, 0, UI_WIDTH, WINDOW_HEIGHT))
     draw_text("Mode", FIELD_PIXELS + 20, 0, YELLOW)
