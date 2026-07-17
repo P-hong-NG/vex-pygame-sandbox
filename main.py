@@ -520,28 +520,11 @@ def turn_degrees(side, deg, velo):
         draw_everything()
 
 def autonomous():
-    # Keep your hardcoded script exactly as is to preserve 90% translation setup mechanics
-    drive_inches(30.7, 35)
-    turn_degrees('r',90,25)
-    drive_inches(6.4,20)
-    for _ in range(12): 
-        drive_inches(-1,10); drive_inches(1,10)
-    drive_inches(-21.4,30)
-    turn_degrees('l',90,20); drive_inches(11.5,40); turn_degrees('r',90,20)
-    drive_inches(-75,40); turn_degrees('r',90,20); drive_inches(11,40); turn_degrees('r',90,20) 
-    drive_inches(-4.5,30)
-    for _ in range(10):
-        drive_inches(-0.67,10); drive_inches(0.67,10)
-    drive_inches(-1.3,10); drive_inches(1.3,10); drive_inches(-1.3,30)
-    drive_inches(28,40)
-    for _ in range(12):
-        drive_inches(-1,10); drive_inches(1,10)
-    drive_inches(-26,40)
-    for _ in range(10):
-        drive_inches(-0.67,10); drive_inches(0.67,10)
-    drive_inches(-1.3,10); drive_inches(1.3,10); drive_inches(-1.3,30)
-    drive_inches(6,30); turn_degrees('l',90,20); drive_inches(14,30); turn_degrees('l',90,20)
-    drive_inches(55,40); turn_degrees('l',145,20); drive_inches(-55,40)
+    for _ in range(4):
+        drive_inches(24, 40) #Drive 24 inches at 40% speed
+        turn_degrees('r', 90, 40) #Turn right 90 degrees at 40% speed
+        
+    turn_degrees('l',720,50) #Celebration spin!
 
 # =====================================================================
 # 8. MAIN RUNTIME LOOP
