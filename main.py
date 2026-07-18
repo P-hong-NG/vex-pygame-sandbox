@@ -200,6 +200,17 @@ def update_physics(left_speed, right_speed, dt):
     bot.x = max(bot.length / 2, min(FIELD_INCHES - bot.length / 2, bot.x))
     bot.y = max(bot.track_width / 2, min(FIELD_INCHES - bot.track_width / 2, bot.y))
 
+def create_field_boundaries():
+    #Example: Segment(body type, starting point, end point, thickness)
+    left_wall = pymunk.Segment(space.static_body, (0,0), (0,FIELD_PIXELS), 5)
+    right_wall = pymunk.Segment(space.static_body, (FIELD_PIXELS,0), (FIELD_PIXELS,FIELD_PIXELS), 5)
+    #For PyMunk, the origin (0,0) is bottom left rather than top left like Pygame - Remember it!
+    top_wall = pymunk.Segment(space.static_body, (0,FIELD_PIXELS), (FIELD_PIXELS,FIELD_PIXELS), 5)
+    bottom_wall = pymunk.Segment(space.static_body, (0,0), (FIELD_PIXELS, 0), 5)
+
+    for wall in [left_wall, right_wall, top_wall, bottom_wall]:
+        wall.friction = 0.5 #Ability to change to whatever, depending on the user's needs
+        space.add(wall)
 # =====================================================================
 # 5. GRAPHICS & UI DRAWING SYSTEM
 # =====================================================================
@@ -555,6 +566,8 @@ def autonomous():
 joystick = None
 if pygame.joystick.get_count() > 0:
     joystick = pygame.joystick.Joystick(0); joystick.init()
+    
+create_field_boundaries() #Create physical boundaries around fields using PyMunk
 
 running = True
 while running:
