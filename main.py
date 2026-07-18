@@ -1,4 +1,6 @@
 import pygame
+import pymunk
+import pymunk.pygame_util
 import math
 import json
 import os
@@ -15,6 +17,9 @@ SCALE = FIELD_PIXELS / FIELD_INCHES
 UI_WIDTH = 340
 WINDOW_WIDTH = FIELD_PIXELS + UI_WIDTH
 WINDOW_HEIGHT = FIELD_PIXELS
+# Initializing PyMunk (Physics collisions) 
+space = pymunk.Space()
+space.gravity = (0,0) #Gravity in (x,y) directions -bottom left is (0,0)- for top-down perspective
 
 # Colors
 RED, BLUE, GRAY, DARK, CYAN, WHITE = (255, 80, 80), (80, 80, 255), (200, 200, 200), (40, 40, 40), (0, 150, 255), (255, 255, 255)
