@@ -47,11 +47,27 @@ class Robot:
         self.wheel_circ = 2 * math.pi * self.wheel_radius
         self.max_rps = 450 / 60
         self.base_max_speed = self.wheel_circ * self.max_rps
-        
+
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
         self.angle = 0.0
+
+        #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
+        mass = 14.0 
+        #Moment of inertia for solid rectangle box 
+        moment = pymunk.moment_for_box(mass, (self.length * SCALE, self.track_width * SCALE))
+        
+        #Body used for physics calculations (Includes: mass, inertia, position, angle, velocity, torque, etc)
+        self.body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC) #Dynamic means it moves/ can be interacted with
+        #Starting cords so that PyMunk can match the body (back-end) to the shape (front-end) 
+        self.body.position = (self.x * SCALE, self.y * SCALE)
+        self.body.angle = math.radians(self.angle)
+
+        self.shape = pymunk.Poly.create_box(self.body, (self.length * SCALE, self.track_width * SCALE))
+        self.shape.friction = 0.3 #Can be changed
+
+        space.add(self.body, self.shape)
         
         # Odometry Origin Anchor
         self.odom_origin_x = self.x
@@ -61,10 +77,20 @@ class Robot:
     def reset_to_start(self):
         self.x, self.y, self.angle = self.start_pose
         self.odom_origin_x, self.odom_origin_y = self.x, self.y
+        #Teleport body to starting cords
+        self.body.position = (self.x * SCALE, self.y * SCALE)
+        self.body.angle = math.radians(self.angle)
+        self.body.velocity = (0, 0)
+        self.body.angular_velocity = 0
 
     def reset_to_center(self):
         self.x, self.y, self.angle = FIELD_INCHES / 2, FIELD_INCHES / 2, 0.0
         self.odom_origin_x, self.odom_origin_y = self.x, self.y
+        #Teleport body to center cords
+        self.body.position = (self.x * SCALE, self.y * SCALE)
+        self.body.angle = math.radians(self.angle)
+        self.body.velocity = (0, 0)
+        self.body.angular_velocity = 0
 
     def get_odom_pose(self):
         return self.x - self.odom_origin_x, self.y - self.odom_origin_y
