@@ -258,6 +258,35 @@ def create_field_boundaries():
     for wall in [left_wall, right_wall, top_wall, bottom_wall]:
         wall.friction = 0.5 #Ability to change to whatever, depending on the user's needs
         space.add(wall)
+        
+def sync_custom_obstacles_to_physics():
+    #Not allowing for stack-ups
+    for body in list(space.bodies):
+        if body != bot.body and body != space.static_body:
+            space.remove(body)
+    for shape in list(space.shapes):
+        if shape != bot.shape and shape not in space.shapes:
+            # Keep field boundary segments safe
+            if isinstance(shape, pymunk.Segment): continue
+            space.remove(shape)
+
+    #Looping through UI shapes and spawning them into the PyMunk backend
+    for s in sim.shapes:
+        b_type = s.get("body_type", "static")
+        
+        if b_type == "static":
+            # Static: Can't be moved
+            if s["type"] == "rect":
+                body = space.static_body
+                # Calculate center and dimensions (pixel scale)
+                cx = (s["x"] + s["w"]/2) * SCALE
+                cy = (s["y"] + s["h"]/2) * SCALE
+                box_shape = pymunk.Poly.create_box(body, (s["w"] * SCALE, s["h"] * SCALE))
+                box_shape.unsafe_set_vertices([
+                    pymunk.Vec2d(v.x + cx, v.y + cy) for v in box_shape.get_vertices()
+                ])
+                box_shape.friction = 0.5
+                space.add(box_shape)
 # =====================================================================
 # 5. GRAPHICS & UI DRAWING SYSTEM
 # =====================================================================
@@ -510,7 +539,10 @@ def draw_everything():
 # 6. ACTION INTERACTION ROUTINES (UI Click & Inputs Handler)
 # =====================================================================
 def handle_ui_click(mx, my):
-    if mode_drive_button_rect.collidepoint(mx, my): sim.current_mode = "drive"; return
+    if mode_drive_button_rect.collidepoint(mx, my): 
+        sim.current_mode = "drive"
+        sync_custom_obstacles_to_physics() #Calling the physics body build
+        return
     if mode_edit_button_rect.collidepoint(mx, my): sim.current_mode = "edit"; return
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
     if drive_mode_arcade_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "arcade"; save_settings(); return
