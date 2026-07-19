@@ -214,18 +214,22 @@ def get_inputs(dt):
     return left_speed, right_speed
 
 def update_physics(left_speed, right_speed, dt):
-    v = (left_speed + right_speed) / 2.0
-    omega = (left_speed - right_speed) / bot.track_width  
+    v = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
+    turn_multiplier = 40.0 #Can be changed! Increase for faster turning
+    omega = ((left_speed - right_speed) / bot.track_width)*turn_multiplier  #Difference 
+    
+    rad = bot.body.angle #Radians for PyMunk
+    bot.body.velocity = (v * math.cos(rad) * SCALE, v * math.sin(rad) * SCALE) #Linear
+    bot.body.angular_velocity = math.radians(omega) #If positive, spin counter-clockwise, else negative, spin clockwise
 
-    bot.angle += math.degrees(omega * dt)
-    rad = math.radians(bot.angle)
-
-    bot.x += v * math.cos(rad) * dt
-    bot.y += v * math.sin(rad) * dt
-
-    bot.x = max(bot.length / 2, min(FIELD_INCHES - bot.length / 2, bot.x))
-    bot.y = max(bot.track_width / 2, min(FIELD_INCHES - bot.track_width / 2, bot.y))
-
+    #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
+    for _ in range(10):
+        space.step(dt/10.0)
+    #Translate backend position back to normal inches for frontend code
+    bot.x = bot.body.position.x / SCALE
+    bot.y = bot.body.position.y / SCALE
+    bot.angle = math.degrees(bot.body.angle)
+    
 def create_field_boundaries():
     #Example: Segment(body type, starting point, end point, thickness)
     left_wall = pymunk.Segment(space.static_body, (0,0), (0,FIELD_PIXELS), 5)
@@ -638,6 +642,8 @@ while running:
             if sim.dragging_robot:
                 bot.x = m_fx - sim.robot_drag_offset_x
                 bot.y = m_fy - sim.robot_drag_offset_y
+                #Bring the physics (backend) body while dragging
+                bot.body.position = (bot.x * SCALE, bot.y * SCALE)
             elif sim.dragging_shape and sim.selected_shape_idx is not None:
                 s = sim.shapes[sim.selected_shape_idx]
                 if s["type"] == "rect":
