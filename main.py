@@ -312,7 +312,8 @@ def sync_custom_obstacles_to_physics():
             
         elif b_type == "dynamic":
             # Dynamic: Movable objects on the field
-            mass = 1.0  # Weight in arbitrary physics units
+            #Read mass from shape dictionary, default to 1.0 if none
+            mass = s.get("mass", 1.0) # Weight in arbitrary physics units
             
             if s["type"] == "rect":
                 w_px, h_px = s["w"] * SCALE, s["h"] * SCALE
@@ -532,6 +533,7 @@ def draw_everything():
 
     # Inspector Panel selection layout loop context mapping logic
     if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
+        current_phys = s.get("body_type", "static")
         s = sim.shapes[sim.selected_shape_idx]
         if s["type"] == "rect":
             draw_textbox(textbox_x_rect, "X", sim.textbox_value if sim.active_textbox == "x" else f"{s['x']:.1f}", sim.active_textbox == "x")
@@ -551,7 +553,6 @@ def draw_everything():
             pygame.draw.rect(screen, col, color_button_rects[i])
             if col == s["color"]: pygame.draw.rect(screen, YELLOW, color_button_rects[i], 2)
                 
-        current_phys = s.get("body_type", "static")
         button_color = RED if current_phys == "static" else GREEN
         text_label = "STATIC (WALL)" if current_phys == "static" else "DYNAMIC (BALL)"
         
