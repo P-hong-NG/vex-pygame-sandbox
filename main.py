@@ -230,6 +230,7 @@ def get_inputs(dt):
             right_speed = (right_cmd / max_cmd) * max_speed
     return left_speed, right_speed
 
+#Run 60 times a second, do all the collisions, calculations, and visual updates
 def update_physics(left_speed, right_speed, dt):
     v = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
     turn_multiplier = 40.0 #Can be changed! Increase for faster turning
@@ -246,6 +247,21 @@ def update_physics(left_speed, right_speed, dt):
     bot.x = bot.body.position.x / SCALE
     bot.y = bot.body.position.y / SCALE
     bot.angle = math.degrees(bot.body.angle)
+
+    #Making every shape that has "dynamic" and a backend "body" to follow/teleport to its invisible body location
+    #Do this every tick so create visually smooth movement for user
+    for s in sim.shapes:
+        if s.get("body_type") == "dynamic" and "body" in s:
+            b = s["body"]
+            #Overriding the shape's location with the body's location
+            if s["type"] == "rect":
+                s["x"] = (b.position.x / SCALE) - (s["w"] / 2)
+                s["y"] = (b.position.y / SCALE) - (s["h"] / 2)
+                s["angle"] = math.degrees(b.angle)
+            elif s["type"] == "circ":
+                s["x"] = b.position.x / SCALE
+                s["y"] = b.position.y / SCALE  
+                s["angle"] = math.degrees(b.angle)
     
 def create_field_boundaries():
     #Example: Segment(body type, starting point, end point, thickness)
@@ -258,7 +274,8 @@ def create_field_boundaries():
     for wall in [left_wall, right_wall, top_wall, bottom_wall]:
         wall.friction = 0.5 #Ability to change to whatever, depending on the user's needs
         space.add(wall)
-        
+
+#The initial "setup" function reads UI shapes and user inputs (Static or Dynamic) and creates corresponding PyMunk bodies with mass, friction, etc.
 def sync_custom_obstacles_to_physics():
     #Not allowing for stack-ups
     for body in list(space.bodies):
@@ -287,6 +304,41 @@ def sync_custom_obstacles_to_physics():
                 ])
                 box_shape.friction = 0.5
                 space.add(box_shape)
+
+            elif s["type"] == "circ":
+                body = space.static_body
+                cx = s["x"] * SCALE
+                cy = s["y"] * SCALE
+                circ_shape = pymunk.Circle(body, s["radius"] * SCALE, (cx, cy))
+                circ_shape.friction = 0.5
+                space.add(circ_shape)
+            
+        elif b_type == "dynamic":
+            # Dynamic: Movable objects on the field
+            mass = 1.0  # Weight in arbitrary physics units
+            
+            if s["type"] == "rect":
+                w_px, h_px = s["w"] * SCALE, s["h"] * SCALE
+                moment = pymunk.moment_for_box(mass, (w_px, h_px)) #Calculate moment of inertia (rotational resistance) based on shape)
+                body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC) #Creating a body with the given attributes
+                body.position = ((s["x"] + s["w"]/2) * SCALE, (s["y"] + s["h"]/2) * SCALE) 
+                body.angle = math.radians(s.get("angle", 0.0))
+                
+                shape = pymunk.Poly.create_box(body, (w_px, h_px))
+                shape.friction = 0.5
+                space.add(body, shape)
+                s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
+
+            elif s["type"] == "circ":
+                rad_px = s["radius"] * SCALE
+                moment = pymunk.moment_for_circle(mass, 0, rad_px)
+                body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC)
+                body.position = (s["x"] * SCALE, s["y"] * SCALE)
+                
+                shape = pymunk.Circle(body, rad_px)
+                shape.friction = 0.5
+                space.add(body, shape)
+                s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
 # =====================================================================
 # 5. GRAPHICS & UI DRAWING SYSTEM
 # =====================================================================
