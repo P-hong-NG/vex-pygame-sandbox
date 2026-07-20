@@ -687,6 +687,7 @@ if pygame.joystick.get_count() > 0:
     joystick = pygame.joystick.Joystick(0); joystick.init()
     
 create_field_boundaries() #Create physical boundaries around fields using PyMunk
+sync_custom_obstacles_to_physics()
 
 running = True
 while running:
