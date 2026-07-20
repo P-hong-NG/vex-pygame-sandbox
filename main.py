@@ -152,26 +152,22 @@ def load_all_data():
                 tag = parts[0]
                 
                 if tag == "RECT" and len(parts) >= 9:
-                    if len(parts) == 10:
-                        b_type = parts[9]  
-                    else:
-                        b_type = "static"
+                    b_type = parts[9] if len(parts) >= 10 else "static"
+                    m_val = float(parts[8]) if len(parts) == 9 else 1.0
                     _, x, y, w, h, ang, r, g, b = parts[:9]
                     sim.shapes.append({"type": "rect", "x": float(x), "y": float(y), 
                                        "w": float(w), "h": float(h), 
                                        "angle": float(ang), 
                                        "color": (int(r), int(g), int(b)),
-                                       "body_type": b_type})
+                                       "body_type": b_type, "mass": m_val})
                 elif tag == "CIRC" and len(parts) >= 7:
-                    if len(parts) == 8:
-                        b_type = parts[7]
-                    else:
-                        b_type = "dynamic"
+                    b_type = parts[7] if len(parts) >= 8 else "dynamic"
+                    m_val = float(parts[8]) if len(parts) == 9 else 1.0
                     _, x, y, radius, r, g, b = parts[:7]
                     sim.shapes.append({"type": "circ", "x": float(x), "y": float(y), 
                                        "radius": float(radius), 
                                        "color": (int(r), int(g), int(b)),
-                                       "body_type": b_type})
+                                       "body_type": b_type, "mass": m_val})
                 elif tag == "ROBOT_START" and len(parts) == 4:
                     _, x, y, ang = parts
                     bot.start_pose = (float(x), float(y), float(ang))
@@ -181,10 +177,11 @@ def save_field_data():
     with open(FIELD_FILE, "w") as f:
         for s in sim.shapes:
             b_type = s.get("body_type", "static")
+            mass_val = s.get("mass", 1.0)
             if s["type"] == "rect":
-                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type}\n")
+                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val}\n")
             elif s["type"] == "circ":
-                f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type}\n")
+                f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val}\n")
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
 
 def save_settings():
@@ -381,6 +378,7 @@ textbox_w_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22)
 textbox_h_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)
 textbox_r_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22) 
 textbox_a_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 90, 80, 22)
+textbox_m_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)
 COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,120)]
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 130, 30, 30) for i in range(len(COLOR_PALETTE))]
 
@@ -545,6 +543,10 @@ def draw_everything():
             draw_textbox(textbox_x_rect, "Center X", sim.textbox_value if sim.active_textbox == "x" else f"{s['x']:.1f}", sim.active_textbox == "x")
             draw_textbox(textbox_y_rect, "Center Y", sim.textbox_value if sim.active_textbox == "y" else f"{s['y']:.1f}", sim.active_textbox == "y")
             draw_textbox(textbox_r_rect, "Radius", sim.textbox_value if sim.active_textbox == "r" else f"{s['radius']:.1f}", sim.active_textbox == "r")
+        #Draw mass input box, only if dynamic
+        if current_phys == "dynamic":
+            m_val = s.get("mass", 1.0)
+            draw_textbox(textbox_m_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "m" else f"{m_val:.1f}", sim.active_textbox == "m")
         for i, col in enumerate(COLOR_PALETTE):
             pygame.draw.rect(screen, col, color_button_rects[i])
             if col == s["color"]: pygame.draw.rect(screen, YELLOW, color_button_rects[i], 2)
@@ -645,6 +647,11 @@ def handle_ui_click(mx, my):
                 s["body_type"] = "static"
             save_field_data()
             return
+        #Detects when user is typing in mass input box, default to 1.0 if received no inputs    
+        if textbox_m_rect.collidepoint(mx, my) and s.get("body_type") == "dynamic":
+            sim.active_textbox = "m"
+            sim.textbox_value = f"{s.get('mass', 1.0):.1f}"
+            return
         
         if s["type"] == "rect":
             if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
@@ -671,7 +678,7 @@ def apply_textbox_value():
     try: val = float(sim.textbox_value)
     except: sim.active_textbox = None; return
 
-    if sim.active_textbox in ("x","y","w","h","r","a") and sim.selected_shape_idx is not None:
+    if sim.active_textbox in ("x","y","w","h","r","a","m") and sim.selected_shape_idx is not None:
         s = sim.shapes[sim.selected_shape_idx]
         if sim.active_textbox == "x": s["x"] = val
         elif sim.active_textbox == "y": s["y"] = val
@@ -679,6 +686,8 @@ def apply_textbox_value():
         elif sim.active_textbox == "h" and s["type"] == "rect": s["h"] = max(1.0, val)
         elif sim.active_textbox == "r" and s["type"] == "circ": s["radius"] = max(1.0, val)
         elif sim.active_textbox == "a" and s["type"] == "rect": s["angle"] = val
+        if sim.active_textbox == "m":
+            s["mass"] = max(0.1, val)  # Prevent zero or negative mass
         save_field_data()
     elif sim.active_textbox in ("rx","ry","ra"):
         rx, ry, ra = bot.start_pose
