@@ -278,6 +278,7 @@ def create_field_boundaries():
 
     for wall in [left_wall, right_wall, top_wall, bottom_wall]:
         wall.friction = 0.5 #Ability to change to whatever, depending on the user's needs
+        wall.elasticity = 1.0
         space.add(wall)
 
 #The initial "setup" function reads UI shapes and user inputs (Static or Dynamic) and creates corresponding PyMunk bodies with mass, friction, etc.
@@ -292,10 +293,11 @@ def sync_custom_obstacles_to_physics():
             if isinstance(shape, pymunk.Segment): continue
             space.remove(shape)
 
-    #Looping through UI shapes and spawning them into the PyMunk backend
+    #Looping through UI shapes and spawning them to the PyMunk backend
     for s in sim.shapes:
         b_type = s.get("body_type", "static")
-        
+        fric_val = s.get("friction", 0.5)
+        elas_val = s.get("elasticity", 0.0)
         if b_type == "static":
             # Static: Can't be moved
             if s["type"] == "rect":
@@ -307,7 +309,8 @@ def sync_custom_obstacles_to_physics():
                 box_shape.unsafe_set_vertices([
                     pymunk.Vec2d(v.x + cx, v.y + cy) for v in box_shape.get_vertices()
                 ])
-                box_shape.friction = 0.5
+                box_shape.friction = fric_val
+                box_shape.elasticity = elas_val
                 space.add(box_shape)
 
             elif s["type"] == "circ":
@@ -315,7 +318,8 @@ def sync_custom_obstacles_to_physics():
                 cx = s["x"] * SCALE
                 cy = s["y"] * SCALE
                 circ_shape = pymunk.Circle(body, s["radius"] * SCALE, (cx, cy))
-                circ_shape.friction = 0.5
+                circ_shape.friction = fric_val
+                circ_shape.elasticity = elas_val
                 space.add(circ_shape)
             
         elif b_type == "dynamic":
@@ -331,7 +335,8 @@ def sync_custom_obstacles_to_physics():
                 body.angle = math.radians(s.get("angle", 0.0))
                 
                 shape = pymunk.Poly.create_box(body, (w_px, h_px))
-                shape.friction = 0.5
+                shape.friction = fric_val
+                shape.elasticity = elas_val
                 space.add(body, shape)
                 s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
 
@@ -342,7 +347,8 @@ def sync_custom_obstacles_to_physics():
                 body.position = (s["x"] * SCALE, s["y"] * SCALE)
                 
                 shape = pymunk.Circle(body, rad_px)
-                shape.friction = 0.5
+                shape.friction = fric_val
+                shape.elasticity = elas_val
                 space.add(body, shape)
                 s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
 # =====================================================================
