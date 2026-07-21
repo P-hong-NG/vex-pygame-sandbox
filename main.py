@@ -245,6 +245,22 @@ def update_physics(left_speed, right_speed, dt):
     bot.body.velocity = (v * math.cos(rad) * SCALE, v * math.sin(rad) * SCALE) #Linear
     bot.body.angular_velocity = math.radians(omega) #If positive, spin counter-clockwise, else negative, spin clockwise
 
+    for s in sim.shapes:
+        if s.get("body_type") == "dynamic" and "body" in s:
+            b = s["body"]
+            
+            # Read shape friction (0.0 - ice, 1.0 = rubber)
+            fric = s.get("friction", 0.5)
+            
+            # Calculate floor resistance multiplier based on dt
+            # High friction drops velocity faster, heavier mass resists stopping
+            drag = max(0.0, 1.0 - (fric * 3.0 * dt)) #3.0 is a damping constant, change number to change the overal field to be more or less slippery
+            
+            # Apply floor resistance to both movement and spinning. 
+            # If drag = 0.9, the object retains 90% of the initial velocity
+            b.velocity = b.velocity * drag
+            b.angular_velocity = b.angular_velocity * drag
+    
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
         space.step(dt/10.0)
