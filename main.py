@@ -98,6 +98,7 @@ class Robot:
 class SimulatorState:
     def __init__(self):
         self.current_mode = "drive" # drive / edit
+        self.paused = False
         self.auton_mode = False
         self.auton_running = False
         self.settings = {
@@ -629,7 +630,16 @@ def draw_everything():
     if m_fx != -1:
         mxo, myo = m_fx - bot.odom_origin_x, m_fy - bot.odom_origin_y
         draw_small(f"Cursor Odom: {mxo:.1f}, {myo:.1f}", FIELD_PIXELS + 160, info_y + 60, LIGHT_GRAY)
-
+    #Semi-transparent overlay when Paused (pressed "Esc")
+    if sim.paused:
+        #Spanning across the entire screen
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) #Each pixel's opacity acts independently, rather than everything having the same opacity
+        #Overlay over the whole screen rather than replacing it (visual effect)
+        overlay.fill((128, 128, 128, 150)) # Can be changed. (R, G, B, Opacity) 255 being maxed, 0 being completely see-through.
+        screen.blit(overlay, (0, 0))
+        
+        # Temporary "PAUSED" text indicator
+        draw_text("PAUSED", WINDOW_WIDTH // 2 - 40, WINDOW_HEIGHT // 2, WHITE)
     pygame.display.flip()
 
 # =====================================================================
@@ -858,7 +868,11 @@ while running:
                     s["y"] = m_fy - sim.drag_offset_y
 
         elif event.type == pygame.KEYDOWN:
-            if sim.active_textbox is not None:
+            # Global Pause Toggle (ESC Key)
+            if event.key == pygame.K_ESCAPE:
+                sim.paused = not sim.paused
+            #Only process typing if NOT paused
+            elif sim.active_textbox is not None and not sim.paused:
                 if event.key == pygame.K_RETURN: apply_textbox_value()
                 elif event.key == pygame.K_BACKSPACE: sim.textbox_value = sim.textbox_value[:-1]
                 elif event.unicode.isdigit() or event.unicode in ".-": sim.textbox_value += event.unicode
@@ -871,7 +885,7 @@ while running:
             joystick = None
 
     # Teleop update context loop checks
-    if sim.current_mode == "drive":
+    if sim.current_mode == "drive" and not sim.paused:
         if sim.auton_mode and not sim.auton_running:
             sim.auton_running = True; sim.auton_mode = False
             autonomous()
