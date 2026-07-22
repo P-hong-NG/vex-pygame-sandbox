@@ -429,6 +429,17 @@ robot_save_rect = pygame.Rect(FIELD_PIXELS + 120, robot_start_y + 55, 130, 26)
 robot_len_rect = pygame.Rect(FIELD_PIXELS + 220, robot_start_y + 20, 80, 22)
 robot_wid_rect = pygame.Rect(FIELD_PIXELS + 220, robot_start_y + 55, 80, 22)
 
+#Pause Menu Modal (pop-up) definitions
+MODAL_W, MODAL_H = 280, 260 #Width and Height of modal
+modal_x = (WINDOW_WIDTH - MODAL_W) // 2 #Top-left of the modal
+modal_y = (WINDOW_HEIGHT - MODAL_H) // 2
+
+pause_modal_rect = pygame.Rect(modal_x, modal_y, MODAL_W, MODAL_H)
+pause_resume_btn = pygame.Rect(modal_x + 30, modal_y + 60, 220, 36)
+pause_studio_btn = pygame.Rect(modal_x + 30, modal_y + 105, 220, 36)
+pause_settings_btn = pygame.Rect(modal_x + 30, modal_y + 150, 220, 36)
+pause_exit_btn = pygame.Rect(modal_x + 30, modal_y + 195, 220, 36)
+
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
 
@@ -637,9 +648,23 @@ def draw_everything():
         #Overlay over the whole screen rather than replacing it (visual effect)
         overlay.fill((128, 128, 128, 150)) # Can be changed. (R, G, B, Opacity) 255 being maxed, 0 being completely see-through.
         screen.blit(overlay, (0, 0))
+
+        #Main pause box (Modal)
+        pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
+        pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
+        #Title
+        draw_text("GAME PAUSED", pause_modal_rect.x + 80, pause_modal_rect.y + 20, YELLOW)
+        # Buttons box
+        pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
+        pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
+        pygame.draw.rect(screen, LIGHT_GRAY, pause_settings_btn, border_radius=6)
+        pygame.draw.rect(screen, RED, pause_exit_btn, border_radius=6)
+        # Button Labels
+        draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
+        draw_small("Robot Design Studio", pause_studio_btn.x + 35, pause_studio_btn.y + 10, BLACK)
+        draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
+        draw_small("Exit Simulator", pause_exit_btn.x + 58, pause_exit_btn.y + 10, WHITE)    
         
-        # Temporary "PAUSED" text indicator
-        draw_text("PAUSED", WINDOW_WIDTH // 2 - 40, WINDOW_HEIGHT // 2, WHITE)
     pygame.display.flip()
 
 # =====================================================================
@@ -822,7 +847,18 @@ while running:
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
-            if mx >= FIELD_PIXELS: handle_ui_click(mx, my)
+            #Handling clicks when the game is paused
+            if sim.paused:
+                if pause_resume_btn.collidepoint(mx,my):
+                    sim.paused = False
+                elif pause_studio_btn.collidepoint(mx,my):
+                    print("studioooo, its working :)") #Placeholder
+                elif pause_settings_btn.collidepoint(mx,my):
+                    print("settinggg, working too:)") #Placeholder
+                elif pause_exit_btn.collidepoint(mx,my):
+                    pygame.quit(); raise SystemExit
+            #Handling clicks when the game is NOT paused
+            elif mx >= FIELD_PIXELS: handle_ui_click(mx, my)
             elif sim.current_mode == "edit":
                 # Check robot drag focus
                 dx, dy = mx - bot.x * SCALE, my - (FIELD_PIXELS - bot.y * SCALE)
