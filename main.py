@@ -97,7 +97,7 @@ class Robot:
 
 class SimulatorState:
     def __init__(self):
-        self.current_mode = "drive" # drive / edit
+        self.current_mode = "drive" # drive / edit / studio
         self.paused = False
         self.auton_mode = False
         self.auton_running = False
@@ -458,6 +458,19 @@ def draw_everything():
     m_fy = (FIELD_PIXELS - my) / SCALE if (0 <= mx < FIELD_PIXELS and 0 <= my < FIELD_PIXELS) else -1
 
     # Background layer
+    if sim.current_mode == "studio":
+        # Render new "Studio" canvas
+        screen.fill((245, 245, 250), (0, 0, FIELD_PIXELS, FIELD_PIXELS))
+        # Draw blueprint grid lines
+        for x in range(0, FIELD_PIXELS, 40):
+            pygame.draw.line(screen, (225, 225, 235), (x, 0), (x, FIELD_PIXELS), 1)
+        for y in range(0, FIELD_PIXELS, 40):
+            pygame.draw.line(screen, (225, 225, 235), (0, y), (FIELD_PIXELS, y), 1)
+            
+        # Studio Mode Header
+        pygame.draw.rect(screen, (30, 30, 40), (10, 10, 395, 30), border_radius=4)
+        draw_small("WORKSHOP: ROBOT DESIGN STUDIO", 18, 18, ORANGE)
+    
     if sim.settings["field_source"] == "image":
         screen.blit(field_img, (0, 0))
     else:
@@ -469,7 +482,7 @@ def draw_everything():
     pygame.draw.rect(screen, (50, 50, 60), (0, 0, FIELD_PIXELS, FIELD_PIXELS), 5) #Drawing a border around the field (5px)
     
     # Elements Layer
-    if sim.settings["field_source"] == "custom":
+    if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
         for i, s in enumerate(sim.shapes):
             if s["type"] == "rect":
                 surf = pygame.Surface((s["w"] * SCALE, s["h"] * SCALE), pygame.SRCALPHA)
@@ -498,13 +511,14 @@ def draw_everything():
                     pygame.draw.circle(screen, YELLOW, (cx, cy), radius_pixels + 2, 2)
 
     # Robot Layer
-    robot_surf = pygame.Surface((bot.length * SCALE, bot.track_width * SCALE), pygame.SRCALPHA)
-    robot_surf.fill(CYAN if sim.current_mode == "drive" else ORANGE)
-    pygame.draw.line(robot_surf, WHITE, (bot.length * SCALE - 2, 0), (bot.length * SCALE - 2, bot.track_width * SCALE), 4)
-    rot_bot = pygame.transform.rotate(robot_surf, bot.angle)
-    bot_rect = rot_bot.get_rect(center=(bot.x * SCALE, FIELD_PIXELS - bot.y * SCALE))
-    screen.blit(rot_bot, bot_rect)
-    if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
+    if sim.current_mode != "studio":
+        robot_surf = pygame.Surface((bot.length * SCALE, bot.track_width * SCALE), pygame.SRCALPHA)
+        robot_surf.fill(CYAN if sim.current_mode == "drive" else ORANGE)
+        pygame.draw.line(robot_surf, WHITE, (bot.length * SCALE - 2, 0), (bot.length * SCALE - 2, bot.track_width * SCALE), 4)
+        rot_bot = pygame.transform.rotate(robot_surf, bot.angle)
+        bot_rect = rot_bot.get_rect(center=(bot.x * SCALE, FIELD_PIXELS - bot.y * SCALE))
+        screen.blit(rot_bot, bot_rect)
+        if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
     # Tracks and indicates if user is in Driver vs Edit Mode
     mode_label = f"SYSTEM STATUS: {sim.current_mode.upper()} MODE"
@@ -852,7 +866,8 @@ while running:
                 if pause_resume_btn.collidepoint(mx,my):
                     sim.paused = False
                 elif pause_studio_btn.collidepoint(mx,my):
-                    print("studioooo, its working :)") #Placeholder
+                    sim.current_mode = "studio"
+                    sim.paused = False
                 elif pause_settings_btn.collidepoint(mx,my):
                     print("settinggg, working too:)") #Placeholder
                 elif pause_exit_btn.collidepoint(mx,my):
