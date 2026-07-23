@@ -26,3 +26,8 @@ Sketch of the paused screen and different screens that would happen depending on
 Sketch of the layout and structure of Keybinds (ideas for a keyboard- and controller-compatible game along with some keybinds to have)
 ![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/dd6c058dfd9f22bd5e53ea2fec6e1ee00698421c/IMG_0197.jpg)
 
+Sketch of the layout and structure of the Overall Settings modal (ideas of what functions and variables the user can change)
+![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/d7ab179650111b97a2593270ebadf6675414c9da/IMG_0198.jpg)
+
+
+
