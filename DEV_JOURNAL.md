@@ -23,11 +23,14 @@ _No Drifting: It completely bypasses the drifting bug. The moment the driver rel
 Sketch of the paused screen and different screens that would happen depending on what option is chosen (Keybinds, Overall Settings, Robot Design-now called Studio Mode)
 ![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/afd79e4021666a3b664198f5896ab660910e8dd5/IMG_0195.jpg)
 
-Sketch of the layout and structure of Keybinds (ideas for a keyboard- and controller-compatible game along with some keybinds to have)
+Sketch of a more detailed layout and structure of "Keybinds" (ideas for a keyboard- and controller-compatible game along with some keybinds to have)
 ![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/dd6c058dfd9f22bd5e53ea2fec6e1ee00698421c/IMG_0197.jpg)
 
-Sketch of the layout and structure of the Overall Settings modal (ideas of what functions and variables the user can change)
+Sketch of a more detailed layout and structure of the "Overall Settings" modal (ideas of what functions and variables the user can change)
 ![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/d7ab179650111b97a2593270ebadf6675414c9da/IMG_0198.jpg)
 
+Sketch of a more detailed layout of the Robot Design workplace (now called Studio)
+![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/4571122aca437c7c972d15693da3109c3dfdc10e/IMG_0200.jpg)
+Includes future plans and a working-in-progress function: The ability to add different layers to the robot that would behave differently to the environment, depending on which layer that part of the bot is on (bottom, middle, or top)
 
-
+This is what I, for now, intend to work on over the next few days, and I will be following those sketches pretty closely (orrr not, just have to see :) )
