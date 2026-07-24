@@ -408,6 +408,12 @@ studio_robot_wid_rect = pygame.Rect(FIELD_PIXELS + 140, 140, 100, 24) #For chang
 cartridge_red_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 80, 26)
 cartridge_green_rect = pygame.Rect(FIELD_PIXELS + 110, 210, 80, 26)
 cartridge_blue_rect = pygame.Rect(FIELD_PIXELS + 200, 210, 80, 26)
+# Wheel radius UI rectangles
+studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
+# VEX official size quick-select buttons (diameter)
+wheel_275_rect = pygame.Rect(FIELD_PIXELS + 130, 290, 55, 24)
+wheel_325_rect = pygame.Rect(FIELD_PIXELS + 190, 290, 55, 24)
+wheel_400_rect = pygame.Rect(FIELD_PIXELS + 250, 290, 55, 24)
 # Property inputs panel definitions
 shape_panel_y = 390
 #Example .rect(x-cord,y-cord,width,height)
@@ -576,12 +582,29 @@ def draw_everything():
         pygame.draw.rect(screen, c_blue, cartridge_blue_rect, border_radius=4)
         if sim.settings["motor_cartridge"] == "blue": pygame.draw.rect(screen, YELLOW, cartridge_blue_rect, 2, border_radius=4)
         draw_small("600 RPM", cartridge_blue_rect.x + 12, cartridge_blue_rect.y + 5, WHITE)
+        #Wheel size section
+        draw_small("Wheel Radius (in):", FIELD_PIXELS + 20, 255, LIGHT_GRAY)
+        # Manual input textbox
+        draw_textbox(studio_wheel_rad_rect, "Radius", sim.textbox_value if sim.active_textbox == "wrad" else f"{bot.wheel_radius:.3f}", sim.active_textbox == "wrad")
+        # 2.75" Preset Button
+        c_275 = GREEN if abs(bot.wheel_radius - 1.375) < 0.01 else LIGHT_GRAY
+        pygame.draw.rect(screen, c_275, wheel_275_rect, border_radius=4)
+        draw_small("2.75\"", wheel_275_rect.x + 8, wheel_275_rect.y + 4, BLACK)
+        # 3.25" Preset Button
+        c_325 = GREEN if abs(bot.wheel_radius - 1.625) < 0.01 else LIGHT_GRAY
+        pygame.draw.rect(screen, c_325, wheel_325_rect, border_radius=4)
+        draw_small("3.25\"", wheel_325_rect.x + 8, wheel_325_rect.y + 4, BLACK)
+        # 4.00" Preset Button
+        c_400 = GREEN if abs(bot.wheel_radius - 2.000) < 0.01 else LIGHT_GRAY
+        pygame.draw.rect(screen, c_400, wheel_400_rect, border_radius=4)
+        draw_small("4.00\"", wheel_400_rect.x + 8, wheel_400_rect.y + 4, BLACK)
         
         #Upcoming Function list
-        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, 310, LIGHT_GRAY)
-        draw_small("Motor Gear Cartridge (Red/Green/Blue)", FIELD_PIXELS + 25, 330, GRAY)
-        draw_small("Intake", FIELD_PIXELS + 25, 350, GRAY)
-        draw_small("Outtake", FIELD_PIXELS + 25, 370, GRAY)
+        upcoming_y = 320
+        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, upcoming_y, LIGHT_GRAY)
+        draw_small("Motor Gear Cartridge (Red/Green/Blue)", FIELD_PIXELS + 25, upcoming_y +20, GRAY)
+        draw_small("Intake", FIELD_PIXELS + 25, upcoming_y + 40, GRAY)
+        draw_small("Outtake", FIELD_PIXELS + 25, upcoming_y + 60, GRAY)
     #Standart field sidebar (Only show buttons in Drive/Edit mode)
     else:
         # Dynamic settings selectors indicators map
@@ -739,6 +762,10 @@ def handle_ui_click(mx, my):
         if cartridge_red_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "red"; save_settings(); return
         if cartridge_green_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "green"; save_settings(); return
         if cartridge_blue_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "blue"; save_settings(); return
+        if studio_wheel_rad_rect.collidepoint(mx, my):sim.active_textbox = "wrad"; sim.textbox_value = f"{bot.wheel_radius:.3f}"; return
+        if wheel_275_rect.collidepoint(mx, my): bot.wheel_radius = 1.375; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; return
+        if wheel_325_rect.collidepoint(mx, my): bot.wheel_radius = 1.625; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; return
+        if wheel_400_rect.collidepoint(mx, my): bot.wheel_radius = 2.0; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; return
         
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
@@ -851,6 +878,7 @@ def apply_textbox_value():
         save_field_data()
     elif sim.active_textbox == "rlen": bot.length = max(6.0, min(bot.max_size, val))
     elif sim.active_textbox == "rwid": bot.track_width = max(6.0, min(bot.max_size, val))
+    elif sim.active_textbox == "wrad": bot.wheel_radius = max(1.0, min(3.0 , val)); bot.wheel_circ = 2 * math.pi * bot.wheel_radius
     sim.active_textbox = None
 
 # =====================================================================
