@@ -105,7 +105,8 @@ class SimulatorState:
             "input_mode": "keyboard",   
             "speed_scale": 1.0,
             "field_source": "image",    
-            "drive_mode": "tank"        
+            "drive_mode": "tank",     
+            "motor_cartridge": "green" #(red, green, blue)
         }
         self.drive_config = {
             "forward_axis": 1, "turn_axis": 0, "left_axis": 1, "right_axis": 3,
@@ -404,6 +405,9 @@ add_shape_dropdown_rect = pygame.Rect(FIELD_PIXELS + 20, 350, 140, 24)
 # Studio Mode UI Rectangles
 studio_robot_len_rect = pygame.Rect(FIELD_PIXELS + 20, 140, 100, 24) #For changing length of bot in Studio Mode
 studio_robot_wid_rect = pygame.Rect(FIELD_PIXELS + 140, 140, 100, 24) #For changing width of bot in Studio Mode
+cartridge_red_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 80, 26)
+cartridge_green_rect = pygame.Rect(FIELD_PIXELS + 110, 210, 80, 26)
+cartridge_blue_rect = pygame.Rect(FIELD_PIXELS + 200, 210, 80, 26)
 # Property inputs panel definitions
 shape_panel_y = 390
 #Example .rect(x-cord,y-cord,width,height)
@@ -552,15 +556,32 @@ def draw_everything():
         draw_text("Robot Configuration", FIELD_PIXELS + 20, 65, ORANGE)
         pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
         
-        # Placeholder text for upcoming CAD controls
         draw_small("Chassis Dimensions:", FIELD_PIXELS + 20, 105, LIGHT_GRAY)
         draw_textbox(studio_robot_len_rect, "Length (in)", sim.textbox_value if sim.active_textbox == "rlen" else f"{bot.length:.1f}", sim.active_textbox == "rlen")
         draw_textbox(studio_robot_wid_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "rwid" else f"{bot.track_width:.1f}", sim.active_textbox == "rwid")
+
+        draw_small("Motor Gear Cartridge:", FIELD_PIXELS + 20, 185, LIGHT_GRAY)
+        # Red Cartridge (100 RPM)
+        c_red = RED if sim.settings["motor_cartridge"] == "red" else (100, 40, 40)
+        pygame.draw.rect(screen, c_red, cartridge_red_rect, border_radius=4)
+        if sim.settings["motor_cartridge"] == "red": pygame.draw.rect(screen, YELLOW, cartridge_red_rect, 2, border_radius=4)
+        draw_small("100 RPM", cartridge_red_rect.x + 12, cartridge_red_rect.y + 5, WHITE)
+        # Green Cartridge (200 RPM)
+        c_green = GREEN if sim.settings["motor_cartridge"] == "green" else (40, 100, 60)
+        pygame.draw.rect(screen, c_green, cartridge_green_rect, border_radius=4)
+        if sim.settings["motor_cartridge"] == "green": pygame.draw.rect(screen, YELLOW, cartridge_green_rect, 2, border_radius=4)
+        draw_small("200 RPM", cartridge_green_rect.x + 12, cartridge_green_rect.y + 5, WHITE)
+        # Blue Cartridge (600 RPM)
+        c_blue = CYAN if sim.settings["motor_cartridge"] == "blue" else (20, 80, 140)
+        pygame.draw.rect(screen, c_blue, cartridge_blue_rect, border_radius=4)
+        if sim.settings["motor_cartridge"] == "blue": pygame.draw.rect(screen, YELLOW, cartridge_blue_rect, 2, border_radius=4)
+        draw_small("600 RPM", cartridge_blue_rect.x + 12, cartridge_blue_rect.y + 5, WHITE)
+        
         #Upcoming Function list
-        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, 185, LIGHT_GRAY)
-        draw_small("Motor Gear Cartridge (Red/Green/Blue)", FIELD_PIXELS + 25, 210, GRAY)
-        draw_small("Intake", FIELD_PIXELS + 25, 230, GRAY)
-        draw_small("Outtake", FIELD_PIXELS + 25, 250, GRAY)
+        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, 310, LIGHT_GRAY)
+        draw_small("Motor Gear Cartridge (Red/Green/Blue)", FIELD_PIXELS + 25, 330, GRAY)
+        draw_small("Intake", FIELD_PIXELS + 25, 350, GRAY)
+        draw_small("Outtake", FIELD_PIXELS + 25, 370, GRAY)
     #Standart field sidebar (Only show buttons in Drive/Edit mode)
     else:
         # Dynamic settings selectors indicators map
@@ -713,14 +734,12 @@ def handle_ui_click(mx, my):
         return
     if sim.current_mode == "studio":
         #Still able to change size of the robot
-        if studio_robot_len_rect.collidepoint(mx, my): 
-            sim.active_textbox = "rlen"
-            sim.textbox_value = f"{bot.length:.1f}"
-            return
-        if studio_robot_wid_rect.collidepoint(mx, my): 
-            sim.active_textbox = "rwid"
-            sim.textbox_value = f"{bot.track_width:.1f}"
-            return
+        if studio_robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
+        if studio_robot_wid_rect.collidepoint(mx, my): sim.active_textbox = "rwid"; sim.textbox_value = f"{bot.track_width:.1f}"; return
+        if cartridge_red_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "red"; save_settings(); return
+        if cartridge_green_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "green"; save_settings(); return
+        if cartridge_blue_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "blue"; save_settings(); return
+        
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
     if drive_mode_arcade_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "arcade"; save_settings(); return
