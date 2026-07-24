@@ -127,6 +127,13 @@ class SimulatorState:
         self.add_shape_dropdown_open = False
         self.add_shape_type = "rect"  
 
+
+def calculate_max_speed(self, cartride_color):
+    rpm_map = {"red": 100.0, "green": 200.0, "blue": 600.0}
+    target_rpm = rpm_map.get(cartridge_color, 200.0) #default to 200 if cant find key in dict
+    max_rps = target_rpm / 60.0
+    self.base_max_speed = self.wheel_circ * max_rps
+
 # Instantiate our unified states
 bot = Robot()
 sim = SimulatorState()
@@ -750,6 +757,7 @@ def draw_everything():
 def handle_ui_click(mx, my):
     if mode_drive_button_rect.collidepoint(mx, my): 
         sim.current_mode = "drive"
+        bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
         sync_custom_obstacles_to_physics() #Calling the physics body build
         return
     if mode_edit_button_rect.collidepoint(mx, my): 
@@ -759,13 +767,13 @@ def handle_ui_click(mx, my):
         #Still able to change size of the robot
         if studio_robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
         if studio_robot_wid_rect.collidepoint(mx, my): sim.active_textbox = "rwid"; sim.textbox_value = f"{bot.track_width:.1f}"; return
-        if cartridge_red_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "red"; save_settings(); return
-        if cartridge_green_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "green"; save_settings(); return
-        if cartridge_blue_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "blue"; save_settings(); return
+        if cartridge_red_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "red"; bot.recalculate_max_speed("red");save_settings(); return
+        if cartridge_green_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "green"; bot.recalculate_max_speed("green");save_settings(); return
+        if cartridge_blue_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "blue"; bot.recalculate_max_speed("blue");save_settings(); return
         if studio_wheel_rad_rect.collidepoint(mx, my):sim.active_textbox = "wrad"; sim.textbox_value = f"{bot.wheel_radius:.3f}"; return
-        if wheel_275_rect.collidepoint(mx, my): bot.wheel_radius = 1.375; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; return
-        if wheel_325_rect.collidepoint(mx, my): bot.wheel_radius = 1.625; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; return
-        if wheel_400_rect.collidepoint(mx, my): bot.wheel_radius = 2.0; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; return
+        if wheel_275_rect.collidepoint(mx, my): bot.wheel_radius = 1.375; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.recalculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
+        if wheel_325_rect.collidepoint(mx, my): bot.wheel_radius = 1.625; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.recalculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
+        if wheel_400_rect.collidepoint(mx, my): bot.wheel_radius = 2.0; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.recalculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
         
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
@@ -878,7 +886,7 @@ def apply_textbox_value():
         save_field_data()
     elif sim.active_textbox == "rlen": bot.length = max(6.0, min(bot.max_size, val))
     elif sim.active_textbox == "rwid": bot.track_width = max(6.0, min(bot.max_size, val))
-    elif sim.active_textbox == "wrad": bot.wheel_radius = max(1.0, min(3.0 , val)); bot.wheel_circ = 2 * math.pi * bot.wheel_radius
+    elif sim.active_textbox == "wrad": bot.wheel_radius = max(1.0, min(3.0 , val)); bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.recalculate_max_speed(sim.settings.get("motor_cartridge", "green"))
     sim.active_textbox = None
 
 # =====================================================================
