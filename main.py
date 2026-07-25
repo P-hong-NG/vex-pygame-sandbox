@@ -55,6 +55,7 @@ class Robot:
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
         self.angle = 0.0
+        self.current_speed = 0.0
 
         #Moment of inertia for solid rectangle box 
         moment = pymunk.moment_for_box(self.total_mass, (self.length * SCALE, self.track_width * SCALE))
@@ -260,12 +261,12 @@ def get_inputs(dt):
 
 #Run 60 times a second, do all the collisions, calculations, and visual updates
 def update_physics(left_speed, right_speed, dt):
-    v = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
+    bot.current_speed = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
     turn_multiplier = 40.0 #Can be changed! Increase for faster turning
     omega = ((left_speed - right_speed) / bot.track_width)*turn_multiplier  #Difference 
     
     rad = bot.body.angle #Radians for PyMunk
-    bot.body.velocity = (v * math.cos(rad) * SCALE, v * math.sin(rad) * SCALE) #Linear
+    bot.body.velocity = (bot.current_speed * math.cos(rad) * SCALE, bot.current_speed * math.sin(rad) * SCALE) #Linear
     bot.body.angular_velocity = math.radians(omega) #If positive, spin counter-clockwise, else negative, spin clockwise
 
     for s in sim.shapes:
@@ -752,7 +753,15 @@ def draw_everything():
         draw_small(f"x={bot.x:.1f} in", FIELD_PIXELS + 20, info_y + 20, LIGHT_GRAY)
         draw_small(f"y={bot.y:.1f} in", FIELD_PIXELS + 20, info_y + 40, LIGHT_GRAY)
         draw_small(f"θ={bot.angle%360:.1f}°", FIELD_PIXELS + 20, info_y + 60, LIGHT_GRAY)
-    
+
+        # Real-time speedometer
+        speed_y = info_y - 45
+        draw_text("Telemetry", FIELD_PIXELS + 20, speed_y, YELLOW)
+        curr_ips = abs(bot.current_speed)
+        curr_fps = curr_ips / 12.0
+        draw_small(f"Speed: {curr_ips:.1f} in/s ({curr_fps:.1f} ft/s)", FIELD_PIXELS + 20, speed_y + 22, GREEN)
+        pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, speed_y + 40), (WINDOW_WIDTH - 20, speed_y + 40), 1)
+        
         ox, oy = bot.get_odom_pose()
         draw_text("Pose (Odom)", FIELD_PIXELS + 160, info_y, LIGHT_GRAY)
         draw_small(f"x={ox:.1f}", FIELD_PIXELS + 160, info_y + 20, LIGHT_GRAY)
