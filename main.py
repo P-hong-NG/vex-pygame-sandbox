@@ -47,19 +47,20 @@ class Robot:
         self.wheel_circ = 2 * math.pi * self.wheel_radius
         self.max_rps = 450 / 60
         self.base_max_speed = self.wheel_circ * self.max_rps
-
+        self.gear_in = 36 #Amount of teeth (36t, 60t, etc.). Gear attached to motor
+        self.gear_out = 60 #Gear attached to wheel
+        #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
+        self.total_mass = 14.0
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
         self.angle = 0.0
 
-        #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
-        mass = 14.0 
         #Moment of inertia for solid rectangle box 
-        moment = pymunk.moment_for_box(mass, (self.length * SCALE, self.track_width * SCALE))
+        moment = pymunk.moment_for_box(self.total_mass, (self.length * SCALE, self.track_width * SCALE))
         
         #Body used for physics calculations (Includes: mass, inertia, position, angle, velocity, torque, etc)
-        self.body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC) #Dynamic means it moves/ can be interacted with
+        self.body = pymunk.Body(self.total_mass, moment, body_type=pymunk.Body.DYNAMIC) #Dynamic means it moves/ can be interacted with
         #Starting cords so that PyMunk can match the body (back-end) to the shape (front-end) 
         self.body.position = (self.x * SCALE, self.y * SCALE)
         self.body.angle = math.radians(self.angle)
@@ -422,6 +423,10 @@ studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 wheel_275_rect = pygame.Rect(FIELD_PIXELS + 130, 290, 55, 24)
 wheel_325_rect = pygame.Rect(FIELD_PIXELS + 190, 290, 55, 24)
 wheel_400_rect = pygame.Rect(FIELD_PIXELS + 250, 290, 55, 24)
+# Gear Ratio & Mass UI Rectangles (Studio)
+studio_gear_in_rect = pygame.Rect(FIELD_PIXELS + 20, 350, 70, 24)
+studio_gear_out_rect = pygame.Rect(FIELD_PIXELS + 100, 350, 70, 24)
+studio_mass_rect = pygame.Rect(FIELD_PIXELS + 20, 410, 100, 24)
 # Property inputs panel definitions
 shape_panel_y = 390
 #Example .rect(x-cord,y-cord,width,height)
@@ -606,23 +611,29 @@ def draw_everything():
         c_400 = GREEN if abs(bot.wheel_radius - 2.000) < 0.01 else LIGHT_GRAY
         pygame.draw.rect(screen, c_400, wheel_400_rect, border_radius=4)
         draw_small("4.00\"", wheel_400_rect.x + 8, wheel_400_rect.y + 4, BLACK)
+        # External Drivetrain Gear Ratio & Mass Inputs
+        draw_small("Drivetrain gear ratio:", FIELD_PIXELS + 20, 315, LIGHT_GRAY)
+        draw_textbox(studio_gear_in_rect, "In (teeth)", sim.textbox_value if sim.active_textbox == "gin" else f"{bot.gear_in}", sim.active_textbox == "gin")
+        draw_textbox(studio_gear_out_rect, "Out (teeth)", sim.textbox_value if sim.active_textbox == "gout" else f"{bot.gear_out}", sim.active_textbox == "gout")       
+        # Total Robot Mass Textbox
+        draw_small("Robot total mass:", FIELD_PIXELS + 20, 375, LIGHT_GRAY)
+        draw_textbox(studio_mass_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "rmass" else f"{bot.total_mass:.1f}", sim.active_textbox == "rmass")
+
+        studio_display_y = 500
         #Calculated performance section
-        draw_small("Calculated Specs:", FIELD_PIXELS + 20, 320, LIGHT_GRAY)
+        draw_small("Calculated Specs:", FIELD_PIXELS + 20, studio_display_y, LIGHT_GRAY)
         # Display calculated RPM
         active_cart = sim.settings.get("motor_cartridge", "green")
         rpm_val = {"red": 100, "green": 200, "blue": 600}.get(active_cart, 200)
-        draw_small(f"Motor Speed: {rpm_val} RPM", FIELD_PIXELS + 25, 345, YELLOW)
+        draw_small(f"Motor Speed: {rpm_val} RPM", FIELD_PIXELS + 25, studio_display_y+25, YELLOW)
         # Display calculated top speed
         top_ips = bot.base_max_speed #inches per second
         top_fps = top_ips / 12.0 #feet per second
-        draw_small(f"Top Speed: {top_ips:.1f} in/s ({top_fps:.1f} ft/s)", FIELD_PIXELS + 25, 365, GREEN)
-        
+        draw_small(f"Top Speed: {top_ips:.1f} in/s ({top_fps:.1f} ft/s)", FIELD_PIXELS + 25, studio_display_y+50, GREEN)
         #Upcoming Function list
-        upcoming_y = 500
-        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, upcoming_y, LIGHT_GRAY)
-        draw_small("Motor Gear Cartridge (Red/Green/Blue)", FIELD_PIXELS + 25, upcoming_y +20, GRAY)
-        draw_small("Intake", FIELD_PIXELS + 25, upcoming_y + 40, GRAY)
-        draw_small("Outtake", FIELD_PIXELS + 25, upcoming_y + 60, GRAY)
+        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, studio_display_y+75, LIGHT_GRAY)
+        draw_small("Intake", FIELD_PIXELS + 25, studio_display_y + 95, GRAY)
+        draw_small("Outtake", FIELD_PIXELS + 25, studio_display_y + 115, GRAY)
     #Standart field sidebar (Only show buttons in Drive/Edit mode)
     else:
         # Dynamic settings selectors indicators map
@@ -785,6 +796,9 @@ def handle_ui_click(mx, my):
         if wheel_275_rect.collidepoint(mx, my): bot.wheel_radius = 1.375; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
         if wheel_325_rect.collidepoint(mx, my): bot.wheel_radius = 1.625; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
         if wheel_400_rect.collidepoint(mx, my): bot.wheel_radius = 2.0; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
+        if studio_gear_in_rect.collidepoint(mx, my): sim.active_textbox = "gin"; sim.textbox_value = f"{bot.gear_in}"; return
+        if studio_gear_out_rect.collidepoint(mx, my): sim.active_textbox = "gout"; sim.textbox_value = f"{bot.gear_out}"; return
+        if studio_mass_rect.collidepoint(mx, my): sim.active_textbox = "rmass"; sim.textbox_value = f"{bot.total_mass:.1f}"; return
         
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
@@ -898,6 +912,9 @@ def apply_textbox_value():
     elif sim.active_textbox == "rlen": bot.length = max(6.0, min(bot.max_size, val))
     elif sim.active_textbox == "rwid": bot.track_width = max(6.0, min(bot.max_size, val))
     elif sim.active_textbox == "wrad": bot.wheel_radius = max(1.0, min(3.0 , val)); bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
+    elif sim.active_textbox == "gin": bot.gear_in = int(max(1, val))
+    elif sim.active_textbox == "gout": bot.gear_out = int(max(1, val))
+    elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val)
     sim.active_textbox = None
 
 # =====================================================================
