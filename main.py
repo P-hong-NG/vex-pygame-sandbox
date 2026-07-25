@@ -47,7 +47,7 @@ class Robot:
         self.wheel_circ = 2 * math.pi * self.wheel_radius
         self.max_rps = 450 / 60
         self.base_max_speed = self.wheel_circ * self.max_rps
-        self.gear_in = 36 #Amount of teeth (36t, 60t, etc.). Gear attached to motor
+        self.gear_in = 60 #Amount of teeth (36t, 60t, etc.). Gear attached to motor
         self.gear_out = 60 #Gear attached to wheel
         #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
         self.total_mass = 14.0
@@ -99,8 +99,10 @@ class Robot:
     
     def calculate_max_speed(self, cartridge_color):
         rpm_map = {"red": 100.0, "green": 200.0, "blue": 600.0}
-        target_rpm = rpm_map.get(cartridge_color, 200.0) #default to 200 if cant find key in dict
-        max_rps = target_rpm / 60.0
+        base_rpm = rpm_map.get(cartridge_color, 200.0) #default to 200 if cant find key in dict
+        gear_ratio = self.gear_in / float(self.gear_out) if self.gear_out > 0 else 1.0
+        self.output_rpm = base_rpm * gear_ratio
+        max_rps = self.output_rpm / 60.0
         self.base_max_speed = self.wheel_circ * max_rps
 
 class SimulatorState:
@@ -148,6 +150,11 @@ def load_all_data():
         try:
             with open(SETTINGS_FILE, "r") as f:
                 sim.settings.update(json.load(f))
+                bot.gear_in = sim.settings.get("gear_in", bot.gear_in)
+                bot.gear_out = sim.settings.get("gear_out", bot.gear_out)
+                bot.total_mass = sim.settings.get("total_mass", bot.total_mass)
+                bot.wheel_radius = sim.settings.get("wheel_radius", bot.wheel_radius)
+                bot.wheel_circ = 2 * math.pi * bot.wheel_radius
         except: pass
     if os.path.exists(DRIVE_FILE):
         try:
@@ -205,11 +212,16 @@ def save_field_data():
 
 def save_settings():
     try:
+        sim.settings["gear_in"] = bot.gear_in
+        sim.settings["gear_out"] = bot.gear_out
+        sim.settings["total_mass"] = bot.total_mass
+        sim.settings["wheel_radius"] = bot.wheel_radius
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
-    except: pass
-
+    except Exception as e: 
+        print(f"Error saving settings: {e}")
 # Initial data payload configuration setup
 load_all_data()
+bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
 
 # =====================================================================
 # 4. PHYSICS & MOVEMENT ENGINE
@@ -425,7 +437,7 @@ wheel_325_rect = pygame.Rect(FIELD_PIXELS + 190, 290, 55, 24)
 wheel_400_rect = pygame.Rect(FIELD_PIXELS + 250, 290, 55, 24)
 # Gear Ratio & Mass UI Rectangles (Studio)
 studio_gear_in_rect = pygame.Rect(FIELD_PIXELS + 20, 350, 70, 24)
-studio_gear_out_rect = pygame.Rect(FIELD_PIXELS + 100, 350, 70, 24)
+studio_gear_out_rect = pygame.Rect(FIELD_PIXELS + 110, 350, 70, 24)
 studio_mass_rect = pygame.Rect(FIELD_PIXELS + 20, 410, 100, 24)
 # Property inputs panel definitions
 shape_panel_y = 390
@@ -624,16 +636,18 @@ def draw_everything():
         draw_small("Calculated Specs:", FIELD_PIXELS + 20, studio_display_y, LIGHT_GRAY)
         # Display calculated RPM
         active_cart = sim.settings.get("motor_cartridge", "green")
-        rpm_val = {"red": 100, "green": 200, "blue": 600}.get(active_cart, 200)
-        draw_small(f"Motor Speed: {rpm_val} RPM", FIELD_PIXELS + 25, studio_display_y+25, YELLOW)
+        motor_rpm = {"red": 100, "green": 200, "blue": 600}.get(active_cart, 200)
+        bot.calculate_max_speed(active_cart)
+        draw_small(f"Motor Speed: {motor_rpm} RPM", FIELD_PIXELS + 25, studio_display_y+25, YELLOW)
+        draw_small(f"Output Speed: {bot.output_rpm:.1f} RPM ({bot.gear_in}t:{bot.gear_out}t)", FIELD_PIXELS + 25, studio_display_y+45, CYAN)
         # Display calculated top speed
         top_ips = bot.base_max_speed #inches per second
         top_fps = top_ips / 12.0 #feet per second
-        draw_small(f"Top Speed: {top_ips:.1f} in/s ({top_fps:.1f} ft/s)", FIELD_PIXELS + 25, studio_display_y+50, GREEN)
+        draw_small(f"Top Speed: {top_ips:.1f} in/s ({top_fps:.1f} ft/s)", FIELD_PIXELS + 25, studio_display_y+65, GREEN)
         #Upcoming Function list
-        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, studio_display_y+75, LIGHT_GRAY)
-        draw_small("Intake", FIELD_PIXELS + 25, studio_display_y + 95, GRAY)
-        draw_small("Outtake", FIELD_PIXELS + 25, studio_display_y + 115, GRAY)
+        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, studio_display_y+90, LIGHT_GRAY)
+        draw_small("Intake", FIELD_PIXELS + 25, studio_display_y +115, GRAY)
+        draw_small("Outtake", FIELD_PIXELS + 25, studio_display_y + 135, GRAY)
     #Standart field sidebar (Only show buttons in Drive/Edit mode)
     else:
         # Dynamic settings selectors indicators map
@@ -912,9 +926,9 @@ def apply_textbox_value():
     elif sim.active_textbox == "rlen": bot.length = max(6.0, min(bot.max_size, val))
     elif sim.active_textbox == "rwid": bot.track_width = max(6.0, min(bot.max_size, val))
     elif sim.active_textbox == "wrad": bot.wheel_radius = max(1.0, min(3.0 , val)); bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-    elif sim.active_textbox == "gin": bot.gear_in = int(max(1, val))
-    elif sim.active_textbox == "gout": bot.gear_out = int(max(1, val))
-    elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val)
+    elif sim.active_textbox == "gin": bot.gear_in = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
+    elif sim.active_textbox == "gout": bot.gear_out = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
+    elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
