@@ -584,6 +584,23 @@ def draw_everything():
     draw_text("Edit", mode_edit_button_rect.x + 35, mode_edit_button_rect.y + 4, BLACK)
     #Studio mode sidebar (Different set of buttons for Robot CAD)
     if sim.current_mode == "studio":
+        studio_center_x = FIELD_PIXELS / 2
+        studio_center_y = FIELD_PIXELS / 2
+        
+        # Draw robot chassis box
+        cad_w = bot.length * SCALE
+        cad_h = bot.track_width * SCALE
+        cad_rect = pygame.Rect(studio_center_x - cad_w/2, studio_center_y - cad_h/2, cad_w, cad_h)
+        pygame.draw.rect(screen, CYAN, cad_rect) 
+        # Front direction indicator line
+        pygame.draw.line(screen, WHITE, (cad_rect.right - 2, cad_rect.top), (cad_rect.right - 2, cad_rect.bottom), 4)
+        #Center origin crosshair
+        pygame.draw.line(screen, WHITE, (studio_center_x - 15, studio_center_y), (studio_center_x + 15, studio_center_y), 1)
+        pygame.draw.line(screen, WHITE, (studio_center_x, studio_center_y - 15), (studio_center_x, studio_center_y + 15), 1)
+        # Dimension labels on CAD canvas
+        draw_small(f"L: {bot.length:.1f}\"", cad_rect.centerx - 25, cad_rect.bottom + bot.length, DARK)
+        draw_small(f"W: {bot.track_width:.1f}\"", cad_rect.right + bot.track_width, cad_rect.centery - 6, DARK)
+        
         # Header indicator
         draw_text("Robot Configuration", FIELD_PIXELS + 20, 65, ORANGE)
         pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
