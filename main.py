@@ -54,6 +54,7 @@ class Robot:
         self.has_intake = True
         self.intake_width = 6.7 #Width of roller (in), should be smaller than self.track_width
         self.intake_length = 3.0 #How far intake extends (in), creating an intake range
+        self.intake_offset = 0.0 #Inches inside the chassis (0.0 = all the way in front)
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
@@ -162,6 +163,7 @@ def load_all_data():
                 bot.intake_length = sim.settings.get("intake_length", bot.intake_length)
                 bot.intake_width = sim.settings.get("intake_width", bot.intake_width)
                 bot.wheel_circ = 2 * math.pi * bot.wheel_radius
+                bot.intake_offset = sim.settings.get("intake_offset", bot.intake_offset)
         except: pass
     if os.path.exists(DRIVE_FILE):
         try:
@@ -226,6 +228,7 @@ def save_settings():
         sim.settings["has_intake"] = bot.has_intake
         sim.settings["intake_width"] = bot.intake_width
         sim.settings["intake_length"] = bot.intake_length
+        sim.settings["intake_offset"] = bot.intake_offset
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
     except Exception as e: 
         print(f"Error saving settings: {e}")
@@ -442,6 +445,8 @@ cartridge_blue_rect = pygame.Rect(FIELD_PIXELS + 200, 210, 80, 26)
 studio_intake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 460, 110, 24)
 studio_intake_w_rect = pygame.Rect(FIELD_PIXELS + 140, 460, 80, 24)
 studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 460, 80, 24)
+studio_intake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 560, 35, 24)
+studio_intake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 560, 35, 24)
 # Wheel radius UI rectangles
 studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 # VEX official size quick-select buttons (diameter)
@@ -612,8 +617,9 @@ def draw_everything():
             # Convert intake dimensions to pixel scale
             intake_w_px = bot.intake_width * SCALE
             intake_l_px = bot.intake_length * SCALE
+            offset_px = bot.intake_offset * SCALE
             # Position at the front (right side) of the blueprint chassis
-            intake_x = cad_rect.right
+            intake_x = cad_rect.right - offset_px
             intake_y = studio_center_y - (intake_w_px / 2)
             intake_rect = pygame.Rect(intake_x, intake_y, intake_l_px, intake_w_px)
             # Draw intake roller structure
@@ -623,8 +629,8 @@ def draw_everything():
             # Front direction indicator line
             pygame.draw.line(screen, WHITE, (cad_rect.right - 2, cad_rect.top), (cad_rect.right - 2, cad_rect.bottom), 4)
         # Dimension labels on CAD canvas
-        draw_small(f"L: {bot.length:.1f}\"", cad_rect.centerx - 25, cad_rect.bottom + bot.length, DARK)
-        draw_small(f"W: {bot.track_width:.1f}\"", cad_rect.right + bot.track_width, cad_rect.centery - 6, DARK)
+        draw_small(f"L: {bot.length:.1f}\"", cad_rect.centerx - 25, cad_rect.bottom + 8, DARK)
+        draw_small(f"W: {bot.track_width:.1f}\"", cad_rect.right + 8, cad_rect.centery - 6, DARK)
         
         # Header indicator
         draw_text("Robot Configuration", FIELD_PIXELS + 20, 65, ORANGE)
@@ -678,10 +684,20 @@ def draw_everything():
         toggle_color = GREEN if bot.has_intake else LIGHT_GRAY
         pygame.draw.rect(screen, toggle_color, studio_intake_toggle_rect, border_radius=4)
         draw_small("ENABLED" if bot.has_intake else "DISABLED", studio_intake_toggle_rect.x + 12, studio_intake_toggle_rect.y + 4, WHITE)
+
         if bot.has_intake:
             draw_textbox(studio_intake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "iwid" else f"{bot.intake_width:.1f}", sim.active_textbox == "iwid")
             draw_textbox(studio_intake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "ilen" else f"{bot.intake_length:.1f}", sim.active_textbox == "ilen")
-        
+            #Intake offset buttons/ section
+            draw_small("Intake offset:", FIELD_PIXELS + 20, 540, LIGHT_GRAY)
+            pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_in_btn, border_radius=4)
+            draw_small("<", studio_intake_in_btn.x+13, studio_intake_in_btn.y+4,WHITE)
+            pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_out_btn, border_radius=4)
+            draw_small(">", studio_intake_out_btn.x+13, studio_intake_out_btn.y+4,WHITE)
+            total_L = bot.length + (bot.intake_length - bot.intake_offset)
+            total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
+            draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, 565, total_L_color)    
+            
         studio_display_y = 700
         #Calculated performance section
         draw_small("Calculated Specs:", FIELD_PIXELS + 20, studio_display_y, LIGHT_GRAY)
@@ -876,6 +892,10 @@ def handle_ui_click(mx, my):
         if bot.has_intake: 
             if studio_intake_w_rect.collidepoint(mx,my): sim.active_textbox = "iwid"; sim.textbox_value = f"{bot.intake_width:.1f}"; return
             if studio_intake_l_rect.collidepoint(mx,my): sim.active_textbox = "ilen"; sim.textbox_value = f"{bot.intake_length:.1f}"; return
+            #Shift inward (<) by 0.1
+            if studio_intake_in_btn.collidepoint(mx,my): bot.intake_offset = min(bot.intake_length, bot.intake_offset + 0.1); save_settings(); return
+            #Shift outward (>) by 0.1
+            if studio_intake_out_btn.collidepoint(mx,my): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings(); return
         
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
