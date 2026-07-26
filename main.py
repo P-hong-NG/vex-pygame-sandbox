@@ -568,11 +568,34 @@ def draw_everything():
 
     # Robot Layer
     if sim.current_mode != "studio":
-        robot_surf = pygame.Surface((bot.length * SCALE, bot.track_width * SCALE), pygame.SRCALPHA)
-        robot_surf.fill(CYAN if sim.current_mode == "drive" else ORANGE)
-        pygame.draw.line(robot_surf, WHITE, (bot.length * SCALE - 2, 0), (bot.length * SCALE - 2, bot.track_width * SCALE), 4)
+        stick_out = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
+        #Extends the total area box to include both intake and chassis
+        total_w_px = (bot.length + stick_out) * SCALE
+        total_h_px = max(bot.track_width, bot.intake_width if bot.has_intake else 0.0) * SCALE
+        robot_surf = pygame.Surface((total_w_px, total_h_px), pygame.SRCALPHA) #SRCALPHA - allow the excess background around the bot to be see through
+        # Center chassis vertically inside surface
+        chassis_y = (total_h_px - (bot.track_width * SCALE)) / 2
+        chassis_rect = pygame.Rect(0, chassis_y, bot.length * SCALE, bot.track_width * SCALE)
+        # Draw robot body
+        pygame.draw.rect(robot_surf, CYAN if sim.current_mode == "drive" else ORANGE, chassis_rect)
+        pygame.draw.line(robot_surf, WHITE, (chassis_rect.right - 2, chassis_rect.top), (chassis_rect.right - 2, chassis_rect.bottom), 4)
+        if bot.has_intake:
+            intake_w_px = bot.intake_width * SCALE
+            intake_l_px = bot.intake_length * SCALE
+            offset_px = bot.intake_offset * SCALE
+            intake_x = chassis_rect.right - offset_px
+            intake_y = (total_h_px / 2) - (intake_w_px / 2)
+            intake_surf = pygame.Surface((intake_l_px, intake_w_px), pygame.SRCALPHA)
+            intake_surf.fill((0, 200, 255, 160)) # Semi-transparent cyan fill
+            pygame.draw.rect(intake_surf, WHITE, (0, 0, intake_l_px, intake_w_px), 2)
+            robot_surf.blit(intake_surf, (intake_x, intake_y))# Copy robot_surf onto screen(_surf) at the coordinates defined by bot_rect
         rot_bot = pygame.transform.rotate(robot_surf, bot.angle)
-        bot_rect = rot_bot.get_rect(center=(bot.x * SCALE, FIELD_PIXELS - bot.y * SCALE))
+        # Offset rotation center so the robot rotates around its chassis center, not the extended surface center
+        center_dx = (stick_out * SCALE / 2) * math.cos(math.radians(bot.angle))
+        center_dy = (stick_out * SCALE / 2) * math.sin(math.radians(bot.angle))
+        bot_center_x = (bot.x * SCALE) + center_dx
+        bot_center_y = (FIELD_PIXELS - (bot.y * SCALE)) - center_dy #Pygame measure downward where as PyMunk measures upward
+        bot_rect = rot_bot.get_rect(center=(bot_center_x, bot_center_y))
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
