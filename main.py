@@ -604,11 +604,24 @@ def draw_everything():
         cad_h = bot.track_width * SCALE
         cad_rect = pygame.Rect(studio_center_x - cad_w/2, studio_center_y - cad_h/2, cad_w, cad_h)
         pygame.draw.rect(screen, CYAN, cad_rect) 
-        # Front direction indicator line
-        pygame.draw.line(screen, WHITE, (cad_rect.right - 2, cad_rect.top), (cad_rect.right - 2, cad_rect.bottom), 4)
         #Center origin crosshair
         pygame.draw.line(screen, WHITE, (studio_center_x - 15, studio_center_y), (studio_center_x + 15, studio_center_y), 1)
         pygame.draw.line(screen, WHITE, (studio_center_x, studio_center_y - 15), (studio_center_x, studio_center_y + 15), 1)
+        # Render Intake Subsystem on CAD Model
+        if bot.has_intake:
+            # Convert intake dimensions to pixel scale
+            intake_w_px = bot.intake_width * SCALE
+            intake_l_px = bot.intake_length * SCALE
+            # Position at the front (right side) of the blueprint chassis
+            intake_x = cad_rect.right
+            intake_y = studio_center_y - (intake_w_px / 2)
+            intake_rect = pygame.Rect(intake_x, intake_y, intake_l_px, intake_w_px)
+            # Draw intake roller structure
+            pygame.draw.rect(screen, (30, 100, 160), intake_rect)  # Darker blue fill
+            pygame.draw.rect(screen, CYAN, intake_rect, 2)         # Outline
+        else:
+            # Front direction indicator line
+            pygame.draw.line(screen, WHITE, (cad_rect.right - 2, cad_rect.top), (cad_rect.right - 2, cad_rect.bottom), 4)
         # Dimension labels on CAD canvas
         draw_small(f"L: {bot.length:.1f}\"", cad_rect.centerx - 25, cad_rect.bottom + bot.length, DARK)
         draw_small(f"W: {bot.track_width:.1f}\"", cad_rect.right + bot.track_width, cad_rect.centery - 6, DARK)
