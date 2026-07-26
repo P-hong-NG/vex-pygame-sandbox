@@ -51,6 +51,9 @@ class Robot:
         self.gear_out = 60 #Gear attached to wheel
         #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
         self.total_mass = 14.0
+        self.has_intake = True
+        self.intake_width = 6.7 #Width of roller (in), should be smaller than self.track_width
+        self.intake_length = 3.0 #How far intake extends (in), creating an intake range
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
@@ -155,6 +158,9 @@ def load_all_data():
                 bot.gear_out = sim.settings.get("gear_out", bot.gear_out)
                 bot.total_mass = sim.settings.get("total_mass", bot.total_mass)
                 bot.wheel_radius = sim.settings.get("wheel_radius", bot.wheel_radius)
+                bot.has_intake = sim.settings.get("has_intake", bot.has_intake)
+                bot.intake_length = sim.settings.get("intake_length", bot.intake_length)
+                bot.intake_width = sim.settings.get("intake_width", bot.intake_width)
                 bot.wheel_circ = 2 * math.pi * bot.wheel_radius
         except: pass
     if os.path.exists(DRIVE_FILE):
@@ -217,6 +223,9 @@ def save_settings():
         sim.settings["gear_out"] = bot.gear_out
         sim.settings["total_mass"] = bot.total_mass
         sim.settings["wheel_radius"] = bot.wheel_radius
+        sim.settings["has_intake"] = bot.has_intake
+        sim.settings["intake_width"] = bot.intake_width
+        sim.settings["intake_length"] = bot.intake_length
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
     except Exception as e: 
         print(f"Error saving settings: {e}")
@@ -430,6 +439,9 @@ studio_robot_wid_rect = pygame.Rect(FIELD_PIXELS + 140, 140, 100, 24) #For chang
 cartridge_red_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 80, 26)
 cartridge_green_rect = pygame.Rect(FIELD_PIXELS + 110, 210, 80, 26)
 cartridge_blue_rect = pygame.Rect(FIELD_PIXELS + 200, 210, 80, 26)
+studio_intake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 460, 110, 24)
+studio_intake_w_rect = pygame.Rect(FIELD_PIXELS + 140, 460, 80, 24)
+studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 460, 80, 24)
 # Wheel radius UI rectangles
 studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 # VEX official size quick-select buttons (diameter)
@@ -629,27 +641,35 @@ def draw_everything():
         draw_small("Wheel Radius (in):", FIELD_PIXELS + 20, 255, LIGHT_GRAY)
         # Manual input textbox
         draw_textbox(studio_wheel_rad_rect, "Radius", sim.textbox_value if sim.active_textbox == "wrad" else f"{bot.wheel_radius:.3f}", sim.active_textbox == "wrad")
-        # 2.75" Preset Button
+        # 2.75" Preset button
         c_275 = GREEN if abs(bot.wheel_radius - 1.375) < 0.01 else LIGHT_GRAY
         pygame.draw.rect(screen, c_275, wheel_275_rect, border_radius=4)
         draw_small("2.75\"", wheel_275_rect.x + 8, wheel_275_rect.y + 4, BLACK)
-        # 3.25" Preset Button
+        # 3.25" Preset button
         c_325 = GREEN if abs(bot.wheel_radius - 1.625) < 0.01 else LIGHT_GRAY
         pygame.draw.rect(screen, c_325, wheel_325_rect, border_radius=4)
         draw_small("3.25\"", wheel_325_rect.x + 8, wheel_325_rect.y + 4, BLACK)
-        # 4.00" Preset Button
+        # 4.00" Preset button
         c_400 = GREEN if abs(bot.wheel_radius - 2.000) < 0.01 else LIGHT_GRAY
         pygame.draw.rect(screen, c_400, wheel_400_rect, border_radius=4)
         draw_small("4.00\"", wheel_400_rect.x + 8, wheel_400_rect.y + 4, BLACK)
-        # External Drivetrain Gear Ratio & Mass Inputs
+        # External drivetrain gear ratio & mass inputs
         draw_small("Drivetrain gear ratio:", FIELD_PIXELS + 20, 315, LIGHT_GRAY)
         draw_textbox(studio_gear_in_rect, "In (teeth)", sim.textbox_value if sim.active_textbox == "gin" else f"{bot.gear_in}", sim.active_textbox == "gin")
         draw_textbox(studio_gear_out_rect, "Out (teeth)", sim.textbox_value if sim.active_textbox == "gout" else f"{bot.gear_out}", sim.active_textbox == "gout")       
-        # Total Robot Mass Textbox
+        # Total robot mass textbox
         draw_small("Robot total mass:", FIELD_PIXELS + 20, 375, LIGHT_GRAY)
         draw_textbox(studio_mass_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "rmass" else f"{bot.total_mass:.1f}", sim.active_textbox == "rmass")
-
-        studio_display_y = 500
+        #Intake system section
+        draw_small("Intake system:", FIELD_PIXELS+20, 440, LIGHT_GRAY)
+        toggle_color = GREEN if bot.has_intake else LIGHT_GRAY
+        pygame.draw.rect(screen, toggle_color, studio_intake_toggle_rect, border_radius=4)
+        draw_small("ENABLED" if bot.has_intake else "DISABLED", studio_intake_toggle_rect.x + 12, studio_intake_toggle_rect.y + 4, WHITE)
+        if bot.has_intake:
+            draw_textbox(studio_intake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "iwid" else f"{bot.intake_width:.1f}", sim.active_textbox == "iwid")
+            draw_textbox(studio_intake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "ilen" else f"{bot.intake_length:.1f}", sim.active_textbox == "ilen")
+        
+        studio_display_y = 700
         #Calculated performance section
         draw_small("Calculated Specs:", FIELD_PIXELS + 20, studio_display_y, LIGHT_GRAY)
         # Display calculated RPM
@@ -839,6 +859,10 @@ def handle_ui_click(mx, my):
         if studio_gear_in_rect.collidepoint(mx, my): sim.active_textbox = "gin"; sim.textbox_value = f"{bot.gear_in}"; return
         if studio_gear_out_rect.collidepoint(mx, my): sim.active_textbox = "gout"; sim.textbox_value = f"{bot.gear_out}"; return
         if studio_mass_rect.collidepoint(mx, my): sim.active_textbox = "rmass"; sim.textbox_value = f"{bot.total_mass:.1f}"; return
+        if studio_intake_toggle_rect.collidepoint(mx, my): bot.has_intake = not bot.has_intake; save_settings(); return
+        if bot.has_intake: 
+            if studio_intake_w_rect.collidepoint(mx,my): sim.active_textbox = "iwid"; sim.textbox_value = f"{bot.intake_width:.1f}"; return
+            if studio_intake_l_rect.collidepoint(mx,my): sim.active_textbox = "ilen"; sim.textbox_value = f"{bot.intake_length:.1f}"; return
         
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
@@ -955,6 +979,8 @@ def apply_textbox_value():
     elif sim.active_textbox == "gin": bot.gear_in = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
     elif sim.active_textbox == "gout": bot.gear_out = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
     elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val); save_settings()
+    elif sim.active_textbox == "iwid": bot.intake_width = max(5.0, min(bot.track_width,val)); save_settings() 
+    elif sim.active_textbox == "ilen": bot.intake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
     sim.active_textbox = None
 
 # =====================================================================
