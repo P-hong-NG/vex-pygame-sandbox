@@ -114,6 +114,8 @@ class SimulatorState:
     def __init__(self):
         self.current_mode = "drive" # drive / edit / studio
         self.paused = False
+        self.paused_sub_menu = "main" # main / settings
+        self.remapping_key = None 
         self.auton_mode = False
         self.auton_running = False
         self.settings = {
@@ -494,6 +496,12 @@ pause_resume_btn = pygame.Rect(modal_x + 30, modal_y + 60, 220, 36)
 pause_studio_btn = pygame.Rect(modal_x + 30, modal_y + 105, 220, 36)
 pause_settings_btn = pygame.Rect(modal_x + 30, modal_y + 150, 220, 36)
 pause_exit_btn = pygame.Rect(modal_x + 30, modal_y + 195, 220, 36)
+#Settings & Keybinds Modal definitions
+SETTING_W, SETTING_H = 420, 360
+setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
+setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
+
+settings_modal_rect = pygame.Rect(setting_x, setting_y, SETTING_W, SETTING_H)
 
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
@@ -868,21 +876,26 @@ def draw_everything():
             screen.blit(overlay, (0, 0))
     
             #Main pause box (Modal)
-            pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
-            pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
-            #Title
-            draw_text("GAME PAUSED", pause_modal_rect.x + 80, pause_modal_rect.y + 20, YELLOW)
-            # Buttons box
-            pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
-            pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
-            pygame.draw.rect(screen, LIGHT_GRAY, pause_settings_btn, border_radius=6)
-            pygame.draw.rect(screen, RED, pause_exit_btn, border_radius=6)
-            # Button Labels
-            draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
-            draw_small("Robot Design Studio", pause_studio_btn.x + 35, pause_studio_btn.y + 10, BLACK)
-            draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
-            draw_small("Exit Simulator", pause_exit_btn.x + 58, pause_exit_btn.y + 10, WHITE)    
-            
+            if sim.paused_sub_menu == "main":
+                pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
+                pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
+                #Title
+                draw_text("GAME PAUSED", pause_modal_rect.x + 80, pause_modal_rect.y + 20, YELLOW)
+                # Buttons box
+                pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
+                pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
+                pygame.draw.rect(screen, LIGHT_GRAY, pause_settings_btn, border_radius=6)
+                pygame.draw.rect(screen, RED, pause_exit_btn, border_radius=6)
+                # Button Labels
+                draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
+                draw_small("Robot Design Studio", pause_studio_btn.x + 35, pause_studio_btn.y + 10, BLACK)
+                draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
+                draw_small("Exit Simulator", pause_exit_btn.x + 58, pause_exit_btn.y + 10, WHITE)    
+            elif sim.paused_sub_menu == "settings":
+                pygame.draw.rect(screen, (35, 35, 45), settings_modal_rect, border_radius=12)
+                pygame.draw.rect(screen, YELLOW, settings_modal_rect, 2, border_radius=12)
+                
+                draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 85, settings_modal_rect.y + 20, YELLOW)
     pygame.display.flip()
 
 # =====================================================================
@@ -1100,15 +1113,16 @@ while running:
             mx, my = event.pos
             #Handling clicks when the game is paused
             if sim.paused:
-                if pause_resume_btn.collidepoint(mx,my):
-                    sim.paused = False
-                elif pause_studio_btn.collidepoint(mx,my):
-                    sim.current_mode = "studio"
-                    sim.paused = False
-                elif pause_settings_btn.collidepoint(mx,my):
-                    print("settinggg, working too:)") #Placeholder
-                elif pause_exit_btn.collidepoint(mx,my):
-                    pygame.quit(); raise SystemExit
+                if sim.paused_sub_menu == "main":
+                    if pause_resume_btn.collidepoint(mx,my):
+                        sim.paused = False
+                    elif pause_studio_btn.collidepoint(mx,my):
+                        sim.current_mode = "studio"
+                        sim.paused = False
+                    elif pause_settings_btn.collidepoint(mx,my):
+                        sim.paused_sub_menu = "settings"
+                    elif pause_exit_btn.collidepoint(mx,my):
+                        pygame.quit(); raise SystemExit
             #Handling clicks when the game is NOT paused
             elif mx >= FIELD_PIXELS: handle_ui_click(mx, my)
             elif sim.current_mode == "edit":
@@ -1158,7 +1172,11 @@ while running:
         elif event.type == pygame.KEYDOWN:
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
-                sim.paused = not sim.paused
+                if sim.paused and sim.paused_sub_menu == "settings":
+                    sim.paused_sub_menu = "main"
+                else:
+                    sim.paused = not sim.paused
+                    sim.pause_sub_menu = "main"
             #Only process typing if NOT paused
             elif sim.active_textbox is not None and not sim.paused:
                 if event.key == pygame.K_RETURN: apply_textbox_value()
