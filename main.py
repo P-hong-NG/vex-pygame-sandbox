@@ -55,6 +55,9 @@ class Robot:
         self.intake_width = 6.7 #Width of roller (in), should be smaller than self.track_width
         self.intake_length = 3.0 #How far intake extends (in), creating an intake range
         self.intake_offset = 0.0 #Inches inside the chassis (0.0 = all the way in front)
+        self.inventory = []
+        self.max_capacity = 3
+        self.intake_state = "off" #off / in / out
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
@@ -280,6 +283,18 @@ def get_inputs(dt):
             max_cmd = max(1.0, abs(left_cmd), abs(right_cmd))
             left_speed = (left_cmd / max_cmd) * max_speed
             right_speed = (right_cmd / max_cmd) * max_speed
+            
+        in_key = sim.settings["keybinds"]["intake_in"]
+        out_key = sim.settings["keybinds"]["intake_out"]
+        
+        if sim.settings["intake_control_mode"] == "hold":
+            if keys[in_key]:
+                bot.intake_state = "in"
+            elif keys[out_key]:
+                bot.intake_state = "out"
+            else:
+                bot.intake_state = "off"
+        
     return left_speed, right_speed
 
 #Run 60 times a second, do all the collisions, calculations, and visual updates
@@ -308,6 +323,31 @@ def update_physics(left_speed, right_speed, dt):
             b.velocity = b.velocity * drag
             b.angular_velocity = b.angular_velocity * drag
     
+    if bot.has_intake and bot.intake_state == "in" and len(bot.inventory) < bot.max_capacity:
+        # Calculate intake zone box in world coordinates (inches)
+        rad = math.radians(bot.angle)
+        stick_out = max(0.0, bot.intake_length - bot.intake_offset)
+        # Front center of chassis plus offset to intake center
+        intake_center_dist = (bot.length / 2) + (stick_out / 2)
+        intake_cx = bot.x + intake_center_dist * math.cos(rad)
+        intake_cy = bot.y + intake_center_dist * math.sin(rad)
+        # Check collision with dynamic shapes
+        for s in list(sim.shapes):
+            if s.get("body_type") == "dynamic" and "body" in s:
+                dx = abs(s["x"] - intake_cx)
+                dy = abs(s["y"] - intake_cy)
+                
+                reach = (bot.intake_length / 2) + 2.0
+                if dx < reach and dy < reach:
+                    # Collect item means remove from PyMunk space
+                    space.remove(s["body"])
+                    for shape_ref in list(space.shapes):
+                        if shape_ref.body == s["body"]:
+                            space.remove(shape_ref)      
+                    # Store color in inventory 
+                    bot.inventory.append(s.get("color", WHITE))
+                    sim.shapes.remove(s)
+                    break
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
         space.step(dt/10.0)
@@ -857,7 +897,22 @@ def draw_everything():
         draw_small("Save Start", robot_save_rect.x + 20, robot_save_rect.y + 5, BLACK)
         draw_textbox(robot_len_rect, "Chassis L", sim.textbox_value if sim.active_textbox == "rlen" else f"{bot.length:.1f}", sim.active_textbox == "rlen")
         draw_textbox(robot_wid_rect, "Chassis W", sim.textbox_value if sim.active_textbox == "rwid" else f"{bot.track_width:.1f}", sim.active_textbox == "rwid")
-    
+
+        # Drive mode inventory HUD
+        inv_y = 180
+        draw_text("Bot Storage", FIELD_PIXELS + 20, inv_y+500, YELLOW)
+        draw_small(f"Capacity: {len(bot.inventory)}/{bot.max_capacity}", FIELD_PIXELS + 160, inv_y + 504, LIGHT_GRAY)
+        
+        # Storage slot boxes
+        for i in range(bot.max_capacity):
+            slot_rect = pygame.Rect(FIELD_PIXELS + 20 + (i * 45), inv_y + 525, 38, 38)
+            pygame.draw.rect(screen, (40, 40, 50), slot_rect, border_radius=6)
+            pygame.draw.rect(screen, LIGHT_GRAY, slot_rect, 1, border_radius=6)
+            
+            # Draw stored item if present
+            if i < len(bot.inventory):
+                pygame.draw.circle(screen, bot.inventory[i], slot_rect.center, 14)
+        
         # Pose/ Odom footer
         info_y = WINDOW_HEIGHT - 90
         draw_text("Pose (Field)", FIELD_PIXELS + 20, info_y, LIGHT_GRAY)
@@ -1234,7 +1289,12 @@ while running:
                 elif event.unicode.isdigit() or event.unicode in ".-": sim.textbox_value += event.unicode
             elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
                 sim.shapes.pop(sim.selected_shape_idx); sim.selected_shape_idx = None; save_field_data()
-
+            # Toggle mode intake switching
+            elif sim.current_mode == "drive" and not sim.paused and sim.settings["intake_control_mode"] == "toggle":
+                if event.key == sim.settings["keybinds"]["intake_in"]:
+                    bot.intake_state = "off" if bot.intake_state == "in" else "in"
+                elif event.key == sim.settings["keybinds"]["intake_out"]:
+                    bot.intake_state = "off" if bot.intake_state == "out" else "out"
         elif event.type == pygame.JOYDEVICEADDED and joystick is None:
             joystick = pygame.joystick.Joystick(event.device_index); joystick.init()
         elif event.type == pygame.JOYDEVICEREMOVED and joystick is not None and event.instance_id == joystick.get_instance_id():
