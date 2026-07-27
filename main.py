@@ -123,7 +123,12 @@ class SimulatorState:
             "speed_scale": 1.0,
             "field_source": "image",    
             "drive_mode": "tank",     
-            "motor_cartridge": "green" #(red, green, blue)
+            "motor_cartridge": "green", #(red, green, blue)
+            "intake_control_mode": "toggle",#Hold or toggle
+            "keybinds": {
+                "intake_in": pygame.K_e,
+                "intake_out": pygame.K_f
+            }
         }
         self.drive_config = {
             "forward_axis": 1, "turn_axis": 0, "left_axis": 1, "right_axis": 3,
@@ -156,7 +161,11 @@ def load_all_data():
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r") as f:
-                sim.settings.update(json.load(f))
+                loaded_data = json.load(f)
+                if "keybinds" in loaded_data:
+                    sim.settings["keybinds"].update(loaded_data["keybinds"])
+                    del loaded_data["keybinds"]
+                sim.settings.update(loaded_data)
                 bot.gear_in = sim.settings.get("gear_in", bot.gear_in)
                 bot.gear_out = sim.settings.get("gear_out", bot.gear_out)
                 bot.total_mass = sim.settings.get("total_mass", bot.total_mass)
@@ -496,12 +505,17 @@ pause_resume_btn = pygame.Rect(modal_x + 30, modal_y + 60, 220, 36)
 pause_studio_btn = pygame.Rect(modal_x + 30, modal_y + 105, 220, 36)
 pause_settings_btn = pygame.Rect(modal_x + 30, modal_y + 150, 220, 36)
 pause_exit_btn = pygame.Rect(modal_x + 30, modal_y + 195, 220, 36)
+
 #Settings & Keybinds Modal definitions
 SETTING_W, SETTING_H = 420, 360
 setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
 setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
-
 settings_modal_rect = pygame.Rect(setting_x, setting_y, SETTING_W, SETTING_H)
+
+btn_bind_intake_in = pygame.Rect(setting_x + 230, setting_y + 80,  150, 32)
+btn_bind_intake_out = pygame.Rect(setting_x + 230, setting_y + 130, 150, 32)
+toggle_mode_btn = pygame.Rect(setting_x + 230, setting_y + 180, 150, 32)
+settings_back_btn = pygame.Rect(setting_x + 40,  setting_y + 285, 340, 38)
 
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
@@ -880,7 +894,7 @@ def draw_everything():
                 pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
                 pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
                 #Title
-                draw_text("GAME PAUSED", pause_modal_rect.x + 80, pause_modal_rect.y + 20, YELLOW)
+                draw_text("GAME PAUSED", pause_modal_rect.x + 85, pause_modal_rect.y + 20, YELLOW)
                 # Buttons box
                 pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
                 pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
@@ -890,12 +904,33 @@ def draw_everything():
                 draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
                 draw_small("Robot Design Studio", pause_studio_btn.x + 35, pause_studio_btn.y + 10, BLACK)
                 draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
-                draw_small("Exit Simulator", pause_exit_btn.x + 58, pause_exit_btn.y + 10, WHITE)    
+                draw_small("Exit Simulator", pause_exit_btn.x + 55, pause_exit_btn.y + 10, WHITE)    
             elif sim.paused_sub_menu == "settings":
                 pygame.draw.rect(screen, (35, 35, 45), settings_modal_rect, border_radius=12)
                 pygame.draw.rect(screen, YELLOW, settings_modal_rect, 2, border_radius=12)
                 
-                draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 85, settings_modal_rect.y + 20, YELLOW)
+                draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 115, settings_modal_rect.y + 20, YELLOW)
+                intake_in_text = "Press Any Key..." if sim.remapping_key == "intake_in" else pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
+                intake_out_text = "Press Any Key..." if sim.remapping_key == "intake_out" else pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
+                #Intaking from the intake zone (forward)
+                draw_small("Intake In Key:", setting_x + 40, setting_y + 88, WHITE)
+                intake_in_color = ORANGE if sim.remapping_key == "intake_in" else LIGHT_GRAY
+                pygame.draw.rect(screen, intake_in_color, btn_bind_intake_in, border_radius=6)
+                draw_small(intake_in_text, btn_bind_intake_in.x + 12, btn_bind_intake_in.y + 8, BLACK)
+                #outaking from the intake zone (reversing the intake)
+                draw_small("Intake Out Key:", setting_x + 40, setting_y + 138, WHITE)
+                intake_out_color = ORANGE if sim.remapping_key == "intake_out" else LIGHT_GRAY
+                pygame.draw.rect(screen, intake_out_color, btn_bind_intake_out, border_radius=6)
+                draw_small(intake_out_text, btn_bind_intake_out.x + 12, btn_bind_intake_out.y + 8, BLACK)
+                # Type to intake Toggle or Hold option
+                draw_small("Intake Mode:", setting_x + 40, setting_y + 188, WHITE)
+                mode_color = GREEN if sim.settings["intake_control_mode"] == "toggle" else CYAN
+                pygame.draw.rect(screen, mode_color, toggle_mode_btn, border_radius=6)
+                draw_small(sim.settings["intake_control_mode"].upper(), toggle_mode_btn.x + 35, toggle_mode_btn.y + 8, BLACK)
+                #Back to Pause Menu
+                pygame.draw.rect(screen, LIGHT_GRAY, settings_back_btn, border_radius=6)
+                draw_small("Back to Pause Menu", settings_back_btn.x + 115, settings_back_btn.y + 10, BLACK)
+    
     pygame.display.flip()
 
 # =====================================================================
@@ -1123,7 +1158,19 @@ while running:
                         sim.paused_sub_menu = "settings"
                     elif pause_exit_btn.collidepoint(mx,my):
                         pygame.quit(); raise SystemExit
-            #Handling clicks when the game is NOT paused
+                elif sim.paused_sub_menu == "settings":
+                    if btn_bind_intake_in.collidepoint(mx,my):
+                        sim.remapping_key = "intake_in"
+                    elif btn_bind_intake_out.collidepoint(mx,my):
+                        sim.remapping_key = "intake_out"
+                    elif toggle_mode_btn.collidepoint(mx,my):
+                        #Flip between Hold and Toggle
+                        sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
+                        save_settings()
+                    elif settings_back_btn.collidepoint(mx,my):
+                        sim.remapping_key = None
+                        sim.paused_sub_menu = "main"
+             #Handling clicks when the game is NOT paused
             elif mx >= FIELD_PIXELS: handle_ui_click(mx, my)
             elif sim.current_mode == "edit":
                 # Check robot drag focus
@@ -1176,9 +1223,12 @@ while running:
                     sim.paused_sub_menu = "main"
                 else:
                     sim.paused = not sim.paused
-                    sim.pause_sub_menu = "main"
-            #Only process typing if NOT paused
-            elif sim.active_textbox is not None and not sim.paused:
+                    sim.paused_sub_menu = "main"
+            elif sim.remapping_key is not None:
+                    sim.settings["keybinds"][sim.remapping_key] = event.key
+                    sim.remapping_key = None
+                    save_settings()
+            elif sim.active_textbox is not None and not sim.paused: #Only process typing if NOT paused
                 if event.key == pygame.K_RETURN: apply_textbox_value()
                 elif event.key == pygame.K_BACKSPACE: sim.textbox_value = sim.textbox_value[:-1]
                 elif event.unicode.isdigit() or event.unicode in ".-": sim.textbox_value += event.unicode
