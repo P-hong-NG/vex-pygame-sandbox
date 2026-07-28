@@ -511,15 +511,15 @@ studio_mass_rect = pygame.Rect(FIELD_PIXELS + 20, 410, 100, 24)
 # Property inputs panel definitions
 shape_panel_y = 390
 #Example .rect(x-cord,y-cord,width,height)
-textbox_x_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 20, 80, 22)#X-cord
-textbox_y_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 20, 80, 22)#Y-cord
+textbox_x_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 15, 80, 22)#X-cord
+textbox_y_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 15, 80, 22)#Y-cord
 textbox_w_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22)#Weight
 textbox_h_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)#Height
 textbox_r_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22)#Radius
-textbox_a_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 90, 80, 22)#Angle
-textbox_m_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)#Mass
-textbox_f_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 90, 80, 22)#Friction
-textbox_e_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 90, 80, 22)#Elasticity
+textbox_a_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 100, 80, 22)#Angle
+textbox_m_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 55, 80, 22)#Mass
+textbox_f_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 145, 80, 22)#Friction
+textbox_e_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Elasticity
 
 COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,120)]
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 130, 30, 30) for i in range(len(COLOR_PALETTE))]
