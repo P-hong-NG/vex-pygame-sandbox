@@ -348,6 +348,48 @@ def update_physics(left_speed, right_speed, dt):
                     bot.inventory.append(s.get("color", WHITE))
                     sim.shapes.remove(s)
                     break
+    elif bot.has_intake and bot.intake_state == "out" and len(bot.inventory) > 0:
+        rad = math.radians(bot.angle)
+        stick_out = max(0.0, bot.intake_length - bot.intake_offset)
+        spawn_dist = (bot.length / 2) + (stick_out / 2) + 3 #Can be changed!
+        spawn_x = bot.x + spawn_dist * math.cos(rad)
+        spawn_y = bot.y + spawn_dist * math.sin(rad)
+
+        outtaked_color = bot.inventory.pop()
+
+        new_shape = {
+            "type": "circ",
+            "x": spawn_x,
+            "y": spawn_y,
+            "radius": 3.0,  # Standard ball radius in inches
+            "color": outtaked_color,
+            "body_type": "dynamic",
+            "mass": 1.0,
+            "friction": 0.5,
+            "elasticity": 0.2
+        }
+
+        # Create PyMunk physics body
+        rad_px = new_shape["radius"] * SCALE
+        moment = pymunk.moment_for_circle(new_shape["mass"], 0, rad_px)
+        body = pymunk.Body(new_shape["mass"], moment, body_type=pymunk.Body.DYNAMIC)
+        body.position = (spawn_x * SCALE, spawn_y * SCALE)
+        
+        # Give object an initial velocity (feeling of ejected out)
+        eject_speed = 30.0 * SCALE  # Outward speed boost. Can be changed!
+        body.velocity = (bot.body.velocity.x + eject_speed * math.cos(rad),
+                         bot.body.velocity.y + eject_speed * math.sin(rad))
+        shape = pymunk.Circle(body, rad_px)
+        shape.friction = new_shape["friction"]
+        shape.elasticity = new_shape["elasticity"]
+        
+        space.add(body, shape)
+        new_shape["body"] = body
+        sim.shapes.append(new_shape)
+        # Brief cooldown toggle to prevent emptying inventory in 1 frame
+        if sim.settings.get("intake_control_mode") == "toggle":
+            bot.intake_state = "off"
+            
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
         space.step(dt/10.0)
