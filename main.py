@@ -308,7 +308,7 @@ def update_physics(left_speed, right_speed, dt):
     bot.body.angular_velocity = math.radians(omega) #If positive, spin counter-clockwise, else negative, spin clockwise
 
     for s in sim.shapes:
-        if s.get("body_type") == "dynamic" and "body" in s:
+        if s.get("body_type") == "dynamic" and "body" in s and not s.get("stored",False):
             b = s["body"]
             
             # Read shape friction (0.0 - ice, 1.0 = rubber)
@@ -324,30 +324,33 @@ def update_physics(left_speed, right_speed, dt):
             b.angular_velocity = b.angular_velocity * drag
     
     if bot.has_intake and bot.intake_state == "in" and len(bot.inventory) < bot.max_capacity:
-        # Calculate intake zone box in world coordinates (inches)
+        #Calculate intake zone box in world coordinates (inches)
         rad = math.radians(bot.angle)
         stick_out = max(0.0, bot.intake_length - bot.intake_offset)
-        # Front center of chassis plus offset to intake center
+        #Front center of chassis plus offset to intake center
         intake_center_dist = (bot.length / 2) + (stick_out / 2)
         intake_cx = bot.x + intake_center_dist * math.cos(rad)
         intake_cy = bot.y + intake_center_dist * math.sin(rad)
-        # Check collision with dynamic shapes
+
+        #Check collision with dynamic shapes
         for s in list(sim.shapes):
-            if s.get("body_type") == "dynamic" and "body" in s:
+            if s.get("body_type") == "dynamic" and "body" in s and not s.get("stored",False):
                 dx = abs(s["x"] - intake_cx)
                 dy = abs(s["y"] - intake_cy)
                 
                 reach = (bot.intake_length / 2) + 2.0
                 if dx < reach and dy < reach:
-                    # Collect item means remove from PyMunk space
+                    #Collect item means remove from PyMunk space (temporarily)
                     space.remove(s["body"])
                     for shape_ref in list(space.shapes):
                         if shape_ref.body == s["body"]:
                             space.remove(shape_ref)      
-                    # Store color in inventory 
-                    bot.inventory.append(s.get("color", WHITE))
-                    sim.shapes.remove(s)
+                            s["pymunk_shape"] = shape_ref
+                    #Store in inventory 
+                    s["stored"] = True
+                    bot.inventory.append(s)
                     break
+    
     elif bot.has_intake and bot.intake_state == "out" and len(bot.inventory) > 0:
         rad = math.radians(bot.angle)
         stick_out = max(0.0, bot.intake_length - bot.intake_offset)
@@ -355,41 +358,26 @@ def update_physics(left_speed, right_speed, dt):
         spawn_x = bot.x + spawn_dist * math.cos(rad)
         spawn_y = bot.y + spawn_dist * math.sin(rad)
 
-        outtaked_color = bot.inventory.pop()
+        s = bot.inventory.pop()
 
-        new_shape = {
-            "type": "circ",
-            "x": spawn_x,
-            "y": spawn_y,
-            "radius": 3.0,  # Standard ball radius in inches
-            "color": outtaked_color,
-            "body_type": "dynamic",
-            "mass": 1.0,
-            "friction": 0.5,
-            "elasticity": 0.2
-        }
-
-        # Create PyMunk physics body
-        rad_px = new_shape["radius"] * SCALE
-        moment = pymunk.moment_for_circle(new_shape["mass"], 0, rad_px)
-        body = pymunk.Body(new_shape["mass"], moment, body_type=pymunk.Body.DYNAMIC)
-        body.position = (spawn_x * SCALE, spawn_y * SCALE)
+        s["stored"] = False
+        s["x"] = spawn_x
+        s["y"] = spawn_y
         
-        # Give object an initial velocity (feeling of ejected out)
-        eject_speed = 30.0 * SCALE  # Outward speed boost. Can be changed!
-        body.velocity = (bot.body.velocity.x + eject_speed * math.cos(rad),
-                         bot.body.velocity.y + eject_speed * math.sin(rad))
-        shape = pymunk.Circle(body, rad_px)
-        shape.friction = new_shape["friction"]
-        shape.elasticity = new_shape["elasticity"]
+        #Re-position physics body
+        b = s["body"]
+        b.position = (spawn_x * SCALE, spawn_y * SCALE)
+        b.velocity = (bot.body.velocity.x + 30.0 * SCALE * math.cos(rad),
+                      bot.body.velocity.y + 30.0 * SCALE * math.sin(rad))
         
-        space.add(body, shape)
-        new_shape["body"] = body
-        sim.shapes.append(new_shape)
-        # Brief cooldown toggle to prevent emptying inventory in 1 frame
+        #Re-add body & shape to space
+        space.add(b)
+        if "pymunk_shape" in s:
+            space.add(s["pymunk_shape"])
+                
         if sim.settings.get("intake_control_mode") == "toggle":
             bot.intake_state = "off"
-            
+        
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
         space.step(dt/10.0)
@@ -645,6 +633,8 @@ def draw_everything():
     # Elements Layer
     if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
         for i, s in enumerate(sim.shapes):
+            if s.get("stored", False):
+                continue
             if s["type"] == "rect":
                 surf = pygame.Surface((s["w"] * SCALE, s["h"] * SCALE), pygame.SRCALPHA)
             
@@ -872,25 +862,45 @@ def draw_everything():
             pygame.draw.rect(screen, GREEN if not sim.auton_running else LIGHT_GRAY, auton_button_rect, border_radius=4)
             draw_small("Reset Robot", reset_button_rect.x + 15, reset_button_rect.y + 6, BLACK)
             draw_small("Reset Center", reset_pose_button_rect.x + 10, reset_pose_button_rect.y + 6, BLACK)
-            draw_small("Run Autonomous", auton_button_rect.x + 80, auton_button_rect.y + 6, BLACK) 
+            draw_small("Run Autonomous", auton_button_rect.x + 80, auton_button_rect.y + 6, BLACK)
+
             # Drive mode inventory HUD
             inv_y = 180
             draw_text("Bot Storage", FIELD_PIXELS + 20, inv_y+500, YELLOW)
             draw_small(f"Capacity: {len(bot.inventory)}/{bot.max_capacity}", FIELD_PIXELS + 160, inv_y + 504, LIGHT_GRAY)
-            
+
             # Storage slot boxes
             for i in range(bot.max_capacity):
                 slot_rect = pygame.Rect(FIELD_PIXELS + 20 + (i * 45), inv_y + 525, 38, 38)
                 pygame.draw.rect(screen, (40, 40, 50), slot_rect, border_radius=6)
                 pygame.draw.rect(screen, LIGHT_GRAY, slot_rect, 1, border_radius=6)
                 
-                # Draw stored item if present
+                #Draw stored item if present
                 if i < len(bot.inventory):
-                    pygame.draw.circle(screen, bot.inventory[i], slot_rect.center, 14)    
+                    s = bot.inventory[i]
+                    box_cx, box_cy = slot_rect.center
+
+                    if s["type"] == "circ":
+                    # Cap visual radius so it fits comfortably inside slot box
+                        visual_r = min(14, int(s["radius"] * 2.0))
+                        pygame.draw.circle(screen, s["color"], (box_cx, box_cy), visual_r)
+                    
+                    elif s["type"] == "rect":
+                        # Calculate aspect ratio scale to fit inside 28x28 max inner box
+                        max_dim = max(s["w"], s["h"])
+                        scale_factor = 26.0 / max_dim if max_dim > 0 else 1.0
+                        
+                        disp_w = int(s["w"] * scale_factor)
+                        disp_h = int(s["h"] * scale_factor)
+                        
+                        icon_rect = pygame.Rect(0, 0, disp_w, disp_h)
+                        icon_rect.center = (box_cx, box_cy)
+                        pygame.draw.rect(screen, s["color"], icon_rect, border_radius=3)
 
             #Intake status HUD
             intake_stat_y = inv_y + 100
             draw_text("Intake System", FIELD_PIXELS+20, intake_stat_y,YELLOW)
+
             #Mode display (Intake)
             control_mode = sim.settings.get("intake_control_mode", "toggle")
             draw_small(f"Control Mode: {control_mode}", FIELD_PIXELS+20, intake_stat_y + 20, LIGHT_GRAY)
@@ -901,8 +911,10 @@ def draw_everything():
                 status_text = "Outtaking"
             else:
                 status_text = "None"
+
             draw_small(f"Status: {status_text}", FIELD_PIXELS + 20, intake_stat_y + 35, GREEN)
-            
+
+
             # Real-time speedometer
             speed_y = WINDOW_HEIGHT - 135
             draw_text("Telemetry", FIELD_PIXELS + 20, speed_y, YELLOW)
