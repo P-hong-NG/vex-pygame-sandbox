@@ -846,6 +846,21 @@ def draw_everything():
                 if i < len(bot.inventory):
                     pygame.draw.circle(screen, bot.inventory[i], slot_rect.center, 14)    
 
+            #Intake status HUD
+            intake_stat_y = inv_y + 100
+            draw_text("Intake System", FIELD_PIXELS+20, intake_stat_y,YELLOW)
+            #Mode display (Intake)
+            control_mode = sim.settings.get("intake_control_mode", "toggle")
+            draw_small(f"Control Mode: {control_mode}", FIELD_PIXELS+20, intake_stat_y + 20, LIGHT_GRAY)
+            #Action status display (Intake)
+            if bot.intake_state == "in":
+                status_text = "Intaking"
+            elif bot.intake_state == "out":
+                status_text = "Outtaking"
+            else:
+                status_text = "None"
+            draw_small(f"Status: {status_text}", FIELD_PIXELS + 20, intake_stat_y + 35, GREEN)
+            
             # Real-time speedometer
             speed_y = WINDOW_HEIGHT - 135
             draw_text("Telemetry", FIELD_PIXELS + 20, speed_y, YELLOW)
