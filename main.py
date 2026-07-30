@@ -1074,6 +1074,8 @@ def draw_everything():
 def handle_ui_click(mx, my):
     if mode_drive_button_rect.collidepoint(mx, my): 
         sim.current_mode = "drive"
+        sim.selected_shape_idx = None
+        sim.active_textbox = None
         bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
         sync_custom_obstacles_to_physics() #Calling the physics body build
         return
