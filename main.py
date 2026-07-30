@@ -367,9 +367,11 @@ def update_physics(left_speed, right_speed, dt):
         
         #Re-position physics body
         b = s["body"]
+        eject_speed = sim.settings.get("intake_rev_velocity") * SCALE
+        
         b.position = (spawn_x * SCALE, spawn_y * SCALE)
-        b.velocity = (bot.body.velocity.x + 30.0 * SCALE * math.cos(rad),
-                      bot.body.velocity.y + 30.0 * SCALE * math.sin(rad))
+        b.velocity = (bot.body.velocity.x + eject_speed * math.cos(rad),
+                      bot.body.velocity.y + eject_speed * math.sin(rad))
         
         #Re-add body & shape to space
         space.add(b)
@@ -817,7 +819,7 @@ def draw_everything():
             total_L = bot.length + (bot.intake_length - bot.intake_offset)
             total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
             draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, 565, total_L_color)    
-            draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
+            draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
             
         studio_display_y = 700
         #Calculated performance section
@@ -1078,6 +1080,7 @@ def handle_ui_click(mx, my):
     if mode_edit_button_rect.collidepoint(mx, my): 
         sim.current_mode = "edit"
         return
+    
     if sim.current_mode == "studio":
         #Still able to change size of the robot
         if studio_robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
@@ -1101,90 +1104,91 @@ def handle_ui_click(mx, my):
             #Shift outward (>) by 0.1
             if studio_intake_out_btn.collidepoint(mx,my): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings(); return
             if studio_intake_rev_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_spd"; sim.textbox_value = f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}"; return
-        
-        return  # Get out and block all of other "ghost" buttons
-    if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
-    if drive_mode_arcade_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "arcade"; save_settings(); return
-    if drive_mode_custom_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "custom"; save_settings(); return
-    if keyboard_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "keyboard"; save_settings(); return
-    if controller_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "controller"; save_settings(); return
-    if field_image_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "image"; save_settings(); return
-    if field_custom_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "custom"; save_settings(); return
-
-    if slider_rect.collidepoint(mx, my):
-        sim.settings["speed_scale"] = 0.3 + ((mx - slider_rect.x) / slider_rect.width) * 1.2
-        save_settings(); return
-    if reset_button_rect.collidepoint(mx, my): bot.reset_to_start(); return
-    if reset_pose_button_rect.collidepoint(mx, my): bot.reset_to_center(); return
-    if auton_button_rect.collidepoint(mx, my) and not sim.auton_running: sim.auton_mode = True; return
-
-    if add_shape_button_rect.collidepoint(mx, my):
-        cx, cy = FIELD_INCHES / 2, FIELD_INCHES / 2
-        if sim.add_shape_type == "rect":
-            sim.shapes.append({"type": "rect", 
-                               "x": cx - 6, "y": cy - 6, 
-                               "w": 12, "h": 12, "angle": 0.0, 
-                               "color": (150,150,150), 
-                               "body_type": "static"})
-        else:
-            sim.shapes.append({"type": "circ", "x": cx, "y": cy, 
-                               "radius": 6, 
-                               "color": (150,150,150),
-                               "body_type": "dynamic"})
-        sim.selected_shape_idx = len(sim.shapes) - 1; save_field_data(); return
-
-    if delete_shape_button_rect.collidepoint(mx, my):
-        if sim.selected_shape_idx is not None: sim.shapes.pop(sim.selected_shape_idx); sim.selected_shape_idx = None; save_field_data(); return
-    if add_shape_dropdown_rect.collidepoint(mx, my): sim.add_shape_dropdown_open = not sim.add_shape_dropdown_open; return
-
-    if sim.add_shape_dropdown_open:
-        if pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 24, add_shape_dropdown_rect.width, 24).collidepoint(mx, my): sim.add_shape_type = "rect"; sim.add_shape_dropdown_open = False; return
-        if pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 48, add_shape_dropdown_rect.width, 24).collidepoint(mx, my): sim.add_shape_type = "circ"; sim.add_shape_dropdown_open = False; return
-
-    # Drop textboxes selection processing checks blocks
-    if sim.selected_shape_idx is not None:
-        s = sim.shapes[sim.selected_shape_idx]
-        
-        if shape_type_toggle_rect.collidepoint(mx, my):
-            if s.get("body_type", "static") == "static":
-                s["body_type"] = "dynamic"
+    
+    elif sim.current_mode == "drive":
+        if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
+        if drive_mode_arcade_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "arcade"; save_settings(); return
+        if drive_mode_custom_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "custom"; save_settings(); return
+        if keyboard_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "keyboard"; save_settings(); return
+        if controller_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "controller"; save_settings(); return
+    
+        if slider_rect.collidepoint(mx, my):
+            sim.settings["speed_scale"] = 0.3 + ((mx - slider_rect.x) / slider_rect.width) * 1.2
+            save_settings(); return
+        if reset_button_rect.collidepoint(mx, my): bot.reset_to_start(); return
+        if reset_pose_button_rect.collidepoint(mx, my): bot.reset_to_center(); return
+        if auton_button_rect.collidepoint(mx, my) and not sim.auton_running: sim.auton_mode = True; return
+    elif sim.current_mode == "edit":
+        if field_image_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "image"; save_settings(); return
+        if field_custom_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "custom"; save_settings(); return
+    
+        if add_shape_button_rect.collidepoint(mx, my):
+            cx, cy = FIELD_INCHES / 2, FIELD_INCHES / 2
+            if sim.add_shape_type == "rect":
+                sim.shapes.append({"type": "rect", 
+                                "x": cx - 6, "y": cy - 6, 
+                                "w": 12, "h": 12, "angle": 0.0, 
+                                "color": (150,150,150), 
+                                "body_type": "static"})
             else:
-                s["body_type"] = "static"
-            save_field_data()
-            return
-        #Detects when user is typing in mass input box, default to 1.0 if received no inputs    
-        if textbox_m_rect.collidepoint(mx, my) and s.get("body_type") == "dynamic":
-            sim.active_textbox = "m"
-            sim.textbox_value = f"{s.get('mass', 1.0):.1f}"
-            return
-        if textbox_f_rect.collidepoint(mx, my):
-            sim.active_textbox = "f"
-            sim.textbox_value = f"{s.get('friction', 0.5):.2f}"
-            return
-        if textbox_e_rect.collidepoint(mx, my):
-            sim.active_textbox = "e"
-            sim.textbox_value = f"{s.get('elasticity', 0.0):.2f}"
-            return
-        
-        if s["type"] == "rect":
-            if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
-            if textbox_y_rect.collidepoint(mx, my): sim.active_textbox = "y"; sim.textbox_value = f"{s['y']:.1f}"; return
-            if textbox_w_rect.collidepoint(mx, my): sim.active_textbox = "w"; sim.textbox_value = f"{s['w']:.1f}"; return
-            if textbox_h_rect.collidepoint(mx, my): sim.active_textbox = "h"; sim.textbox_value = f"{s['h']:.1f}"; return
-            if textbox_a_rect.collidepoint(mx, my): sim.active_textbox = "a"; sim.textbox_value = f"{s['angle']:.1f}"; return
-        elif s["type"] == "circ":
-            if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
-            if textbox_y_rect.collidepoint(mx, my): sim.active_textbox = "y"; sim.textbox_value = f"{s['y']:.1f}"; return
-            if textbox_r_rect.collidepoint(mx, my): sim.active_textbox = "r"; sim.textbox_value = f"{s['radius']:.1f}"; return
-        for i, rect in enumerate(color_button_rects):
-            if rect.collidepoint(mx, my): s["color"] = COLOR_PALETTE[i]; save_field_data(); return
+                sim.shapes.append({"type": "circ", "x": cx, "y": cy, 
+                                "radius": 6, 
+                                "color": (150,150,150),
+                                "body_type": "dynamic"})
+            sim.selected_shape_idx = len(sim.shapes) - 1; save_field_data(); return
 
-    if robot_x_rect.collidepoint(mx, my): sim.active_textbox = "rx"; sim.textbox_value = f"{bot.start_pose[0]:.1f}"; return
-    if robot_y_rect.collidepoint(mx, my): sim.active_textbox = "ry"; sim.textbox_value = f"{bot.start_pose[1]:.1f}"; return
-    if robot_a_rect.collidepoint(mx, my): sim.active_textbox = "ra"; sim.textbox_value = f"{bot.start_pose[2]:.1f}"; return
-    if robot_save_rect.collidepoint(mx, my): save_field_data(); return
-    if robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
-    if robot_wid_rect.collidepoint(mx, my): sim.active_textbox = "rwid"; sim.textbox_value = f"{bot.track_width:.1f}"; return
+        if delete_shape_button_rect.collidepoint(mx, my):
+            if sim.selected_shape_idx is not None: sim.shapes.pop(sim.selected_shape_idx); sim.selected_shape_idx = None; save_field_data(); return
+        if add_shape_dropdown_rect.collidepoint(mx, my): sim.add_shape_dropdown_open = not sim.add_shape_dropdown_open; return
+
+        if sim.add_shape_dropdown_open:
+            if pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 24, add_shape_dropdown_rect.width, 24).collidepoint(mx, my): sim.add_shape_type = "rect"; sim.add_shape_dropdown_open = False; return
+            if pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 48, add_shape_dropdown_rect.width, 24).collidepoint(mx, my): sim.add_shape_type = "circ"; sim.add_shape_dropdown_open = False; return
+
+        # Drop textboxes selection processing checks blocks
+        if sim.selected_shape_idx is not None:
+            s = sim.shapes[sim.selected_shape_idx]
+            
+            if shape_type_toggle_rect.collidepoint(mx, my):
+                if s.get("body_type", "static") == "static":
+                    s["body_type"] = "dynamic"
+                else:
+                    s["body_type"] = "static"
+                save_field_data()
+                return
+            #Detects when user is typing in mass input box, default to 1.0 if received no inputs    
+            if textbox_m_rect.collidepoint(mx, my) and s.get("body_type") == "dynamic":
+                sim.active_textbox = "m"
+                sim.textbox_value = f"{s.get('mass', 1.0):.1f}"
+                return
+            if textbox_f_rect.collidepoint(mx, my):
+                sim.active_textbox = "f"
+                sim.textbox_value = f"{s.get('friction', 0.5):.2f}"
+                return
+            if textbox_e_rect.collidepoint(mx, my):
+                sim.active_textbox = "e"
+                sim.textbox_value = f"{s.get('elasticity', 0.0):.2f}"
+                return
+            
+            if s["type"] == "rect":
+                if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
+                if textbox_y_rect.collidepoint(mx, my): sim.active_textbox = "y"; sim.textbox_value = f"{s['y']:.1f}"; return
+                if textbox_w_rect.collidepoint(mx, my): sim.active_textbox = "w"; sim.textbox_value = f"{s['w']:.1f}"; return
+                if textbox_h_rect.collidepoint(mx, my): sim.active_textbox = "h"; sim.textbox_value = f"{s['h']:.1f}"; return
+                if textbox_a_rect.collidepoint(mx, my): sim.active_textbox = "a"; sim.textbox_value = f"{s['angle']:.1f}"; return
+            elif s["type"] == "circ":
+                if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
+                if textbox_y_rect.collidepoint(mx, my): sim.active_textbox = "y"; sim.textbox_value = f"{s['y']:.1f}"; return
+                if textbox_r_rect.collidepoint(mx, my): sim.active_textbox = "r"; sim.textbox_value = f"{s['radius']:.1f}"; return
+            for i, rect in enumerate(color_button_rects):
+                if rect.collidepoint(mx, my): s["color"] = COLOR_PALETTE[i]; save_field_data(); return
+
+        if robot_x_rect.collidepoint(mx, my): sim.active_textbox = "rx"; sim.textbox_value = f"{bot.start_pose[0]:.1f}"; return
+        if robot_y_rect.collidepoint(mx, my): sim.active_textbox = "ry"; sim.textbox_value = f"{bot.start_pose[1]:.1f}"; return
+        if robot_a_rect.collidepoint(mx, my): sim.active_textbox = "ra"; sim.textbox_value = f"{bot.start_pose[2]:.1f}"; return
+        if robot_save_rect.collidepoint(mx, my): save_field_data(); return
+        if robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
+        if robot_wid_rect.collidepoint(mx, my): sim.active_textbox = "rwid"; sim.textbox_value = f"{bot.track_width:.1f}"; return
 
 #Save typed values into the shape dictionary/file
 def apply_textbox_value(): 
