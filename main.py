@@ -1219,7 +1219,7 @@ def apply_textbox_value():
     elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val); save_settings()
     elif sim.active_textbox == "iwid": bot.intake_width = max(5.0, min(bot.track_width,val)); save_settings() 
     elif sim.active_textbox == "ilen": bot.intake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
-    elif sim.active_textbox == "out_spd": sim.settings["outtake_speed"] = max(0.0, min(100.0, val)); save_settings()
+    elif sim.active_textbox == "out_spd": sim.settings["intake_rev_velocity"] = max(0.0, min(100.0, val)); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
