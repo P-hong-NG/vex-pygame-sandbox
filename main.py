@@ -124,6 +124,7 @@ class SimulatorState:
         self.settings = {
             "input_mode": "keyboard",   
             "speed_scale": 1.0,
+            "intake_rev_velocity": 30.0, #Reverse intake ejection speed
             "field_source": "image",    
             "drive_mode": "tank",     
             "motor_cartridge": "green", #(red, green, blue)
@@ -529,6 +530,7 @@ studio_intake_w_rect = pygame.Rect(FIELD_PIXELS + 140, 460, 80, 24)
 studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 460, 80, 24)
 studio_intake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 560, 35, 24)
 studio_intake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 560, 35, 24)
+studio_intake_rev_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 508, 100, 24)
 # Wheel radius UI rectangles
 studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 # VEX official size quick-select buttons (diameter)
@@ -815,6 +817,7 @@ def draw_everything():
             total_L = bot.length + (bot.intake_length - bot.intake_offset)
             total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
             draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, 565, total_L_color)    
+            draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
             
         studio_display_y = 700
         #Calculated performance section
@@ -1097,6 +1100,7 @@ def handle_ui_click(mx, my):
             if studio_intake_in_btn.collidepoint(mx,my): bot.intake_offset = min(bot.intake_length, bot.intake_offset + 0.1); save_settings(); return
             #Shift outward (>) by 0.1
             if studio_intake_out_btn.collidepoint(mx,my): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings(); return
+            if studio_intake_rev_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_spd"; sim.textbox_value = f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}"; return
         
         return  # Get out and block all of other "ghost" buttons
     if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
@@ -1215,6 +1219,7 @@ def apply_textbox_value():
     elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val); save_settings()
     elif sim.active_textbox == "iwid": bot.intake_width = max(5.0, min(bot.track_width,val)); save_settings() 
     elif sim.active_textbox == "ilen": bot.intake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
+    elif sim.active_textbox == "out_spd": sim.settings["outtake_speed"] = max(0.0, min(100.0, val)); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
