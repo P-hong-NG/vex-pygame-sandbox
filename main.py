@@ -56,7 +56,7 @@ class Robot:
         self.intake_length = 3.0 #How far intake extends (in), creating an intake range
         self.intake_offset = 0.0 #Inches inside the chassis (0.0 = all the way in front)
         self.inventory = []
-        self.max_capacity = 3
+        self.max_capacity = 4
         self.intake_state = "off" #off / in / out
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
@@ -180,6 +180,7 @@ def load_all_data():
                 bot.intake_width = sim.settings.get("intake_width", bot.intake_width)
                 bot.wheel_circ = 2 * math.pi * bot.wheel_radius
                 bot.intake_offset = sim.settings.get("intake_offset", bot.intake_offset)
+                bot.max_capacity = sim.settings.get("max_capacity", 4)
         except: pass
     if os.path.exists(DRIVE_FILE):
         try:
@@ -245,6 +246,7 @@ def save_settings():
         sim.settings["intake_width"] = bot.intake_width
         sim.settings["intake_length"] = bot.intake_length
         sim.settings["intake_offset"] = bot.intake_offset
+        sim.settings["max_capacity"] = bot.max_capacity
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
     except Exception as e: 
         print(f"Error saving settings: {e}")
@@ -535,6 +537,7 @@ studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 460, 80, 24)
 studio_intake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 560, 35, 24)
 studio_intake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 560, 35, 24)
 studio_intake_rev_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 508, 100, 24)
+studio_max_capacity_rect = pygame.Rect(FIELD_PIXELS+20, 610, 60, 30)
 # Wheel radius UI rectangles
 studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 # VEX official size quick-select buttons (diameter)
@@ -824,6 +827,7 @@ def draw_everything():
                 total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
                 draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, 565, total_L_color)    
                 draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
+                draw_textbox(studio_max_capacity_rect, "Robot's max capacity", sim.textbox_value if sim.active_textbox == "mcap" else f"{sim.settings.get("max_capacity",3)}", sim.active_textbox == "mcap")
                 
         pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
         if sim.current_page == "studio 1":
@@ -1126,6 +1130,7 @@ def handle_ui_click(mx, my):
                 #Shift outward (>) by 0.1
                 if studio_intake_out_btn.collidepoint(mx,my): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings(); return
                 if studio_intake_rev_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_spd"; sim.textbox_value = f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}"; return
+                if studio_max_capacity_rect.collidepoint(mx,my): sim.active_textbox = "mcap"; sim.textbox_value = f"{sim.settings.get("max_capacity",3)}"; return
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 2"; return
         elif sim.current_page == "studio 2":
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 1"; return
@@ -1254,6 +1259,7 @@ def apply_textbox_value():
     elif sim.active_textbox == "iwid": bot.intake_width = max(5.0, min(bot.track_width,val)); save_settings() 
     elif sim.active_textbox == "ilen": bot.intake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
     elif sim.active_textbox == "out_spd": sim.settings["intake_rev_velocity"] = max(0.0, min(100.0, val)); save_settings()
+    elif sim.active_textbox == "mcap": sim.settings["max_capacity"] = int(max(0, min(10,val))); bot.max_capacity = int(max(0, min(10,val))); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
