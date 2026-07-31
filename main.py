@@ -116,6 +116,7 @@ class Robot:
 class SimulatorState:
     def __init__(self):
         self.current_mode = "drive" # drive / edit / studio
+        self.current_page = "edit 1" #studio 1 / studio 2 / edit 1 / edit 2
         self.paused = False
         self.paused_sub_menu = "main" # main / settings
         self.remapping_key = None 
@@ -506,6 +507,7 @@ except:
 # UI Elements Definitions
 mode_drive_button_rect = pygame.Rect(FIELD_PIXELS + 20, 20, 120, 30)
 mode_edit_button_rect = pygame.Rect(FIELD_PIXELS + 160, 20, 120, 30)
+mode_page_switch_button_rect = pygame.Rect(FIELD_PIXELS+280, 810, 50, 35)
 drive_mode_tank_rect = pygame.Rect(FIELD_PIXELS + 20, 70, 90, 26)
 drive_mode_arcade_rect = pygame.Rect(FIELD_PIXELS + 120, 70, 90, 26)
 drive_mode_custom_rect = pygame.Rect(FIELD_PIXELS + 220, 70, 90, 26)
@@ -821,6 +823,12 @@ def draw_everything():
             draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, 565, total_L_color)    
             draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
             
+        pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
+        if sim.current_page == "studio 1":
+            draw_small("Next", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, WHITE)
+        elif sim.current_page == "studio 2":
+            draw_small("Back", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, WHITE)
+
         studio_display_y = 700
         #Calculated performance section
         draw_small("Calculated Specs:", FIELD_PIXELS + 20, studio_display_y, LIGHT_GRAY)
@@ -929,6 +937,12 @@ def draw_everything():
             pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, speed_y + 40), (WINDOW_WIDTH - 20, speed_y + 40), 1)
             
         elif sim.current_mode == "edit":
+            pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
+            if sim.current_page == "edit 1":
+                draw_small("Next", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
+            elif sim.current_page == "edit 2":
+                draw_small("Back", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
+
             draw_small("Field Display Option:", field_image_button_rect.x, field_image_button_rect.y - 20, YELLOW)
             pygame.draw.rect(screen, GREEN if sim.settings["field_source"] == "image" else LIGHT_GRAY, field_image_button_rect, border_radius=4)
             pygame.draw.rect(screen, GREEN if sim.settings["field_source"] == "custom" else LIGHT_GRAY, field_custom_button_rect, border_radius=4)
