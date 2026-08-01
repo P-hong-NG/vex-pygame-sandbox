@@ -624,8 +624,9 @@ settings_modal_rect = pygame.Rect(setting_x, setting_y, SETTING_W, SETTING_H)
 
 btn_bind_intake_in = pygame.Rect(setting_x + 230, setting_y + 80,  150, 32)
 btn_bind_intake_out = pygame.Rect(setting_x + 230, setting_y + 130, 150, 32)
-toggle_mode_btn = pygame.Rect(setting_x + 230, setting_y + 180, 150, 32)
-settings_back_btn = pygame.Rect(setting_x + 40,  setting_y + 285, 340, 38)
+btn_bind_outtake_score = pygame.Rect(setting_x + 230, setting_y + 180, 150, 32)
+toggle_mode_btn = pygame.Rect(setting_x + 230, setting_y + 230, 150, 32)
+settings_back_btn = pygame.Rect(setting_x + 40,  setting_y + 300, 340, 38)
 
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
@@ -1127,6 +1128,7 @@ def draw_everything():
                 draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 115, settings_modal_rect.y + 20, YELLOW)
                 intake_in_text = "Press Any Key..." if sim.remapping_key == "intake_in" else pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
                 intake_out_text = "Press Any Key..." if sim.remapping_key == "intake_out" else pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
+                outtake_score_text = "Press Any Key..." if sim.remapping_key == "outtake_score" else pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
                 #Intaking from the intake zone (forward)
                 draw_small("Intake In Key:", setting_x + 40, setting_y + 88, WHITE)
                 intake_in_color = ORANGE if sim.remapping_key == "intake_in" else LIGHT_GRAY
@@ -1137,8 +1139,12 @@ def draw_everything():
                 intake_out_color = ORANGE if sim.remapping_key == "intake_out" else LIGHT_GRAY
                 pygame.draw.rect(screen, intake_out_color, btn_bind_intake_out, border_radius=6)
                 draw_small(intake_out_text, btn_bind_intake_out.x + 12, btn_bind_intake_out.y + 8, BLACK)
+                draw_small("Outtake Score Key:", setting_x + 40, setting_y + 188, WHITE)
+                outtake_color = ORANGE if sim.remapping_key == "outtake_score" else LIGHT_GRAY
+                pygame.draw.rect(screen, outtake_color, btn_bind_outtake_score, border_radius=6)
+                draw_small(outtake_score_text, btn_bind_outtake_score.x + 12, btn_bind_outtake_score.y + 8, BLACK)
                 # Type to intake Toggle or Hold option
-                draw_small("Intake Mode:", setting_x + 40, setting_y + 188, WHITE)
+                draw_small("Intake Mode:", setting_x + 40, setting_y + 238, WHITE)
                 mode_color = GREEN if sim.settings["intake_control_mode"] == "toggle" else CYAN
                 pygame.draw.rect(screen, mode_color, toggle_mode_btn, border_radius=6)
                 draw_small(sim.settings["intake_control_mode"].upper(), toggle_mode_btn.x + 35, toggle_mode_btn.y + 8, BLACK)
@@ -1178,6 +1184,8 @@ def handle_ui_click(mx, my):
             if studio_gear_in_rect.collidepoint(mx, my): sim.active_textbox = "gin"; sim.textbox_value = f"{bot.gear_in}"; return
             if studio_gear_out_rect.collidepoint(mx, my): sim.active_textbox = "gout"; sim.textbox_value = f"{bot.gear_out}"; return
             if studio_mass_rect.collidepoint(mx, my): sim.active_textbox = "rmass"; sim.textbox_value = f"{bot.total_mass:.1f}"; return
+            if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 2"; return
+        elif sim.current_page == "studio 2":
             if studio_intake_toggle_rect.collidepoint(mx, my): bot.has_intake = not bot.has_intake; save_settings(); return
             if bot.has_intake: 
                 if studio_intake_w_rect.collidepoint(mx,my): sim.active_textbox = "iwid"; sim.textbox_value = f"{bot.intake_width:.1f}"; return
@@ -1188,8 +1196,17 @@ def handle_ui_click(mx, my):
                 if studio_intake_out_btn.collidepoint(mx,my): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings(); return
                 if studio_intake_rev_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_spd"; sim.textbox_value = f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}"; return
                 if studio_max_capacity_rect.collidepoint(mx,my): sim.active_textbox = "mcap"; sim.textbox_value = f"{sim.settings.get("max_capacity",3)}"; return
-            if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 2"; return
-        elif sim.current_page == "studio 2":
+            #Outtake section
+            if studio_outtake_toggle_rect.collidepoint(mx, my): bot.has_outtake = not bot.has_outtake; save_settings(); return
+            if bot.has_outtake: 
+                if studio_outtake_w_rect.collidepoint(mx,my): sim.active_textbox = "owid"; sim.textbox_value = f"{bot.outtake_width:.1f}"; return
+                if studio_outtake_l_rect.collidepoint(mx,my): sim.active_textbox = "olen"; sim.textbox_value = f"{bot.outtake_length:.1f}"; return
+                #Shift inward (<) by 0.1
+                if studio_outtake_in_btn.collidepoint(mx,my): bot.outtake_offset = min(bot.outtake_length, bot.outtake_offset + 0.1); save_settings(); return
+                #Shift outward (>) by 0.1
+                if studio_outtake_out_btn.collidepoint(mx,my): bot.outtake_offset = max(0.0, bot.outtake_offset - 0.1); save_settings(); return
+                if studio_outtake_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_score_spd"; sim.textbox_value = f"{sim.settings.get("outtake_velocity", 30.0):.1f}"; return
+
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 1"; return
 
     elif sim.current_mode == "drive":
@@ -1401,6 +1418,8 @@ while running:
                         sim.remapping_key = "intake_in"
                     elif btn_bind_intake_out.collidepoint(mx,my):
                         sim.remapping_key = "intake_out"
+                    elif btn_bind_outtake_score.collidepoint(mx,my):  
+                        sim.remapping_key = "outtake_score"
                     elif toggle_mode_btn.collidepoint(mx,my):
                         #Flip between Hold and Toggle
                         sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
