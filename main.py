@@ -974,23 +974,24 @@ def draw_everything():
                         icon_rect.center = (box_cx, box_cy)
                         pygame.draw.rect(screen, s["color"], icon_rect, border_radius=3)
 
-            #Intake status HUD
-            intake_stat_y = inv_y + 100
-            draw_text("Intake System", FIELD_PIXELS+20, intake_stat_y,YELLOW)
-
-            #Mode display (Intake)
-            control_mode = sim.settings.get("intake_control_mode", "toggle")
-            draw_small(f"Control Mode: {control_mode}", FIELD_PIXELS+20, intake_stat_y + 20, LIGHT_GRAY)
-            #Action status display (Intake)
+            # HUD Intake/Outtake
+            hud_y = inv_y + 100
+            draw_text("Subsystems", FIELD_PIXELS + 20, hud_y, YELLOW)
+            # Intake 
+            
             if bot.intake_state == "in":
-                status_text = "Intaking"
+                intake_str, intake_color = "Intaking", GREEN
             elif bot.intake_state == "out":
-                status_text = "Outtaking"
+                intake_str, intake_color = "Outtaking", GREEN
             else:
-                status_text = "None"
-
-            draw_small(f"Status: {status_text}", FIELD_PIXELS + 20, intake_stat_y + 35, GREEN)
-
+                intake_str, intake_color = "None", LIGHT_GRAY
+            draw_small(f"Intake:  {intake_str}", FIELD_PIXELS + 20, hud_y + 24, intake_color)
+            # Outtake 
+            if bot.outtake_state == "out":
+                outtake_str, outtake_color = "Scoring", GREEN
+            else:
+                outtake_str, outtake_color = "None", LIGHT_GRAY
+            draw_small(f"Outtake: {outtake_str}", FIELD_PIXELS + 20, hud_y + 44, outtake_color)
 
             # Real-time speedometer
             speed_y = WINDOW_HEIGHT - 135
@@ -1497,6 +1498,8 @@ while running:
                     bot.intake_state = "off" if bot.intake_state == "in" else "in"
                 elif event.key == sim.settings["keybinds"]["intake_out"]:
                     bot.intake_state = "off" if bot.intake_state == "out" else "out"
+                elif event.key == sim.settings["keybinds"]["outtake_score"]:
+                    bot.outtake_state = "off" if bot.outtake_state == "out" else "out"
         elif event.type == pygame.JOYDEVICEADDED and joystick is None:
             joystick = pygame.joystick.Joystick(event.device_index); joystick.init()
         elif event.type == pygame.JOYDEVICEREMOVED and joystick is not None and event.instance_id == joystick.get_instance_id():
