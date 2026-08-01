@@ -51,6 +51,7 @@ class Robot:
         self.gear_out = 60 #Gear attached to wheel
         #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
         self.total_mass = 14.0
+        #Intake
         self.has_intake = True
         self.intake_width = 6.7 #Width of roller (in), should be smaller than self.track_width
         self.intake_length = 3.0 #How far intake extends (in), creating an intake range
@@ -58,6 +59,12 @@ class Robot:
         self.inventory = []
         self.max_capacity = 4
         self.intake_state = "off" #off / in / out
+        #Outtake
+        self.has_outtake = True
+        self.outtake_width = 6.7
+        self.outtake_length = 3.0
+        self.outtake_offset = 0.0
+        self.outtake_state = "off" #off / out
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
@@ -126,13 +133,16 @@ class SimulatorState:
             "input_mode": "keyboard",   
             "speed_scale": 1.0,
             "intake_rev_velocity": 30.0, #Reverse intake ejection speed
+            "outtake_velocity": 15.0, 
             "field_source": "image",    
             "drive_mode": "tank",     
             "motor_cartridge": "green", #(red, green, blue)
             "intake_control_mode": "toggle",#Hold or toggle
+            "outtake_control_mode": "toggle", #Hold or toggle
             "keybinds": {
                 "intake_in": pygame.K_e,
-                "intake_out": pygame.K_f
+                "intake_out": pygame.K_f,
+                "outtake_score": pygame.K_q
             }
         }
         self.drive_config = {
@@ -181,6 +191,11 @@ def load_all_data():
                 bot.wheel_circ = 2 * math.pi * bot.wheel_radius
                 bot.intake_offset = sim.settings.get("intake_offset", bot.intake_offset)
                 bot.max_capacity = sim.settings.get("max_capacity", 4)
+                bot.has_outtake = sim.settings.get("has_outtake", bot.has_outtake)
+                bot.outtake_length = sim.settings.get("outtake_length", bot.outtake_length)
+                bot.outtake_width = sim.settings.get("outtake_width", bot.outtake_width)
+                bot.outtake_offset = sim.settings.get("outtake_offset", bot.outtake_offset)
+
         except: pass
     if os.path.exists(DRIVE_FILE):
         try:
@@ -247,6 +262,10 @@ def save_settings():
         sim.settings["intake_length"] = bot.intake_length
         sim.settings["intake_offset"] = bot.intake_offset
         sim.settings["max_capacity"] = bot.max_capacity
+        sim.settings["has_outtake"] = bot.has_outtake
+        sim.settings["outtake_width"] = bot.outtake_width
+        sim.settings["outtake_length"] = bot.outtake_length
+        sim.settings["outtake_offset"] = bot.outtake_offset
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
     except Exception as e: 
         print(f"Error saving settings: {e}")
@@ -290,12 +309,15 @@ def get_inputs(dt):
             
         in_key = sim.settings["keybinds"]["intake_in"]
         out_key = sim.settings["keybinds"]["intake_out"]
+        score_key = sim.settings["keybinds"]["outtake_score"]
         
         if sim.settings["intake_control_mode"] == "hold":
             if keys[in_key]:
                 bot.intake_state = "in"
             elif keys[out_key]:
                 bot.intake_state = "out"
+            elif keys[score_key]:
+                bot.outtake_state = "out"
             else:
                 bot.intake_state = "off"
         
@@ -1256,10 +1278,15 @@ def apply_textbox_value():
     elif sim.active_textbox == "gin": bot.gear_in = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
     elif sim.active_textbox == "gout": bot.gear_out = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
     elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val); save_settings()
+    #Intake 
     elif sim.active_textbox == "iwid": bot.intake_width = max(5.0, min(bot.track_width,val)); save_settings() 
     elif sim.active_textbox == "ilen": bot.intake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
     elif sim.active_textbox == "out_spd": sim.settings["intake_rev_velocity"] = max(0.0, min(100.0, val)); save_settings()
     elif sim.active_textbox == "mcap": sim.settings["max_capacity"] = int(max(0, min(10,val))); bot.max_capacity = int(max(0, min(10,val))); save_settings()
+    #Outtake
+    elif sim.active_textbox == "owid": bot.outtake_width = max(5.0, min(bot.track_width,val)); save_settings() 
+    elif sim.active_textbox == "olen": bot.outtake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
+    elif sim.active_textbox == "out_score_spd": sim.settings["outtake_velocity"] = max(0.0, min(100.0, val)); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
