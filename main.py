@@ -553,13 +553,21 @@ studio_robot_wid_rect = pygame.Rect(FIELD_PIXELS + 140, 140, 100, 24) #For chang
 cartridge_red_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 80, 26)
 cartridge_green_rect = pygame.Rect(FIELD_PIXELS + 110, 210, 80, 26)
 cartridge_blue_rect = pygame.Rect(FIELD_PIXELS + 200, 210, 80, 26)
-studio_intake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 460, 110, 24)
-studio_intake_w_rect = pygame.Rect(FIELD_PIXELS + 140, 460, 80, 24)
-studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 460, 80, 24)
-studio_intake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 560, 35, 24)
-studio_intake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 560, 35, 24)
-studio_intake_rev_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 508, 100, 24)
-studio_max_capacity_rect = pygame.Rect(FIELD_PIXELS+20, 610, 60, 30)
+#Intake configuration rects
+studio_intake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 285, 110, 24)
+studio_intake_w_rect = pygame.Rect(FIELD_PIXELS + 140, 285, 80, 24)
+studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 285, 80, 24)
+studio_intake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 385, 35, 24)
+studio_intake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 385, 35, 24)
+studio_intake_rev_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 333, 100, 24)
+studio_max_capacity_rect = pygame.Rect(FIELD_PIXELS+20, 435, 60, 30)
+#Outtake configuration rects
+studio_outtake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 125, 110, 24)
+studio_outtake_w_rect = pygame.Rect(FIELD_PIXELS + 145, 125, 80, 24)
+studio_outtake_l_rect = pygame.Rect(FIELD_PIXELS + 235, 125, 80, 24)
+studio_outtake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 225, 35, 24)
+studio_outtake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 225, 35, 24)
+studio_outtake_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 173, 100, 24)
 # Wheel radius UI rectangles
 studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 # VEX official size quick-select buttons (diameter)
@@ -830,8 +838,33 @@ def draw_everything():
             # Total robot mass textbox
             draw_small("Robot total mass:", FIELD_PIXELS + 20, 375, LIGHT_GRAY)
             draw_textbox(studio_mass_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "rmass" else f"{bot.total_mass:.1f}", sim.active_textbox == "rmass")
+
+        elif sim.current_page == "studio 2":
+            # Header indicator
+            draw_text("Intake/Outtake Configuration", FIELD_PIXELS + 20, 65, ORANGE)
+            pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
+            #Outtake system section
+            draw_small("Outtake system:", FIELD_PIXELS+20, studio_outtake_toggle_rect.y-20, LIGHT_GRAY)
+            toggle_color = GREEN if bot.has_outtake else LIGHT_GRAY
+            pygame.draw.rect(screen, toggle_color, studio_outtake_toggle_rect, border_radius=4)
+            draw_small("ENABLED" if bot.has_outtake else "DISABLED", studio_outtake_toggle_rect.x + 12, studio_outtake_toggle_rect.y + 4, WHITE)
+
+            if bot.has_outtake:
+                draw_textbox(studio_outtake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "owid" else f"{bot.intake_width:.1f}", sim.active_textbox == "owid")
+                draw_textbox(studio_outtake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "olen" else f"{bot.intake_length:.1f}", sim.active_textbox == "olen")
+                #Outtake offset buttons/ section
+                draw_small("Outtake offset:", FIELD_PIXELS + 20, studio_outtake_in_btn.y-20, LIGHT_GRAY)
+                pygame.draw.rect(screen, LIGHT_GRAY, studio_outtake_in_btn, border_radius=4)
+                draw_small("<", studio_outtake_in_btn.x+13, studio_outtake_in_btn.y+4,WHITE)
+                pygame.draw.rect(screen, LIGHT_GRAY, studio_outtake_out_btn, border_radius=4)
+                draw_small(">", studio_outtake_out_btn.x+13, studio_outtake_out_btn.y+4,WHITE)
+                total_L = bot.length + (bot.outtake_length - bot.outtake_offset - bot.intake_offset)
+                total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
+                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, studio_outtake_in_btn.y+5, total_L_color)    
+                draw_textbox(studio_outtake_speed_rect, "Outtake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_score_spd" else f"{sim.settings.get("outtake-velocity", 30.0):.1f}", sim.active_textbox == "out_score_spd")
+
             #Intake system section
-            draw_small("Intake system:", FIELD_PIXELS+20, 440, LIGHT_GRAY)
+            draw_small("Intake system:", FIELD_PIXELS+20, studio_intake_toggle_rect.y-20, LIGHT_GRAY)
             toggle_color = GREEN if bot.has_intake else LIGHT_GRAY
             pygame.draw.rect(screen, toggle_color, studio_intake_toggle_rect, border_radius=4)
             draw_small("ENABLED" if bot.has_intake else "DISABLED", studio_intake_toggle_rect.x + 12, studio_intake_toggle_rect.y + 4, WHITE)
@@ -840,16 +873,18 @@ def draw_everything():
                 draw_textbox(studio_intake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "iwid" else f"{bot.intake_width:.1f}", sim.active_textbox == "iwid")
                 draw_textbox(studio_intake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "ilen" else f"{bot.intake_length:.1f}", sim.active_textbox == "ilen")
                 #Intake offset buttons/ section
-                draw_small("Intake offset:", FIELD_PIXELS + 20, 540, LIGHT_GRAY)
+                draw_small("Intake offset:", FIELD_PIXELS + 20, studio_intake_in_btn.y-20, LIGHT_GRAY)
                 pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_in_btn, border_radius=4)
                 draw_small("<", studio_intake_in_btn.x+13, studio_intake_in_btn.y+4,WHITE)
                 pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_out_btn, border_radius=4)
                 draw_small(">", studio_intake_out_btn.x+13, studio_intake_out_btn.y+4,WHITE)
                 total_L = bot.length + (bot.intake_length - bot.intake_offset)
                 total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
-                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, 565, total_L_color)    
+                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, studio_intake_in_btn.y+5, total_L_color)    
                 draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
                 draw_textbox(studio_max_capacity_rect, "Robot's max capacity", sim.textbox_value if sim.active_textbox == "mcap" else f"{sim.settings.get("max_capacity",3)}", sim.active_textbox == "mcap")
+
+
                 
         pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
         if sim.current_page == "studio 1":
