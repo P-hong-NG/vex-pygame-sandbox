@@ -405,6 +405,39 @@ def update_physics(left_speed, right_speed, dt):
                 
         if sim.settings.get("intake_control_mode") == "toggle":
             bot.intake_state = "off"
+
+    elif bot.has_outtake and bot.outtake_state == "out" and len(bot.inventory) > 0:
+        rad = math.radians(bot.angle)
+        
+        stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset)
+        spawn_dist = (bot.length / 2) + (stick_out_out / 2) + 3.0
+        
+        spawn_x = bot.x - spawn_dist * math.cos(rad) #Opposite side
+        spawn_y = bot.y - spawn_dist * math.sin(rad)
+
+        s = bot.inventory.pop()
+
+        s["stored"] = False
+        s["x"] = spawn_x
+        s["y"] = spawn_y
+        
+        # Re-position physics body
+        b = s["body"]
+        eject_speed = sim.settings.get("outtake_velocity", 15.0) * SCALE
+        
+        b.position = (spawn_x * SCALE, spawn_y * SCALE)
+        # Apply ejection speed in the backward/opposite direction
+        b.velocity = (bot.body.velocity.x - eject_speed * math.cos(rad),
+                      bot.body.velocity.y - eject_speed * math.sin(rad))
+        
+        # Re-add body to PyMunk space
+        space.add(b)
+        if "pymunk_shape" in s:
+            space.add(s["pymunk_shape"])
+                
+        # Reset state if in toggle mode
+        if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
+            bot.outtake_state = "off"
         
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
