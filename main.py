@@ -703,33 +703,57 @@ def draw_everything():
 
     # Robot Layer
     if sim.current_mode != "studio":
-        stick_out = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
-        #Extends the total area box to include both intake and chassis
-        total_w_px = (bot.length + stick_out) * SCALE
-        total_h_px = max(bot.track_width, bot.intake_width if bot.has_intake else 0.0) * SCALE
-        robot_surf = pygame.Surface((total_w_px, total_h_px), pygame.SRCALPHA) #SRCALPHA - allow the excess background around the bot to be see through
-        # Center chassis vertically inside surface
+        stick_out_in = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
+        stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
+
+        total_w_px = (bot.length + stick_out_in + stick_out_out) * SCALE
+        max_subsystem_w = max(bot.track_width, bot.intake_width if bot.has_intake else 0.0, bot.outtake_width if bot.has_outtake else 0.0)
+        total_h_px = max_subsystem_w * SCALE
+        
+        robot_surf = pygame.Surface((total_w_px, total_h_px), pygame.SRCALPHA)
+        
+        chassis_x = stick_out_out * SCALE
         chassis_y = (total_h_px - (bot.track_width * SCALE)) / 2
-        chassis_rect = pygame.Rect(0, chassis_y, bot.length * SCALE, bot.track_width * SCALE)
-        # Draw robot body
+        chassis_rect = pygame.Rect(chassis_x, chassis_y, bot.length * SCALE, bot.track_width * SCALE)
+
+        # Draw main chassis body
         pygame.draw.rect(robot_surf, CYAN if sim.current_mode == "drive" else ORANGE, chassis_rect)
         pygame.draw.line(robot_surf, WHITE, (chassis_rect.right - 2, chassis_rect.top), (chassis_rect.right - 2, chassis_rect.bottom), 4)
+        
+        # Draw intake subsystem (Front / Right)
         if bot.has_intake:
             intake_w_px = bot.intake_width * SCALE
             intake_l_px = bot.intake_length * SCALE
             offset_px = bot.intake_offset * SCALE
             intake_x = chassis_rect.right - offset_px
             intake_y = (total_h_px / 2) - (intake_w_px / 2)
+            
             intake_surf = pygame.Surface((intake_l_px, intake_w_px), pygame.SRCALPHA)
-            intake_surf.fill((0, 200, 255, 160)) # Semi-transparent cyan fill
+            intake_surf.fill((0, 200, 255, 160))
             pygame.draw.rect(intake_surf, WHITE, (0, 0, intake_l_px, intake_w_px), 2)
-            robot_surf.blit(intake_surf, (intake_x, intake_y))# Copy robot_surf onto screen(_surf) at the coordinates defined by bot_rect
+            robot_surf.blit(intake_surf, (intake_x, intake_y))
+
+        # Draw outtake subsystem (Rear / Left)
+        if bot.has_outtake:
+            outtake_w_px = bot.outtake_width * SCALE
+            outtake_l_px = bot.outtake_length * SCALE
+            out_offset_px = bot.outtake_offset * SCALE
+            outtake_x = chassis_rect.left - outtake_l_px + out_offset_px
+            outtake_y = (total_h_px / 2) - (outtake_w_px / 2)
+            
+            outtake_surf = pygame.Surface((outtake_l_px, outtake_w_px), pygame.SRCALPHA)
+            outtake_surf.fill((200, 80, 220, 200))  # Purple translucent surface
+            pygame.draw.rect(outtake_surf, (140, 120, 250), (0, 0, outtake_l_px, outtake_w_px), 2)
+            robot_surf.blit(outtake_surf, (outtake_x, outtake_y))
+
         rot_bot = pygame.transform.rotate(robot_surf, bot.angle)
-        # Offset rotation center so the robot rotates around its chassis center, not the extended surface center
-        center_dx = (stick_out * SCALE / 2) * math.cos(math.radians(bot.angle))
-        center_dy = (stick_out * SCALE / 2) * math.sin(math.radians(bot.angle))
+        
+        # Calculate rotation pivot offset so the robot spins around its true center
+        center_dx = ((stick_out_in - stick_out_out) * SCALE / 2) * math.cos(math.radians(bot.angle))
+        center_dy = ((stick_out_in - stick_out_out) * SCALE / 2) * math.sin(math.radians(bot.angle))
         bot_center_x = (bot.x * SCALE) + center_dx
-        bot_center_y = (FIELD_PIXELS - (bot.y * SCALE)) - center_dy #Pygame measure downward where as PyMunk measures upward
+        bot_center_y = (FIELD_PIXELS - (bot.y * SCALE)) - center_dy
+        
         bot_rect = rot_bot.get_rect(center=(bot_center_x, bot_center_y))
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
@@ -770,7 +794,7 @@ def draw_everything():
         #Center origin crosshair
         pygame.draw.line(screen, WHITE, (studio_center_x - 15, studio_center_y), (studio_center_x + 15, studio_center_y), 1)
         pygame.draw.line(screen, WHITE, (studio_center_x, studio_center_y - 15), (studio_center_x, studio_center_y + 15), 1)
-        # Render Intake Subsystem on CAD Model
+        # Render intake subsystem on CAD model
         if bot.has_intake:
             # Convert intake dimensions to pixel scale
             intake_w_px = bot.intake_width * SCALE
@@ -786,6 +810,18 @@ def draw_everything():
         else:
             # Front direction indicator line
             pygame.draw.line(screen, WHITE, (cad_rect.right - 2, cad_rect.top), (cad_rect.right - 2, cad_rect.bottom), 4)
+        # Render outtake subsystem on CAD model
+        if bot.has_outtake:
+            outtake_w_px = bot.outtake_width * SCALE
+            outtake_l_px = bot.outtake_length * SCALE
+            outtake_offset_px = bot.outtake_offset * SCALE
+            # Position at the left side of the blueprint chassis
+            outtake_x = cad_rect.left - outtake_l_px + outtake_offset_px
+            outtake_y = studio_center_y - (outtake_w_px / 2)
+            outtake_rect = pygame.Rect(outtake_x, outtake_y, outtake_l_px, outtake_w_px)
+            # Draw outtake structure 
+            pygame.draw.rect(screen, (120, 40, 140), outtake_rect)   
+            pygame.draw.rect(screen, (200, 80, 220), outtake_rect, 2) 
 
         # Dimension labels on CAD canvas
         draw_small(f"L: {bot.length:.1f}\"", cad_rect.centerx - 25, cad_rect.bottom + 8, DARK)
