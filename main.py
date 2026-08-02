@@ -1171,60 +1171,64 @@ def draw_everything():
         if m_fx != -1:
             mxo, myo = m_fx - bot.odom_origin_x, m_fy - bot.odom_origin_y
             draw_small(f"Cursor Odom: {mxo:.1f}, {myo:.1f}", FIELD_PIXELS + 160, info_y + 60, LIGHT_GRAY)
-        #Semi-transparent overlay when Paused (pressed "Esc")
-        if sim.paused:
-            #Spanning across the entire screen
-            overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) #Each pixel's opacity acts independently, rather than everything having the same opacity
-            #Overlay over the whole screen rather than replacing it (visual effect)
-            overlay.fill((128, 128, 128, 150)) # Can be changed. (R, G, B, Opacity) 255 being maxed, 0 being completely see-through.
-            screen.blit(overlay, (0, 0))
-    
-            #Main pause box (Modal)
-            if sim.paused_sub_menu == "main":
-                pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
-                pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
-                #Title
-                draw_text("GAME PAUSED", pause_modal_rect.x + 85, pause_modal_rect.y + 20, YELLOW)
-                # Buttons box
-                pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
-                pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
-                pygame.draw.rect(screen, LIGHT_GRAY, pause_settings_btn, border_radius=6)
-                pygame.draw.rect(screen, RED, pause_exit_btn, border_radius=6)
-                # Button Labels
-                draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
+
+    #Semi-transparent overlay when Paused (pressed "Esc")
+    if sim.paused:
+        #Spanning across the entire screen
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) #Each pixel's opacity acts independently, rather than everything having the same opacity
+        #Overlay over the whole screen rather than replacing it (visual effect)
+        overlay.fill((128, 128, 128, 150)) # Can be changed. (R, G, B, Opacity) 255 being maxed, 0 being completely see-through.
+        screen.blit(overlay, (0, 0))
+
+        #Main pause box (Modal)
+        if sim.paused_sub_menu == "main":
+            pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
+            pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
+            #Title
+            draw_text("GAME PAUSED", pause_modal_rect.x + 85, pause_modal_rect.y + 20, YELLOW)
+            # Buttons box
+            pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
+            pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
+            pygame.draw.rect(screen, LIGHT_GRAY, pause_settings_btn, border_radius=6)
+            pygame.draw.rect(screen, RED, pause_exit_btn, border_radius=6)
+            # Button Labels
+            draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
+            if sim.current_mode == "drive" or sim.current_mode == "edit":
                 draw_small("Robot Design Studio", pause_studio_btn.x + 35, pause_studio_btn.y + 10, BLACK)
-                draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
-                draw_small("Exit Simulator", pause_exit_btn.x + 55, pause_exit_btn.y + 10, WHITE)    
-            elif sim.paused_sub_menu == "settings":
-                pygame.draw.rect(screen, (35, 35, 45), settings_modal_rect, border_radius=12)
-                pygame.draw.rect(screen, YELLOW, settings_modal_rect, 2, border_radius=12)
-                
-                draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 115, settings_modal_rect.y + 20, YELLOW)
-                intake_in_text = "Press Any Key..." if sim.remapping_key == "intake_in" else pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
-                intake_out_text = "Press Any Key..." if sim.remapping_key == "intake_out" else pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
-                outtake_score_text = "Press Any Key..." if sim.remapping_key == "outtake_score" else pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
-                #Intaking from the intake zone (forward)
-                draw_small("Intake In Key:", setting_x + 40, setting_y + 88, WHITE)
-                intake_in_color = ORANGE if sim.remapping_key == "intake_in" else LIGHT_GRAY
-                pygame.draw.rect(screen, intake_in_color, btn_bind_intake_in, border_radius=6)
-                draw_small(intake_in_text, btn_bind_intake_in.x + 12, btn_bind_intake_in.y + 8, BLACK)
-                #outaking from the intake zone (reversing the intake)
-                draw_small("Intake Out Key:", setting_x + 40, setting_y + 138, WHITE)
-                intake_out_color = ORANGE if sim.remapping_key == "intake_out" else LIGHT_GRAY
-                pygame.draw.rect(screen, intake_out_color, btn_bind_intake_out, border_radius=6)
-                draw_small(intake_out_text, btn_bind_intake_out.x + 12, btn_bind_intake_out.y + 8, BLACK)
-                draw_small("Outtake Score Key:", setting_x + 40, setting_y + 188, WHITE)
-                outtake_color = ORANGE if sim.remapping_key == "outtake_score" else LIGHT_GRAY
-                pygame.draw.rect(screen, outtake_color, btn_bind_outtake_score, border_radius=6)
-                draw_small(outtake_score_text, btn_bind_outtake_score.x + 12, btn_bind_outtake_score.y + 8, BLACK)
-                # Type to intake Toggle or Hold option
-                draw_small("Intake Mode:", setting_x + 40, setting_y + 238, WHITE)
-                mode_color = GREEN if sim.settings["intake_control_mode"] == "toggle" else CYAN
-                pygame.draw.rect(screen, mode_color, toggle_mode_btn, border_radius=6)
-                draw_small(sim.settings["intake_control_mode"].upper(), toggle_mode_btn.x + 35, toggle_mode_btn.y + 8, BLACK)
-                #Back to Pause Menu
-                pygame.draw.rect(screen, LIGHT_GRAY, settings_back_btn, border_radius=6)
-                draw_small("Back to Pause Menu", settings_back_btn.x + 115, settings_back_btn.y + 10, BLACK)
+            elif sim.current_mode == "studio":
+                draw_small("Return to Drive mode", pause_studio_btn.x + 32, pause_studio_btn.y + 10, BLACK)
+            draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
+            draw_small("Exit Simulator", pause_exit_btn.x + 55, pause_exit_btn.y + 10, WHITE)    
+        elif sim.paused_sub_menu == "settings":
+            pygame.draw.rect(screen, (35, 35, 45), settings_modal_rect, border_radius=12)
+            pygame.draw.rect(screen, YELLOW, settings_modal_rect, 2, border_radius=12)
+            
+            draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 115, settings_modal_rect.y + 20, YELLOW)
+            intake_in_text = "Press Any Key..." if sim.remapping_key == "intake_in" else pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
+            intake_out_text = "Press Any Key..." if sim.remapping_key == "intake_out" else pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
+            outtake_score_text = "Press Any Key..." if sim.remapping_key == "outtake_score" else pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
+            #Intaking from the intake zone (forward)
+            draw_small("Intake In Key:", setting_x + 40, setting_y + 88, WHITE)
+            intake_in_color = ORANGE if sim.remapping_key == "intake_in" else LIGHT_GRAY
+            pygame.draw.rect(screen, intake_in_color, btn_bind_intake_in, border_radius=6)
+            draw_small(intake_in_text, btn_bind_intake_in.x + 12, btn_bind_intake_in.y + 8, BLACK)
+            #outaking from the intake zone (reversing the intake)
+            draw_small("Intake Out Key:", setting_x + 40, setting_y + 138, WHITE)
+            intake_out_color = ORANGE if sim.remapping_key == "intake_out" else LIGHT_GRAY
+            pygame.draw.rect(screen, intake_out_color, btn_bind_intake_out, border_radius=6)
+            draw_small(intake_out_text, btn_bind_intake_out.x + 12, btn_bind_intake_out.y + 8, BLACK)
+            draw_small("Outtake Score Key:", setting_x + 40, setting_y + 188, WHITE)
+            outtake_color = ORANGE if sim.remapping_key == "outtake_score" else LIGHT_GRAY
+            pygame.draw.rect(screen, outtake_color, btn_bind_outtake_score, border_radius=6)
+            draw_small(outtake_score_text, btn_bind_outtake_score.x + 12, btn_bind_outtake_score.y + 8, BLACK)
+            # Type to intake Toggle or Hold option
+            draw_small("Intake Mode:", setting_x + 40, setting_y + 238, WHITE)
+            mode_color = GREEN if sim.settings["intake_control_mode"] == "toggle" else CYAN
+            pygame.draw.rect(screen, mode_color, toggle_mode_btn, border_radius=6)
+            draw_small(sim.settings["intake_control_mode"].upper(), toggle_mode_btn.x + 35, toggle_mode_btn.y + 8, BLACK)
+            #Back to Pause Menu
+            pygame.draw.rect(screen, LIGHT_GRAY, settings_back_btn, border_radius=6)
+            draw_small("Back to Pause Menu", settings_back_btn.x + 115, settings_back_btn.y + 10, BLACK)
     
     pygame.display.flip()
 # =====================================================================
@@ -1480,9 +1484,17 @@ while running:
                     if pause_resume_btn.collidepoint(mx,my):
                         sim.paused = False
                     elif pause_studio_btn.collidepoint(mx,my):
-                        sim.current_mode = "studio"
-                        sim.current_page = "studio 1"
-                        sim.paused = False
+                        if sim.current_mode == "studio":
+                            sim.current_mode = "drive"
+                            sim.selected_shape_idx = None
+                            sim.active_textbox = None
+                            bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
+                            sync_custom_obstacles_to_physics()
+                            sim.paused = False
+                        else:
+                            sim.current_mode = "studio"
+                            sim.current_page = "studio 1"
+                            sim.paused = False
                     elif pause_settings_btn.collidepoint(mx,my):
                         sim.paused_sub_menu = "settings"
                     elif pause_exit_btn.collidepoint(mx,my):
@@ -1550,6 +1562,7 @@ while running:
         elif event.type == pygame.KEYDOWN:
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
+                sim.active_textbox = None
                 if sim.paused and sim.paused_sub_menu == "settings":
                     sim.paused_sub_menu = "main"
                 else:
