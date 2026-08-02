@@ -415,7 +415,7 @@ def update_physics(left_speed, right_speed, dt):
         spawn_x = bot.x - spawn_dist * math.cos(rad) #Opposite side
         spawn_y = bot.y - spawn_dist * math.sin(rad)
 
-        s = bot.inventory.pop()
+        s = bot.inventory.pop(0)
 
         s["stored"] = False
         s["x"] = spawn_x
@@ -920,18 +920,20 @@ def draw_everything():
             draw_small("ENABLED" if bot.has_outtake else "DISABLED", studio_outtake_toggle_rect.x + 12, studio_outtake_toggle_rect.y + 4, WHITE)
 
             if bot.has_outtake:
-                draw_textbox(studio_outtake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "owid" else f"{bot.intake_width:.1f}", sim.active_textbox == "owid")
-                draw_textbox(studio_outtake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "olen" else f"{bot.intake_length:.1f}", sim.active_textbox == "olen")
+                draw_textbox(studio_outtake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "owid" else f"{bot.outtake_width:.1f}", sim.active_textbox == "owid")
+                draw_textbox(studio_outtake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "olen" else f"{bot.outtake_length:.1f}", sim.active_textbox == "olen")
                 #Outtake offset buttons/ section
                 draw_small("Outtake offset:", FIELD_PIXELS + 20, studio_outtake_in_btn.y-20, LIGHT_GRAY)
                 pygame.draw.rect(screen, LIGHT_GRAY, studio_outtake_in_btn, border_radius=4)
                 draw_small("<", studio_outtake_in_btn.x+13, studio_outtake_in_btn.y+4,WHITE)
                 pygame.draw.rect(screen, LIGHT_GRAY, studio_outtake_out_btn, border_radius=4)
                 draw_small(">", studio_outtake_out_btn.x+13, studio_outtake_out_btn.y+4,WHITE)
-                total_L = bot.length + (bot.outtake_length - bot.outtake_offset - bot.intake_offset)
+                stick_out_in = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
+                stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
+                total_L = bot.length + stick_out_in + stick_out_out
                 total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
                 draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, studio_outtake_in_btn.y+5, total_L_color)    
-                draw_textbox(studio_outtake_speed_rect, "Outtake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_score_spd" else f"{sim.settings.get("outtake-velocity", 30.0):.1f}", sim.active_textbox == "out_score_spd")
+                draw_textbox(studio_outtake_speed_rect, "Outtake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_score_spd" else f"{sim.settings.get("outtake_velocity", 30.0):.1f}", sim.active_textbox == "out_score_spd")
 
             #Intake system section
             draw_small("Intake system:", FIELD_PIXELS+20, studio_intake_toggle_rect.y-20, LIGHT_GRAY)
@@ -948,7 +950,9 @@ def draw_everything():
                 draw_small("<", studio_intake_in_btn.x+13, studio_intake_in_btn.y+4,WHITE)
                 pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_out_btn, border_radius=4)
                 draw_small(">", studio_intake_out_btn.x+13, studio_intake_out_btn.y+4,WHITE)
-                total_L = bot.length + (bot.intake_length - bot.intake_offset)
+                stick_out_in = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
+                stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
+                total_L = bot.length + stick_out_in + stick_out_out
                 total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
                 draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, studio_intake_in_btn.y+5, total_L_color)    
                 draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
