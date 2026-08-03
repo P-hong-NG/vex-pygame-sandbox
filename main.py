@@ -65,6 +65,9 @@ class Robot:
         self.outtake_length = 3.0
         self.outtake_offset = 0.0
         self.outtake_state = "off" #off / out
+        #Delay from intake to score
+        self.delay_flag = True
+        self.timer_delay = 1
         # Real-World Screen Position (True State)
         self.x = FIELD_INCHES / 2
         self.y = FIELD_INCHES / 2
@@ -139,8 +142,6 @@ class SimulatorState:
             "motor_cartridge": "green", #(red, green, blue)
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
-            "timer_delay": 0.5,
-            "delay_flag": True,
             "keybinds": {
                 "intake_in": pygame.K_e,
                 "intake_out": pygame.K_f,
@@ -197,6 +198,8 @@ def load_all_data():
                 bot.outtake_length = sim.settings.get("outtake_length", bot.outtake_length)
                 bot.outtake_width = sim.settings.get("outtake_width", bot.outtake_width)
                 bot.outtake_offset = sim.settings.get("outtake_offset", bot.outtake_offset)
+                bot.timer_delay = sim.settings.get("timer_delay", bot.timer_delay)
+                bot.delay_flag = sim.settings.get("delay_flag", bot.delay_flag)
 
         except: pass
     if os.path.exists(DRIVE_FILE):
@@ -268,6 +271,8 @@ def save_settings():
         sim.settings["outtake_width"] = bot.outtake_width
         sim.settings["outtake_length"] = bot.outtake_length
         sim.settings["outtake_offset"] = bot.outtake_offset
+        sim.settings["delay_flag"] = bot.delay_flag
+        sim.settings["timer_delay"] = bot.timer_delay
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
     except Exception as e: 
         print(f"Error saving settings: {e}")
@@ -971,10 +976,7 @@ def draw_everything():
 
             # Delay time display
             if delay_on:
-                curr_delay = sim.settings.get("timer_delay", 1)
-                display_val = sim.textbox_value if sim.active_textbox == "tdelay" else f"{curr_delay:.2f}"
-                draw_textbox(studio_delay_time_rect, "Delay (s)", display_val, sim.active_textbox == "tdelay")
-
+                draw_textbox(studio_delay_time_rect, "Delay (s)", sim.textbox_value if sim.active_textbox == "tdelay" else f"{bot.timer_delay:.2f}", sim.active_textbox == "tdelay")
                 
         pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
         if sim.current_page == "studio 1":
@@ -1300,6 +1302,10 @@ def handle_ui_click(mx, my):
                 #Shift outward (>) by 0.1
                 if studio_outtake_out_btn.collidepoint(mx,my): bot.outtake_offset = max(0.0, bot.outtake_offset - 0.1); save_settings(); return
                 if studio_outtake_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_score_spd"; sim.textbox_value = f"{sim.settings.get("outtake_velocity", 30.0):.1f}"; return
+            if studio_delay_toggle_rect.collidepoint(mx,my): bot.delay_flag = not bot.delay_flag; save_settings(); return
+            if bot.delay_flag:
+                if studio_delay_time_rect.collidepoint(mx,my): sim.active_textbox = "tdelay"; sim.textbox_value = f"{bot.timer_delay:.2f}"; return 
+        
 
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 1"; return
 
@@ -1433,6 +1439,7 @@ def apply_textbox_value():
     elif sim.active_textbox == "owid": bot.outtake_width = max(5.0, min(bot.track_width,val)); save_settings() 
     elif sim.active_textbox == "olen": bot.outtake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
     elif sim.active_textbox == "out_score_spd": sim.settings["outtake_velocity"] = max(0.0, min(100.0, val)); save_settings()
+    elif sim.active_textbox == "tdelay": bot.timer_delay = max(0.0, min(10.0, val)); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
