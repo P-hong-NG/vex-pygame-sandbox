@@ -1072,6 +1072,18 @@ def draw_everything():
                         icon_rect.center = (box_cx, box_cy)
                         pygame.draw.rect(screen, s["color"], icon_rect, border_radius=3)
 
+                    timer_val = s.get("travel_timer", 0.0)
+                    if timer_val > 0.0:
+                        #Semi-transparent dark overlay over slot
+                        timer_surf = pygame.Surface((38, 38), pygame.SRCALPHA)
+                        timer_surf.fill((0, 0, 0, 160))
+                        screen.blit(timer_surf, (slot_rect.x, slot_rect.y))
+                        #Countdown text in slot
+                        draw_small(f"{timer_val:.1f}s", slot_rect.x + 4, slot_rect.y + 11, YELLOW)
+                    else:
+                        #Indicator with color when finished
+                        pygame.draw.rect(screen, s.get("color"), slot_rect, 2, border_radius=6)
+
             # HUD Intake/Outtake
             hud_y = inv_y + 100
             draw_text("Subsystems", FIELD_PIXELS + 20, hud_y, YELLOW)
