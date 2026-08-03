@@ -139,6 +139,8 @@ class SimulatorState:
             "motor_cartridge": "green", #(red, green, blue)
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
+            "timer_delay": 0.5,
+            "delay_flag": True,
             "keybinds": {
                 "intake_in": pygame.K_e,
                 "intake_out": pygame.K_f,
@@ -601,6 +603,9 @@ studio_outtake_l_rect = pygame.Rect(FIELD_PIXELS + 235, 125, 80, 24)
 studio_outtake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 225, 35, 24)
 studio_outtake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 225, 35, 24)
 studio_outtake_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 173, 100, 24)
+#Timer delay between intake and score (page 2)
+studio_delay_toggle_rect = pygame.Rect(FIELD_PIXELS+20, 495, 110, 24)
+studio_delay_time_rect = pygame.Rect(FIELD_PIXELS+145, 495, 80, 24)
 # Wheel radius UI rectangles
 studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
 # VEX official size quick-select buttons (diameter)
@@ -958,6 +963,17 @@ def draw_everything():
                 draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
                 draw_textbox(studio_max_capacity_rect, "Robot's max capacity", sim.textbox_value if sim.active_textbox == "mcap" else f"{sim.settings.get("max_capacity",3)}", sim.active_textbox == "mcap")
 
+            draw_small("Scoring delay:", FIELD_PIXELS+20, studio_delay_toggle_rect.y - 20, LIGHT_GRAY)
+            delay_on = sim.settings.get("delay_flag", True)
+            toggle_delay_color = GREEN if delay_on else LIGHT_GRAY
+            pygame.draw.rect(screen, toggle_delay_color, studio_delay_toggle_rect, border_radius=4)
+            draw_small("ENABLED" if delay_on else "DISABLED", studio_delay_toggle_rect.x + 12, studio_delay_toggle_rect.y + 4, WHITE)
+
+            # Delay time display
+            if delay_on:
+                curr_delay = sim.settings.get("timer_delay", 1)
+                display_val = sim.textbox_value if sim.active_textbox == "tdelay" else f"{curr_delay:.2f}"
+                draw_textbox(studio_delay_time_rect, "Delay (s)", display_val, sim.active_textbox == "tdelay")
 
                 
         pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
