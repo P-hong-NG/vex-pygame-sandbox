@@ -72,4 +72,10 @@ Not just the outtake appearing in Studio mode CAD/display model; it works in Dri
 
 ![Robot being able to score and reverse intake in Drive mode](images/intakeOuttakePreview.png)
 
+[Unknown date, after Aug 2nd] - Fix the simulator according to M's suggestion (I gotchu bro🙂)
+
+One of my early testers, who is also my teammate, had questioned why I have the paused menu for Drive and Edit mode but not Studio mode. Before that, the user would have to click back on "Drive" or "Edit" at the top of the sidebar to exit Edit mode, and it would be naturally logical that the user used the pause menu to get to Edit mode, so they also use the pause menu to get out of it. So I fixed that, with some custom text saying "Return to drive mode" in Studio to make sure they know :)
+
+![Paused menu in Studio mode](images/pausedStudio.png)
+
 
