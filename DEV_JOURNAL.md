@@ -61,3 +61,15 @@ _Approach B: Active keybind/ User controlled intake
 ===Why it works=== Having this numbering and conditional logic system allows me to expand the space to my liking - going up to "studio 20" and such - then it will turn into a problem of keeping everything in order and engaging enough for the user
 ===However!?! + future plan=== This UI system would only work for the Edit and Studio mode sidebar, but not the settings modal, because most users would expect a scrollable page for settings like "keybinds," where a lot of customization and freedom need to happen. So eventually, I would have to find a way to make a scrollable page along with configurable buttons with persistence in that page. 
 
+[August 2, 2026] - Update on the simulator/ documentation (with pictures, who doesn't love em 🔥)
+
+Sidenote: I just discovered how to add emojis, and I will try and start using them; I just thought that I might be able to give more "life" to this longgg documentation
+Studio mode now displays the outtake (left side) on the CAD along with the intake (right side), and the user can configure its attributes on the sidebar. Additionally, studio mode and edit mode now have 2 sidebars, which I will sometimes call sidebar 1/2 or ___ mode page 1/2, meaning the limited space problem on July 31st has been fixed and the UI are much cleaner now
+
+![Studio mode CAD model with both intake and outtake](images/studioPageTwo.png)
+
+Not just the outtake appearing in Studio mode CAD/display model; it works in Drive mode too!! 🥳
+
+![Robot being able to score and reverse intake in Drive mode](images/intakeOuttakePreview.png)
+
+
