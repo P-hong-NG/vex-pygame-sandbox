@@ -85,3 +85,12 @@ As I said before, I wanted to make this simulator feel less of a "sim" and more 
 In the game (I would like to call it now, rather than simulator), the inventory display in Drive mode would now have a countdown over each object:
 
 ![Inventory display in Drive mode having a countdown over each object](images/inventoryCountdown.png)
+(Also, if you noticed, the display would now show a smaller version of the Dynamic object that got taken in! Like the circles, the rectangles along with their color - so that brings out the feeling of the game too!!!🎮)
+
+[Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
+
+Disclaimer: These would be images that I have taken on various dates, so I can't give you the exact date, sorry!
+
+The robot has gone out of control and kept outtakinggg!
+
+![The robot has gone out of control](images/infiniteee.png)
