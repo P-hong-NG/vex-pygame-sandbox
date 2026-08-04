@@ -1,4 +1,4 @@
-This Dev's journal documents my ideas and initial designs/thoughts for the VEX driving simulator I'm working on in "main.py".
+This Dev's journal documents my ideas and initial designs/thoughts for the VEX driving simulator, along with my progress I'm working on in "main.py".
 For instructions on how to use and improve the simulator, go to "TUNING_GUIDE.md"
 
 Engineering Log: Architectural Design Decisions
@@ -78,4 +78,10 @@ One of my early testers, who is also my teammate, had questioned why I have the 
 
 ![Paused menu in Studio mode](images/pausedStudio.png)
 
+[August 3rd, 2026] - Gamifying the simulator through UI works
 
+As I said before, I wanted to make this simulator feel less of a "sim" and more of a "game" where everyone can enjoy, mess around, and test their robot on a semi-realistic practice program. That is why I added what most "gamers" would call a "cooldown" for the robot's outtake. Originally, I wanted to simulate the realistic feeling of the game element needing to traverse inside the robot after being taken in order to score out of the outtake - so I added a delay timer in Studio mode sidebar 2 where the object would be outtake after a certain period of time (s), of course, while their outtake is on.
+
+In the game (I would like to call it now, rather than simulator), the inventory display in Drive mode would now have a countdown over each object:
+
+![Inventory display in Drive mode having a countdown over each object](images/inventoryCountdown.png)
