@@ -633,18 +633,20 @@ shape_panel_y = 245
 #Example .rect(x-cord,y-cord,width,height). button y +-45
 textbox_x_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 15, 80, 22)#X-cord
 textbox_y_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 15, 80, 22)#Y-cord
-textbox_w_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 55, 80, 22)#Width
-textbox_h_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Height
+textbox_w_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22)#Width
+textbox_h_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)#Height
 textbox_r_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Radius
-textbox_a_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 140, 80, 22)#Angle
-textbox_m_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 140, 80, 22)#Mass
-textbox_f_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)#Friction
-textbox_e_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22)#Elasticity
+textbox_a_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Angle
+
+textbox_m_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 140, 80, 22)#Mass
+textbox_f_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 140, 80, 22)#Friction
+textbox_e_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 140, 80, 22)#Bounce
+
+shape_type_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 95, 180, 22)
+passthrough_overpass_toggle_rect = pygame.Rect(FIELD_PIXELS+220, shape_panel_y + 95, 110, 22)
 
 COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,120)]
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 180, 30, 30) for i in range(len(COLOR_PALETTE))]
-
-shape_type_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 95, 180, 22)
 
 # Robot Config Input definitions
 robot_start_y = shape_panel_y + 250
@@ -759,7 +761,7 @@ def draw_everything():
         for i, s in enumerate(sim.shapes):
             if s.get("body_type") == "passthrough":
                 render_shape(i, s)
-                
+
         #Loop through the second time and draw the rest
         for i, s in enumerate(sim.shapes):
             if s.get("body_type", "static") in ("static", "dynamic"):
@@ -822,6 +824,12 @@ def draw_everything():
         bot_rect = rot_bot.get_rect(center=(bot_center_x, bot_center_y))
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
+
+    if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
+        for i, s in enumerate(sim.shapes):
+            if s.get("body_type") == "passthrough" and s.get("is_overpass", False):
+                render_shape(i, s)
+
 
     # Tracks and indicates if user is in Driver vs Edit Mode
     mode_label = f"SYSTEM STATUS: {sim.current_mode.upper()} MODE"
@@ -1195,15 +1203,21 @@ def draw_everything():
                     elif current_phys == "passthrough":
                         button_color = CYAN
                         text_label = "PASSTHROUGH"
+
+                        is_over = s.get("is_overpass", False)
+                        over_color = ORANGE if not is_over else CYAN
+                        over_label = "HIGH (OVER)" if is_over else "LOW (GROUND)"
+                        pygame.draw.rect(screen, over_color, passthrough_overpass_toggle_rect, border_radius=4)
+                        draw_small(over_label, passthrough_overpass_toggle_rect.x + 5, passthrough_overpass_toggle_rect.y + 4, BLACK)
+                        draw_small("Layer Height", passthrough_overpass_toggle_rect.x, passthrough_overpass_toggle_rect.y - 16, LIGHT_GRAY)
                     elif current_phys == "dynamic":
                         button_color = GREEN
                         text_label = "DYNAMIC (BALL)"
                         
-                    
-                    
                     pygame.draw.rect(screen, button_color, shape_type_toggle_rect, border_radius=4)
                     draw_small(text_label, shape_type_toggle_rect.x + 10, shape_type_toggle_rect.y + 4, BLACK)
                     draw_small("Physics Mode", shape_type_toggle_rect.x, shape_type_toggle_rect.y - 16, LIGHT_GRAY)
+
                 else:
                     draw_small("No shape selected", FIELD_PIXELS + 20, shape_panel_y + 25, LIGHT_GRAY)
         
@@ -1408,6 +1422,11 @@ def handle_ui_click(mx, my):
                         s["body_type"] = "dynamic"
                     else:
                         s["body_type"] = "static"
+                    save_field_data()
+                    return
+
+                if passthrough_overpass_toggle_rect.collidepoint(mx, my) and s.get("body_type") == "passthrough":
+                    s["is_overpass"] = not s.get("is_overpass", False)
                     save_field_data()
                     return
                 
