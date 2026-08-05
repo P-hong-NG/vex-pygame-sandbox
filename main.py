@@ -1162,18 +1162,29 @@ def draw_everything():
                     if current_phys == "dynamic":
                         m_val = s.get("mass", 1.0)
                         draw_textbox(textbox_m_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "m" else f"{m_val:.1f}", sim.active_textbox == "m")
-                    # Draw Friction & Elasticity textboxes for all selected shapes
-                    f_val = s.get("friction", 0.5) #Grabbing value from dictionary, default to 0.5
-                    e_val = s.get("elasticity", 0.0)
-                    draw_textbox(textbox_f_rect, "Friction", sim.textbox_value if sim.active_textbox == "f" else f"{f_val:.2f}", sim.active_textbox == "f")
-                    draw_textbox(textbox_e_rect, "Bounce", sim.textbox_value if sim.active_textbox == "e" else f"{e_val:.2f}", sim.active_textbox == "e")
+
+                    if current_phys != "passthrough":
+                        # Draw Friction & Elasticity textboxes for all selected shapes
+                        f_val = s.get("friction", 0.5) #Grabbing value from dictionary, default to 0.5
+                        e_val = s.get("elasticity", 0.0)
+                        draw_textbox(textbox_f_rect, "Friction", sim.textbox_value if sim.active_textbox == "f" else f"{f_val:.2f}", sim.active_textbox == "f")
+                        draw_textbox(textbox_e_rect, "Bounce", sim.textbox_value if sim.active_textbox == "e" else f"{e_val:.2f}", sim.active_textbox == "e")
                     
                     for i, col in enumerate(COLOR_PALETTE):
                         pygame.draw.rect(screen, col, color_button_rects[i])
                         if col == s["color"]: pygame.draw.rect(screen, YELLOW, color_button_rects[i], 2)
-                            
-                    button_color = RED if current_phys == "static" else GREEN
-                    text_label = "STATIC (WALL)" if current_phys == "static" else "DYNAMIC (BALL)"
+
+                    if current_phys == "static":
+                        button_color = RED
+                        text_label = "STATIC (WALL)"
+                    elif current_phys == "passthrough":
+                        button_color = CYAN
+                        text_label = "PASSTHROUGH"
+                    elif current_phys == "dynamic":
+                        button_color = GREEN
+                        text_label = "DYNAMIC (BALL)"
+                        
+                    
                     
                     pygame.draw.rect(screen, button_color, shape_type_toggle_rect, border_radius=4)
                     draw_small(text_label, shape_type_toggle_rect.x + 10, shape_type_toggle_rect.y + 4, BLACK)
@@ -1375,12 +1386,16 @@ def handle_ui_click(mx, my):
                 s = sim.shapes[sim.selected_shape_idx]
                 
                 if shape_type_toggle_rect.collidepoint(mx, my):
-                    if s.get("body_type", "static") == "static":
+                    curr_type = s.get("body_type", "static")
+                    if curr_type == "static":
+                        s["body_type"] = "passthrough"
+                    elif curr_type == "passthrough":
                         s["body_type"] = "dynamic"
                     else:
                         s["body_type"] = "static"
                     save_field_data()
                     return
+                
                 #Detects when user is typing in mass input box, default to 1.0 if received no inputs    
                 if textbox_m_rect.collidepoint(mx, my) and s.get("body_type") == "dynamic":
                     sim.active_textbox = "m"
