@@ -722,9 +722,12 @@ def draw_everything():
     
     # Elements Layer
     if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
-        for i, s in enumerate(sim.shapes):
+
+        #Render individual shapes - Due to rendering priority so that Passthrough is rendered before everything to go under everthing
+        def render_shape(i,s):
             if s.get("stored", False):
-                continue
+                return
+            
             if s["type"] == "rect":
                 surf = pygame.Surface((s["w"] * SCALE, s["h"] * SCALE), pygame.SRCALPHA)
             
@@ -736,6 +739,7 @@ def draw_everything():
                 screen.blit(rot, rect)
                 if i == sim.selected_shape_idx: 
                     pygame.draw.rect(screen, YELLOW, rect, 2)
+
             elif s["type"] == "circ":
                 cx, cy = int(s["x"] * SCALE), int(FIELD_PIXELS - s["y"] * SCALE)
                 radius_pixels = int(s["radius"] * SCALE)
@@ -750,6 +754,17 @@ def draw_everything():
                 
                 if i == sim.selected_shape_idx: 
                     pygame.draw.circle(screen, YELLOW, (cx, cy), radius_pixels + 2, 2)
+
+        #Loop through the first time and draw Passthrough object
+        for i, s in enumerate(sim.shapes):
+            if s.get("body_type") == "passthrough":
+                render_shape(i, s)
+                
+        #Loop through the second time and draw the rest
+        for i, s in enumerate(sim.shapes):
+            if s.get("body_type", "static") in ("static", "dynamic"):
+                render_shape(i, s)
+
 
     # Robot Layer
     if sim.current_mode != "studio":
