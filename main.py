@@ -220,24 +220,28 @@ def load_all_data():
                     m_val = float(parts[10]) if len(parts) >= 11 else 1.0
                     fric_val = float(parts[11]) if len(parts) >= 12 else 0.5
                     elas_val = float(parts[12]) if len(parts) >= 13 else 0.0
+                    is_over = bool(int(parts[13])) if len(parts) >= 14 else False
                     _, x, y, w, h, ang, r, g, b = parts[:9]
                     sim.shapes.append({"type": "rect", "x": float(x), "y": float(y), 
                                        "w": float(w), "h": float(h), 
                                        "angle": float(ang), 
                                        "color": (int(r), int(g), int(b)),
                                        "body_type": b_type, "mass": m_val,
-                                       "friction": fric_val, "elasticity": elas_val})
+                                       "friction": fric_val, "elasticity": elas_val,
+                                       "is_overpass": is_over})
                 elif tag == "CIRC" and len(parts) >= 7:
                     b_type = parts[7] if len(parts) >= 8 else "dynamic"
                     m_val = float(parts[8]) if len(parts) >= 9 else 1.0
                     fric_val = float(parts[9]) if len(parts) >= 10 else 0.5
                     elas_val = float(parts[10]) if len(parts) >= 11 else 0.0
+                    is_over = bool(int(parts[11])) if len(parts) >= 12 else False
                     _, x, y, radius, r, g, b = parts[:7]
                     sim.shapes.append({"type": "circ", "x": float(x), "y": float(y), 
                                        "radius": float(radius), 
                                        "color": (int(r), int(g), int(b)),
                                        "body_type": b_type, "mass": m_val,
-                                       "friction": fric_val, "elasticity": elas_val})
+                                       "friction": fric_val, "elasticity": elas_val,
+                                       "is_overpass": is_over})
                 elif tag == "ROBOT_START" and len(parts) == 4:
                     _, x, y, ang = parts
                     bot.start_pose = (float(x), float(y), float(ang))
@@ -250,10 +254,11 @@ def save_field_data():
             mass_val = s.get("mass", 1.0)
             fric_val = s.get("friction", 0.5)
             elas_val = s.get("elasticity", 0.0)
+            is_over = 1 if s.get("is_overpass", False) else 0
             if s["type"] == "rect":
-                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val}\n")
+                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
             elif s["type"] == "circ":
-                f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val}\n")
+                f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
 
 def save_settings():
@@ -1205,7 +1210,7 @@ def draw_everything():
                         text_label = "PASSTHROUGH"
 
                         is_over = s.get("is_overpass", False)
-                        over_color = ORANGE if not is_over else CYAN
+                        over_color = (106,74,58) if not is_over else (139,108,92)
                         over_label = "HIGH (OVER)" if is_over else "LOW (GROUND)"
                         pygame.draw.rect(screen, over_color, passthrough_overpass_toggle_rect, border_radius=4)
                         draw_small(over_label, passthrough_overpass_toggle_rect.x + 5, passthrough_overpass_toggle_rect.y + 4, BLACK)
