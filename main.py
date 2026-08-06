@@ -501,8 +501,9 @@ def sync_custom_obstacles_to_physics():
     for body in list(space.bodies):
         if body != bot.body and body != space.static_body:
             space.remove(body)
+
     for shape in list(space.shapes):
-        if shape != bot.shape and shape not in space.shapes:
+        if shape != bot.shape:
             # Keep field boundary segments safe
             if isinstance(shape, pymunk.Segment): continue
             space.remove(shape)
@@ -1450,7 +1451,16 @@ def handle_ui_click(mx, my):
                 sim.selected_shape_idx = len(sim.shapes) - 1; save_field_data(); return
 
             if delete_shape_button_rect.collidepoint(mx, my):
-                if sim.selected_shape_idx is not None: sim.shapes.pop(sim.selected_shape_idx); sim.selected_shape_idx = None; save_field_data(); return
+                if sim.selected_shape_idx is not None: 
+                    removed_s =sim.shapes.pop(sim.selected_shape_idx)
+                    if "body" in removed_s and removed_s["body"] in space.bodies:
+                        space.remove(removed_s["body"])
+                    if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
+                        space.remove(removed_s["pymunk_shape"])
+                sim.selected_shape_idx = None
+                save_field_data()
+                sync_custom_obstacles_to_physics()
+                return
             if add_shape_dropdown_rect.collidepoint(mx, my): sim.add_shape_dropdown_open = not sim.add_shape_dropdown_open; return
 
             if sim.add_shape_dropdown_open:
@@ -1744,7 +1754,15 @@ while running:
                 elif event.key == pygame.K_BACKSPACE: sim.textbox_value = sim.textbox_value[:-1]
                 elif event.unicode.isdigit() or event.unicode in ".-": sim.textbox_value += event.unicode
             elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
-                sim.shapes.pop(sim.selected_shape_idx); sim.selected_shape_idx = None; save_field_data()
+                removed_s = sim.shapes.pop(sim.selected_shape_idx)
+                if "body" in removed_s and removed_s["body"] in space.bodies:
+                    space.remove(removed_s["body"])
+                if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
+                    space.remove(removed_s["pymunk_shape"])
+                sim.selected_shape_idx = None
+                save_field_data()
+                sync_custom_obstacles_to_physics()
+
             # Toggle mode intake switching
             elif sim.current_mode == "drive" and not sim.paused and sim.settings["intake_control_mode"] == "toggle":
                 if event.key == sim.settings["keybinds"]["intake_in"]:
