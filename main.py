@@ -1695,11 +1695,24 @@ while running:
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
             if sim.dragging_shape: sim.dragging_shape = False; save_field_data()
+            if sim.resizing_shape: sim.resizing_shape = False; save_field_data()
 
         elif event.type == pygame.MOUSEMOTION and sim.current_mode == "edit":
             mx, my = event.pos
             m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
-            if sim.dragging_robot:
+
+            if sim.resizing_shape and sim.selected_shape_idx is not None:
+                s = sim.shapes[sim.selected_shape_idx]
+                if s["type"] == "rect":
+                    new_w = m_fx - s["x"]
+                    new_h = m_fy - s["y"]
+                    s["w"] = max(1.0, new_w)
+                    s["h"] = max(1.0, new_h)
+                elif s["type"] == "circ":
+                    new_r = m_fx - s["x"]
+                    s["radius"] = max(1.0, new_r)
+
+            elif sim.dragging_robot:
                 bot.x = m_fx - sim.robot_drag_offset_x
                 bot.y = m_fy - sim.robot_drag_offset_y
                 #Bring the physics (backend) body while dragging
