@@ -132,6 +132,7 @@ class SimulatorState:
         self.remapping_key = None 
         self.auton_mode = False
         self.auton_running = False
+        self.resizing_shape = False
         self.settings = {
             "input_mode": "keyboard",   
             "speed_scale": 1.0,
@@ -753,6 +754,11 @@ def draw_everything():
                     #Dot represent XY cord
                     pygame.draw.circle(screen, RED, (red_px_x, red_px_y), 5)
                     pygame.draw.circle(screen, BLACK, (red_px_x, red_px_y), 5, 1)
+                    #Resizing dot
+                    white_px_x = int((s["x"] + s["w"]) * SCALE)
+                    white_px_y = int(FIELD_PIXELS - ((s["y"] + s["h"]) * SCALE))
+                    pygame.draw.circle(screen, WHITE, (white_px_x, white_px_y), 5)
+                    pygame.draw.circle(screen, BLACK, (white_px_x, white_px_y), 5, 1)
 
             elif s["type"] == "circ":
                 cx, cy = int(s["x"] * SCALE), int(FIELD_PIXELS - s["y"] * SCALE)
@@ -774,6 +780,11 @@ def draw_everything():
                     #Dot representing XY cord
                     pygame.draw.circle(screen, RED, (red_px_x, red_px_y), 5)
                     pygame.draw.circle(screen, BLACK, (red_px_x, red_px_y), 5, 1)
+                    #Resizing dot
+                    white_px_x = int((s["x"] + s["radius"]) * SCALE)
+                    white_px_y = red_px_y
+                    pygame.draw.circle(screen, WHITE, (white_px_x, white_px_y), 5)
+                    pygame.draw.circle(screen, BLACK, (white_px_x, white_px_y), 5, 1)
 
         #Loop through the first time and draw Passthrough object
         for i, s in enumerate(sim.shapes):
@@ -1652,6 +1663,22 @@ while running:
                     sim.robot_drag_offset_y = ((FIELD_PIXELS - my) / SCALE) - bot.y
                 else:
                     m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
+                    if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
+                        sel_s = sim.shapes[sim.selected_shape_idx]
+                        #getting cords for the white dot/ resizing dot on top right of rectangle or right side of circle
+                        if sel_s["type"] == "rect":
+                            w_px_x = (sel_s["x"] + sel_s["w"]) * SCALE
+                            w_px_y = FIELD_PIXELS - ((sel_s["y"] + sel_s["h"]) * SCALE)
+                        else:
+                            w_px_x = (sel_s["x"] + sel_s["radius"]) * SCALE
+                            w_px_y = FIELD_PIXELS - (sel_s["y"] * SCALE)
+
+                        dis_sq = (mx - w_px_x)**2 + (my - w_px_y)**2 #Squared dist of click from white dot
+                        if dis_sq <= 10**2: #If within a 10px range
+                            sim.resizing_shape = True
+                            print("Working")
+                            continue
+
                     sim.selected_shape_idx = None
                     for i in reversed(range(len(sim.shapes))):
                         s = sim.shapes[i]
