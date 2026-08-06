@@ -747,6 +747,13 @@ def draw_everything():
                 if i == sim.selected_shape_idx: 
                     pygame.draw.rect(screen, YELLOW, rect, 2)
 
+                if i == sim.selected_shape_idx:
+                    red_px_x = int(s["x"] * SCALE)
+                    red_px_y = int(FIELD_PIXELS - (s["y"] * SCALE))
+                    #Dot represent XY cord
+                    pygame.draw.circle(screen, RED, (red_px_x, red_px_y), 5)
+                    pygame.draw.circle(screen, BLACK, (red_px_x, red_px_y), 5, 1)
+
             elif s["type"] == "circ":
                 cx, cy = int(s["x"] * SCALE), int(FIELD_PIXELS - s["y"] * SCALE)
                 radius_pixels = int(s["radius"] * SCALE)
@@ -762,6 +769,12 @@ def draw_everything():
                 if i == sim.selected_shape_idx: 
                     pygame.draw.circle(screen, YELLOW, (cx, cy), radius_pixels + 2, 2)
 
+                    red_px_x = int(s["x"] * SCALE)
+                    red_px_y = int(FIELD_PIXELS - (s["y"] * SCALE))
+                    #Dot representing XY cord
+                    pygame.draw.circle(screen, RED, (red_px_x, red_px_y), 5)
+                    pygame.draw.circle(screen, BLACK, (red_px_x, red_px_y), 5, 1)
+
         #Loop through the first time and draw Passthrough object
         for i, s in enumerate(sim.shapes):
             if s.get("body_type") == "passthrough":
@@ -771,7 +784,6 @@ def draw_everything():
         for i, s in enumerate(sim.shapes):
             if s.get("body_type", "static") in ("static", "dynamic"):
                 render_shape(i, s)
-
 
     # Robot Layer
     if sim.current_mode != "studio":
@@ -1140,6 +1152,25 @@ def draw_everything():
             pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, speed_y + 40), (WINDOW_WIDTH - 20, speed_y + 40), 1)
             
         elif sim.current_mode == "edit":
+            draw_small("X -->", FIELD_PIXELS - 50, FIELD_PIXELS - 22, BLACK)
+            draw_small("^ Y", 8, 50, BLACK)
+            draw_small("|", 8, 57, BLACK)
+
+            for inch in range(12, 133, 12):
+                px_val = int(inch * SCALE)
+
+                line_color = (120, 120, 120)
+                if inch % 24 == 0:
+                    line_color = BLACK
+
+                # X Axis (Bottom)
+                pygame.draw.line(screen, line_color, (px_val, FIELD_PIXELS - 14), (px_val, FIELD_PIXELS - 6), 2)
+                draw_small(f"{inch}\"", px_val - 10, FIELD_PIXELS - 28, line_color)
+
+                # Y Axis (Left)
+                line_y = FIELD_PIXELS - px_val #Flip the Y cords instead of pygame top left
+                pygame.draw.line(screen, line_color, (6, line_y), (14, line_y), 2)
+                draw_small(f"{inch}\"", 16, line_y - 6, line_color)
 
             pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
             if sim.current_page == "edit 1":
