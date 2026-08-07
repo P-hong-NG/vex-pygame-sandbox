@@ -135,6 +135,8 @@ class SimulatorState:
         self.auton_mode = False
         self.auton_running = False
         self.resizing_shape = False
+        self.dragging_speed_slider = False
+        self.dragging_turn_slider = False
         self.settings = {
             "input_mode": "keyboard",   
             "speed_scale": 1.0,
@@ -1434,10 +1436,12 @@ def handle_ui_click(mx, my):
         if controller_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "controller"; save_settings(); return
     
         if slider_rect.collidepoint(mx, my):
-            sim.settings["speed_scale"] = 0.3 + ((mx - slider_rect.x) / slider_rect.width) * 1.2
+            sim.settings["speed_scale"] = round(0.3 + ((mx - slider_rect.x) / slider_rect.width) * 1.2, 2) #Round to 2 decimals
+            sim.dragging_speed_slider = True
             save_settings(); return
         if turn_slider_rect.collidepoint(mx, my):
-            sim.settings["turn_scale"] = 0.3 + ((mx - turn_slider_rect.x) / turn_slider_rect.width) * 1.2
+            sim.settings["turn_scale"] = round(0.3 + ((mx - turn_slider_rect.x) / turn_slider_rect.width) * 1.2, 2)
+            sim.dragging_turn_slider = True
             save_settings(); return
         if reset_button_rect.collidepoint(mx, my): bot.reset_to_start(); return
         if reset_pose_button_rect.collidepoint(mx, my): bot.reset_to_center(); return
@@ -1699,7 +1703,6 @@ while running:
                         dis_sq = (mx - w_px_x)**2 + (my - w_px_y)**2 #Squared dist of click from white dot
                         if dis_sq <= 10**2: #If within a 10px range
                             sim.resizing_shape = True
-                            print("Working")
                             continue
 
                     sim.selected_shape_idx = None
@@ -1717,37 +1720,49 @@ while running:
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
-            if sim.dragging_shape: sim.dragging_shape = False; save_field_data()
-            if sim.resizing_shape: sim.resizing_shape = False; save_field_data()
-
-        elif event.type == pygame.MOUSEMOTION and sim.current_mode == "edit":
+            elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
+            elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
+            elif sim.dragging_turn_slider: sim.dragging_turn_slider = False; save_field_data()
+            elif sim.dragging_speed_slider: sim.dragging_speed_slider = False; save_field_data()
+                
+        elif event.type == pygame.MOUSEMOTION:
             mx, my = event.pos
-            m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
 
-            if sim.resizing_shape and sim.selected_shape_idx is not None:
-                s = sim.shapes[sim.selected_shape_idx]
-                if s["type"] == "rect":
-                    new_w = m_fx - s["x"]
-                    new_h = m_fy - s["y"]
-                    s["w"] = max(1.0, new_w)
-                    s["h"] = max(1.0, new_h)
-                elif s["type"] == "circ":
-                    new_r = m_fx - s["x"]
-                    s["radius"] = max(1.0, new_r)
+            if sim.current_mode == "drive":
+                if sim.dragging_speed_slider:
+                    rel_x = max(0.0, min(1.0, (mx - slider_rect.x) / slider_rect.width))
+                    sim.settings["speed_scale"] = round(0.3 + rel_x * 1.2, 2)
+                elif sim.dragging_turn_slider:
+                    rel_x = max(0.0, min(1.0, (mx - turn_slider_rect.x) / turn_slider_rect.width))
+                    sim.settings["turn_scale"] = round(0.3 + rel_x * 1.2, 2)
 
-            elif sim.dragging_robot:
-                bot.x = m_fx - sim.robot_drag_offset_x
-                bot.y = m_fy - sim.robot_drag_offset_y
-                #Bring the physics (backend) body while dragging
-                bot.body.position = (bot.x * SCALE, bot.y * SCALE)
-            elif sim.dragging_shape and sim.selected_shape_idx is not None:
-                s = sim.shapes[sim.selected_shape_idx]
-                if s["type"] == "rect":
-                    s["x"] = (m_fx - sim.drag_offset_x) - s["w"]/2
-                    s["y"] = (m_fy - sim.drag_offset_y) - s["h"]/2
-                else:
-                    s["x"] = m_fx - sim.drag_offset_x
-                    s["y"] = m_fy - sim.drag_offset_y
+            elif sim.current_mode == "edit":
+                m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
+
+                if sim.resizing_shape and sim.selected_shape_idx is not None:
+                    s = sim.shapes[sim.selected_shape_idx]
+                    if s["type"] == "rect":
+                        new_w = m_fx - s["x"]
+                        new_h = m_fy - s["y"]
+                        s["w"] = max(1.0, new_w)
+                        s["h"] = max(1.0, new_h)
+                    elif s["type"] == "circ":
+                        new_r = m_fx - s["x"]
+                        s["radius"] = max(1.0, new_r)
+
+                elif sim.dragging_robot:
+                    bot.x = m_fx - sim.robot_drag_offset_x
+                    bot.y = m_fy - sim.robot_drag_offset_y
+                    #Bring the physics (backend) body while dragging
+                    bot.body.position = (bot.x * SCALE, bot.y * SCALE)
+                elif sim.dragging_shape and sim.selected_shape_idx is not None:
+                    s = sim.shapes[sim.selected_shape_idx]
+                    if s["type"] == "rect":
+                        s["x"] = (m_fx - sim.drag_offset_x) - s["w"]/2
+                        s["y"] = (m_fy - sim.drag_offset_y) - s["h"]/2
+                    else:
+                        s["x"] = m_fx - sim.drag_offset_x
+                        s["y"] = m_fy - sim.drag_offset_y
 
         elif event.type == pygame.KEYDOWN:
             # Global Pause Toggle (ESC Key)
