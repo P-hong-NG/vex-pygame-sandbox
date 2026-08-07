@@ -30,9 +30,11 @@ FONT = pygame.font.SysFont("consolas", 18)
 SMALL_FONT = pygame.font.SysFont("consolas", 14)
 
 # File Paths
-SETTINGS_FILE = "settings.json"
-FIELD_FILE = "custom_field.txt"
-DRIVE_FILE = "custom_drive.txt"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
+FIELD_FILE = os.path.join(BASE_DIR, "custom_field.txt")
+DRIVE_FILE = os.path.join(BASE_DIR, "custom_drive.txt")
 
 # =====================================================================
 # 2. STATE OBJECTS (Robot & Simulator Classes)
@@ -136,6 +138,7 @@ class SimulatorState:
         self.settings = {
             "input_mode": "keyboard",   
             "speed_scale": 1.0,
+            "turn_scale": 1.0,
             "intake_rev_velocity": 30.0, #Reverse intake ejection speed
             "outtake_velocity": 15.0, 
             "field_source": "image",    
@@ -339,7 +342,7 @@ def get_inputs(dt):
 #Run 60 times a second, do all the collisions, calculations, and visual updates
 def update_physics(left_speed, right_speed, dt):
     bot.current_speed = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
-    turn_multiplier = 40.0 #Can be changed! Increase for faster turning
+    turn_multiplier = 40.0 * sim.settings.get("turn_scale", 1.0)
     omega = ((left_speed - right_speed) / bot.track_width)*turn_multiplier  #Difference 
     
     rad = bot.body.angle #Radians for PyMunk
@@ -592,9 +595,10 @@ drive_mode_custom_rect = pygame.Rect(FIELD_PIXELS + 220, 70, 90, 26)
 keyboard_button_rect = pygame.Rect(FIELD_PIXELS + 20, 110, 100, 26)
 controller_button_rect = pygame.Rect(FIELD_PIXELS + 140, 110, 100, 26)
 slider_rect = pygame.Rect(FIELD_PIXELS + 20, 170, 200, 6)
-reset_button_rect = pygame.Rect(FIELD_PIXELS + 20, 190, 130, 28)
-reset_pose_button_rect = pygame.Rect(FIELD_PIXELS + 180, 190, 130, 28)
-auton_button_rect = pygame.Rect(FIELD_PIXELS + 20, 230, 280, 28)
+turn_slider_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 200, 6)
+reset_button_rect = pygame.Rect(FIELD_PIXELS + 20, 230, 130, 28)
+reset_pose_button_rect = pygame.Rect(FIELD_PIXELS + 180, 230, 130, 28)
+auton_button_rect = pygame.Rect(FIELD_PIXELS + 20, 270, 280, 28)
 
 field_image_button_rect = pygame.Rect(FIELD_PIXELS + 20, 85, 120, 26)
 field_custom_button_rect = pygame.Rect(FIELD_PIXELS + 160, 85, 120, 26)
@@ -1082,6 +1086,12 @@ def draw_everything():
             t = max(0.0, min(1.0, (sim.settings["speed_scale"] - 0.3) / 1.2))
             pygame.draw.circle(screen, YELLOW, (slider_rect.x + int(t * slider_rect.width), slider_rect.y + 3), 8)
             draw_small(f"{sim.settings['speed_scale']:.2f}x", FIELD_PIXELS + 230, slider_rect.y-5, LIGHT_GRAY)
+
+            draw_small("Robot's turn multiplier:", turn_slider_rect.x, turn_slider_rect.y - 25, LIGHT_GRAY)
+            pygame.draw.rect(screen, LIGHT_GRAY, turn_slider_rect)
+            t = max(0.0, min(1.0, (sim.settings["turn_scale"] - 0.3) / 1.2))
+            pygame.draw.circle(screen, YELLOW, (turn_slider_rect.x + int(t * turn_slider_rect.width), turn_slider_rect.y + 3), 8)
+            draw_small(f"{sim.settings['turn_scale']:.2f}x", FIELD_PIXELS + 230, turn_slider_rect.y-5, LIGHT_GRAY)
         
             # Action buttons execution
             pygame.draw.rect(screen, (180, 60, 60), reset_button_rect, border_radius=4)
@@ -1137,7 +1147,7 @@ def draw_everything():
                         pygame.draw.rect(screen, s.get("color"), slot_rect, 2, border_radius=6)
 
             # HUD Intake/Outtake
-            hud_y = inv_y + 100
+            hud_y = inv_y + 140
             draw_text("Subsystems", FIELD_PIXELS + 20, hud_y, YELLOW)
             # Intake 
             
