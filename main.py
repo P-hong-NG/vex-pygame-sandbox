@@ -1436,6 +1436,9 @@ def handle_ui_click(mx, my):
         if slider_rect.collidepoint(mx, my):
             sim.settings["speed_scale"] = 0.3 + ((mx - slider_rect.x) / slider_rect.width) * 1.2
             save_settings(); return
+        if turn_slider_rect.collidepoint(mx, my):
+            sim.settings["turn_scale"] = 0.3 + ((mx - turn_slider_rect.x) / turn_slider_rect.width) * 1.2
+            save_settings(); return
         if reset_button_rect.collidepoint(mx, my): bot.reset_to_start(); return
         if reset_pose_button_rect.collidepoint(mx, my): bot.reset_to_center(); return
         if auton_button_rect.collidepoint(mx, my) and not sim.auton_running: sim.auton_mode = True; return
