@@ -4,6 +4,7 @@ import pymunk.pygame_util
 import math
 import json
 import os
+from ui import UIButton, UITextbox, ScrollView
 
 pygame.init()
 
@@ -685,13 +686,31 @@ pause_exit_btn = pygame.Rect(modal_x + 30, modal_y + 195, 220, 36)
 SETTING_W, SETTING_H = 420, 360
 setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
 setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
-settings_modal_rect = pygame.Rect(setting_x, setting_y, SETTING_W, SETTING_H)
 
-btn_bind_intake_in = pygame.Rect(setting_x + 230, setting_y + 80,  150, 32)
-btn_bind_intake_out = pygame.Rect(setting_x + 230, setting_y + 130, 150, 32)
-btn_bind_outtake_score = pygame.Rect(setting_x + 230, setting_y + 180, 150, 32)
-toggle_mode_btn = pygame.Rect(setting_x + 230, setting_y + 230, 150, 32)
-settings_back_btn = pygame.Rect(setting_x + 40,  setting_y + 300, 340, 38)
+settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
+
+# What happens when clicked
+def bind_in(): sim.remapping_key = "intake_in"
+def bind_out(): sim.remapping_key = "intake_out"
+def bind_score(): sim.remapping_key = "outtake_score"
+def toggle_mode(): 
+    sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
+    save_settings()
+def close_settings(): 
+    sim.remapping_key = None
+    sim.paused_sub_menu = "main"
+
+btn_in = UIButton(60, 40, 300, 40, "Intake In", action_callback=bind_in)
+btn_out = UIButton(60, 100, 300, 40, "Intake Out", action_callback=bind_out)
+btn_score = UIButton(60, 160, 300, 40, "Outtake Score", action_callback=bind_score)
+btn_mode = UIButton(60, 220, 300, 40, "Intake Mode", action_callback=toggle_mode)
+btn_back = UIButton(60, 400, 300, 40, "Back to Pause Menu", action_callback=close_settings)
+
+settings_scrollview.add_child(btn_in)
+settings_scrollview.add_child(btn_out)
+settings_scrollview.add_child(btn_score)
+settings_scrollview.add_child(btn_mode)
+settings_scrollview.add_child(btn_back)
 
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
@@ -1337,35 +1356,16 @@ def draw_everything():
             draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
             draw_small("Exit Simulator", pause_exit_btn.x + 55, pause_exit_btn.y + 10, WHITE)    
         elif sim.paused_sub_menu == "settings":
-            pygame.draw.rect(screen, (35, 35, 45), settings_modal_rect, border_radius=12)
-            pygame.draw.rect(screen, YELLOW, settings_modal_rect, 2, border_radius=12)
+            k_in = pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
+            k_out = pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
+            k_score = pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
             
-            draw_text("SETTINGS & KEYBINDS", settings_modal_rect.x + 115, settings_modal_rect.y + 20, YELLOW)
-            intake_in_text = "Press Any Key..." if sim.remapping_key == "intake_in" else pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
-            intake_out_text = "Press Any Key..." if sim.remapping_key == "intake_out" else pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
-            outtake_score_text = "Press Any Key..." if sim.remapping_key == "outtake_score" else pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
-            #Intaking from the intake zone (forward)
-            draw_small("Intake In Key:", setting_x + 40, setting_y + 88, WHITE)
-            intake_in_color = ORANGE if sim.remapping_key == "intake_in" else LIGHT_GRAY
-            pygame.draw.rect(screen, intake_in_color, btn_bind_intake_in, border_radius=6)
-            draw_small(intake_in_text, btn_bind_intake_in.x + 12, btn_bind_intake_in.y + 8, BLACK)
-            #outaking from the intake zone (reversing the intake)
-            draw_small("Intake Out Key:", setting_x + 40, setting_y + 138, WHITE)
-            intake_out_color = ORANGE if sim.remapping_key == "intake_out" else LIGHT_GRAY
-            pygame.draw.rect(screen, intake_out_color, btn_bind_intake_out, border_radius=6)
-            draw_small(intake_out_text, btn_bind_intake_out.x + 12, btn_bind_intake_out.y + 8, BLACK)
-            draw_small("Outtake Score Key:", setting_x + 40, setting_y + 188, WHITE)
-            outtake_color = ORANGE if sim.remapping_key == "outtake_score" else LIGHT_GRAY
-            pygame.draw.rect(screen, outtake_color, btn_bind_outtake_score, border_radius=6)
-            draw_small(outtake_score_text, btn_bind_outtake_score.x + 12, btn_bind_outtake_score.y + 8, BLACK)
-            # Type to intake Toggle or Hold option
-            draw_small("Intake Mode:", setting_x + 40, setting_y + 238, WHITE)
-            mode_color = GREEN if sim.settings["intake_control_mode"] == "toggle" else CYAN
-            pygame.draw.rect(screen, mode_color, toggle_mode_btn, border_radius=6)
-            draw_small(sim.settings["intake_control_mode"].upper(), toggle_mode_btn.x + 35, toggle_mode_btn.y + 8, BLACK)
-            #Back to Pause Menu
-            pygame.draw.rect(screen, LIGHT_GRAY, settings_back_btn, border_radius=6)
-            draw_small("Back to Pause Menu", settings_back_btn.x + 115, settings_back_btn.y + 10, BLACK)
+            btn_in.text = "Press Any Key..." if sim.remapping_key == "intake_in" else f"Intake In Key: {k_in}"
+            btn_out.text = "Press Any Key..." if sim.remapping_key == "intake_out" else f"Intake Out Key: {k_out}"
+            btn_score.text = "Press Any Key..." if sim.remapping_key == "outtake_score" else f"Outtake Score: {k_score}"
+            btn_mode.text = f"Intake Mode: {sim.settings['intake_control_mode'].upper()}"
+
+            settings_scrollview.draw(screen)
     
     pygame.display.flip()
 # =====================================================================
@@ -1665,20 +1665,8 @@ while running:
                     elif pause_exit_btn.collidepoint(mx,my):
                         pygame.quit(); raise SystemExit
                 elif sim.paused_sub_menu == "settings":
-                    if btn_bind_intake_in.collidepoint(mx,my):
-                        sim.remapping_key = "intake_in"
-                    elif btn_bind_intake_out.collidepoint(mx,my):
-                        sim.remapping_key = "intake_out"
-                    elif btn_bind_outtake_score.collidepoint(mx,my):  
-                        sim.remapping_key = "outtake_score"
-                    elif toggle_mode_btn.collidepoint(mx,my):
-                        #Flip between Hold and Toggle
-                        sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
-                        save_settings()
-                    elif settings_back_btn.collidepoint(mx,my):
-                        sim.remapping_key = None
-                        sim.paused_sub_menu = "main"
-             #Handling clicks when the game is NOT paused
+                    settings_scrollview.handle_event(event, mx, my)
+            #Handling clicks when the game is NOT paused
             elif mx >= FIELD_PIXELS: handle_ui_click(mx, my)
             elif sim.current_mode == "edit":
                 # Check robot drag focus
@@ -1717,6 +1705,11 @@ while running:
                         sim.drag_offset_x = m_fx - (s["x"] + s["w"]/2 if s["type"]=="rect" else s["x"])
                         sim.drag_offset_y = m_fy - (s["y"] + s["h"]/2 if s["type"]=="rect" else s["y"])
                         sim.dragging_shape = True
+
+        elif event.type == pygame.MOUSEWHEEL:
+            if sim.paused and sim.paused_sub_menu == "settings":
+                mx, my = pygame.mouse.get_pos()
+                settings_scrollview.handle_event(event, mx, my)
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
