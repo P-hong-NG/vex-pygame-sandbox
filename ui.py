@@ -124,3 +124,72 @@ class UITextbox(UIElement):
         # Draw the actual typed letters inside the box
         value_surf = UI_FONT.render(self.value, True, BLACK)
         surface.blit(value_surf, (self.screen_rect.x + 4, self.screen_rect.y + 3))
+
+class ScrollView(UIElement):
+    def __init__(self, x, y, w, h):
+        super().__init__(x, y, w, h)
+        # List to hold all the buttons, textboxes, etc. inside this container
+        self.children = []
+        
+        # Scrolling math variables
+        self.scroll_y = 0
+        self.scroll_speed = 20
+        self.max_scroll = 0
+
+    def add_child(self, element):
+        """Adds a UI component to this container."""
+        self.children.append(element)
+        self._calculate_max_scroll()
+
+    def _calculate_max_scroll(self):
+        """Figures out how far down we are allowed to scroll based on the lowest item."""
+        if not self.children:
+            self.max_scroll = 0
+            return
+            
+        # Find the bottom edge of the very last element in the list
+        lowest_bottom = max([child.local_rect.bottom for child in self.children])
+        
+        # If the items don't fill the box, no scrolling needed.
+        # If they overflow, the max scroll is the overflow amount.
+        self.max_scroll = max(0, lowest_bottom - self.local_rect.height)
+
+    def handle_event(self, event, mx, my):
+        if not self.is_visible: return False
+
+        # 1. Handle mouse wheel scrolling (only if the mouse is hovering over the menu)
+        if self.screen_rect.collidepoint(mx, my):
+            if event.type == pygame.MOUSEWHEEL:
+                # event.y is 1 (scroll up) or -1 (scroll down)
+                self.scroll_y += event.y * self.scroll_speed
+                
+                # Clamp the scrolling so we don't scroll into the void
+                self.scroll_y = max(-self.max_scroll, min(0, self.scroll_y))
+                return True
+
+        # 2. Pass the event down to the children (buttons, textboxes)
+        for child in self.children:
+            # If a child handles the click, stop checking the others
+            if child.handle_event(event, mx, my):
+                return True
+                
+        return False
+
+    def draw(self, surface):
+        if not self.is_visible: return
+
+        # Draw the main background for the menu panel
+        pygame.draw.rect(surface, (35, 35, 45), self.screen_rect, border_radius=12)
+        pygame.draw.rect(surface, (255, 220, 0), self.screen_rect, 2, border_radius=12) # Yellow border
+
+        # Tell Pygame to ONLY draw things inside this specific rectangle
+        old_clip = surface.get_clip()
+        surface.set_clip(self.screen_rect)
+
+        # Draw all the children, passing them their dynamic offset position
+        for child in self.children:
+            child.update_position(self.screen_rect.x, self.screen_rect.y + self.scroll_y)
+            child.draw(surface)
+
+        # Restore the original clipping boundaries so the rest of the game draws normally
+        surface.set_clip(old_clip)
