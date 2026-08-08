@@ -87,6 +87,20 @@ In the game (I would like to call it now, rather than simulator), the inventory 
 ![Inventory display in Drive mode having a countdown over each object](images/inventoryCountdown.png)
 (Also, if you noticed, the display would now show a smaller version of the Dynamic object that got taken in! Like the circles, the rectangles along with their color - so that brings out the feeling of the game too!!!🎮)
 
+[August 8th, 2026] - A rework in the game's UI system
+
+As the game keeps growing, I really realize the limitations of my old way of doing UI's and its backend functions (saving, loading, clicking, typing). Hardcoding exact X and Y coordinates for every single button and text boxes was fine at the start but now I'm getting to the part (where I previously mentioned) that I would need a scrollable list of keybinds to accommodate the new functions and my goal for the most customizable game
+
+I did some brainstorming with my AI "co-dev" to figure out how actual game devs and studios handle this scrolling challenge. Instead of a quick way of doing this (using the current way of drawing and constantly showing and hiding certain text boxes as the user scrolls), we decided to completely overhaul the structure to a "Data-Driven Component System", similar to what engines like Unity uses (better performance, simply attaching and detaching data components, and clean)
+
+The UIElement class: Everything is an object now. We created a base class that keeps track of a local_rect (inside a menu, based on the screen_rect) and a screen_rect (base one)
+
+Seperating UI classes to a new ui.py file: I moved all this new UI logic into its own completely independent file. Now main.py can just focus on the robot physics and game loops without being cluttered by hundreds of lines of menu math.
+
+The ScrollView class: Where the scrolling happens. It acts as a parent container that holds a list of UI elements/children. When you scroll the mouse wheel, it automatically shifts the Y-coordinates of all its children and uses Pygame's set_clip() function to hide anything that is not inside the set range.
+
+We built and tested the components with simple buttons first and then completely ripped out the old "Keybinds and Settings" modal draw_everything() and handle_ui_clicks(). Now adding a new button is as simple as "settings_scrollview.add_child()", no more 20+ hardcoded rectangles for textboxes and .collidepoint conditions in the main loop - Dev note: it feels like a real game now :) And expanding the game in the future with this new structure would be so much easier 🍋
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These would be images that I have taken on various dates, so I can't give you the exact date, sorry!
