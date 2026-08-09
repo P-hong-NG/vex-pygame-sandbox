@@ -4,7 +4,7 @@ import pymunk.pygame_util
 import math
 import json
 import os
-from ui import UIButton, UITextbox, ScrollView
+from ui import UIButton, UITextbox, ScrollView, UIDropdown, UISlider
 
 pygame.init()
 
@@ -597,8 +597,6 @@ drive_mode_arcade_rect = pygame.Rect(FIELD_PIXELS + 120, 70, 90, 26)
 drive_mode_custom_rect = pygame.Rect(FIELD_PIXELS + 220, 70, 90, 26)
 keyboard_button_rect = pygame.Rect(FIELD_PIXELS + 20, 110, 100, 26)
 controller_button_rect = pygame.Rect(FIELD_PIXELS + 140, 110, 100, 26)
-slider_rect = pygame.Rect(FIELD_PIXELS + 20, 170, 200, 6)
-turn_slider_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 200, 6)
 reset_button_rect = pygame.Rect(FIELD_PIXELS + 20, 230, 130, 28)
 reset_pose_button_rect = pygame.Rect(FIELD_PIXELS + 180, 230, 130, 28)
 auton_button_rect = pygame.Rect(FIELD_PIXELS + 20, 270, 280, 28)
@@ -689,7 +687,7 @@ setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
 
 settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
 
-# What happens when clicked
+# Scrollview
 def bind_in(): sim.remapping_key = "intake_in"
 def bind_out(): sim.remapping_key = "intake_out"
 def bind_score(): sim.remapping_key = "outtake_score"
@@ -711,6 +709,20 @@ settings_scrollview.add_child(btn_out)
 settings_scrollview.add_child(btn_score)
 settings_scrollview.add_child(btn_mode)
 settings_scrollview.add_child(btn_back)
+
+# Slider and Dropdown 
+def update_speed(new_val):
+    sim.settings["speed_scale"] = new_val
+    save_settings()
+def update_turn(new_val):
+    sim.settings["turn_scale"] = new_val
+    save_settings()
+def update_add_shape(new_val):
+    sim.add_shape_type = "rect" if new_val == "Rectangle" else "circ"
+
+speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplier:", 0.3, 1.5, sim.settings.get("speed_scale", 1.0), update_speed)
+turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
+shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle"], 0, update_add_shape)
 
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
@@ -1100,19 +1112,9 @@ def draw_everything():
             pygame.draw.rect(screen, YELLOW if sim.settings["input_mode"] == "controller" else LIGHT_GRAY, controller_button_rect, border_radius=4)
             draw_small("Keyboard", keyboard_button_rect.x + 8, keyboard_button_rect.y + 5, BLACK)
             draw_small("Controller", controller_button_rect.x + 5, controller_button_rect.y + 5, BLACK)
-        
-            # Slider Rendering
-            draw_small("Robot's speed multiplier:", slider_rect.x, slider_rect.y - 25, LIGHT_GRAY)
-            pygame.draw.rect(screen, LIGHT_GRAY, slider_rect)
-            t = max(0.0, min(1.0, (sim.settings["speed_scale"] - 0.3) / 1.2))
-            pygame.draw.circle(screen, YELLOW, (slider_rect.x + int(t * slider_rect.width), slider_rect.y + 3), 8)
-            draw_small(f"{sim.settings['speed_scale']:.2f}x", FIELD_PIXELS + 230, slider_rect.y-5, LIGHT_GRAY)
 
-            draw_small("Robot's turn multiplier:", turn_slider_rect.x, turn_slider_rect.y - 25, LIGHT_GRAY)
-            pygame.draw.rect(screen, LIGHT_GRAY, turn_slider_rect)
-            t = max(0.0, min(1.0, (sim.settings["turn_scale"] - 0.3) / 1.2))
-            pygame.draw.circle(screen, YELLOW, (turn_slider_rect.x + int(t * turn_slider_rect.width), turn_slider_rect.y + 3), 8)
-            draw_small(f"{sim.settings['turn_scale']:.2f}x", FIELD_PIXELS + 230, turn_slider_rect.y-5, LIGHT_GRAY)
+            speed_slider.draw(screen)
+            turn_slider.draw(screen)
         
             # Action buttons execution
             pygame.draw.rect(screen, (180, 60, 60), reset_button_rect, border_radius=4)
@@ -1228,21 +1230,13 @@ def draw_everything():
                 draw_small("Image", field_image_button_rect.x + 30, field_image_button_rect.y + 4, BLACK)
                 draw_small("Custom", field_custom_button_rect.x + 25, field_custom_button_rect.y + 4, BLACK)
             
-                # Shapes and list property fields configuration parsing loop drawing
                 draw_small("Game Elements Customization:", add_shape_button_rect.x, add_shape_button_rect.y - 20, YELLOW)
                 pygame.draw.rect(screen, LIGHT_GRAY, add_shape_button_rect, border_radius=4)
                 pygame.draw.rect(screen, (180,60,60), delete_shape_button_rect, border_radius=4)
                 draw_small("Add Shape", add_shape_button_rect.x + 20, add_shape_button_rect.y + 5, BLACK)
                 draw_small("Delete Shape", delete_shape_button_rect.x + 15, delete_shape_button_rect.y + 5, BLACK)
-            
-                pygame.draw.rect(screen, WHITE, add_shape_dropdown_rect, border_radius=4)
-                draw_small(f"{'Rectangle' if sim.add_shape_type=='rect' else 'Circle'} ▼", add_shape_dropdown_rect.x + 6, add_shape_dropdown_rect.y + 4, BLACK)
-            
-                if sim.add_shape_dropdown_open:
-                    r_o = pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 24, add_shape_dropdown_rect.width, 24)
-                    c_o = pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 48, add_shape_dropdown_rect.width, 24)
-                    pygame.draw.rect(screen, WHITE, r_o); pygame.draw.rect(screen, WHITE, c_o)
-                    draw_small("Rectangle", r_o.x + 4, r_o.y + 4, BLACK); draw_small("Circle", c_o.x + 4, c_o.y + 4, BLACK)
+                
+                shape_dropdown.draw(screen)     
             
                 # Inspector Panel selection layout loop context mapping logic
                 if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
@@ -1434,15 +1428,6 @@ def handle_ui_click(mx, my):
         if drive_mode_custom_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "custom"; save_settings(); return
         if keyboard_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "keyboard"; save_settings(); return
         if controller_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "controller"; save_settings(); return
-    
-        if slider_rect.collidepoint(mx, my):
-            sim.settings["speed_scale"] = round(0.3 + ((mx - slider_rect.x) / slider_rect.width) * 1.2, 2) #Round to 2 decimals
-            sim.dragging_speed_slider = True
-            save_settings(); return
-        if turn_slider_rect.collidepoint(mx, my):
-            sim.settings["turn_scale"] = round(0.3 + ((mx - turn_slider_rect.x) / turn_slider_rect.width) * 1.2, 2)
-            sim.dragging_turn_slider = True
-            save_settings(); return
         if reset_button_rect.collidepoint(mx, my): bot.reset_to_start(); return
         if reset_pose_button_rect.collidepoint(mx, my): bot.reset_to_center(); return
         if auton_button_rect.collidepoint(mx, my) and not sim.auton_running: sim.auton_mode = True; return
@@ -1667,7 +1652,15 @@ while running:
                 elif sim.paused_sub_menu == "settings":
                     settings_scrollview.handle_event(event, mx, my)
             #Handling clicks when the game is NOT paused
-            elif mx >= FIELD_PIXELS: handle_ui_click(mx, my)
+            elif mx >= FIELD_PIXELS: 
+                handled = False
+                if sim.current_mode == "drive":
+                    handled = speed_slider.handle_event(event, mx, my) or turn_slider.handle_event(event, mx, my)
+                elif sim.current_mode == "edit" and sim.current_page == "edit 1":
+                    handled = shape_dropdown.handle_event(event, mx, my)
+
+                if not handled: #Run old function if not detected
+                    handle_ui_click(mx, my)
             elif sim.current_mode == "edit":
                 # Check robot drag focus
                 dx, dy = mx - bot.x * SCALE, my - (FIELD_PIXELS - bot.y * SCALE)
@@ -1712,22 +1705,20 @@ while running:
                 settings_scrollview.handle_event(event, mx, my)
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
-            elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
-            elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
-            elif sim.dragging_turn_slider: sim.dragging_turn_slider = False; save_field_data()
-            elif sim.dragging_speed_slider: sim.dragging_speed_slider = False; save_field_data()
+            mx, my = event.pos
+            if sim.current_mode == "edit":
+                if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
+                elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
+                elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
+            elif sim.current_mode == "drive":
+                speed_slider.handle_event(event, mx, my)
+                turn_slider.handle_event(event, mx, my)
                 
         elif event.type == pygame.MOUSEMOTION:
             mx, my = event.pos
-
             if sim.current_mode == "drive":
-                if sim.dragging_speed_slider:
-                    rel_x = max(0.0, min(1.0, (mx - slider_rect.x) / slider_rect.width))
-                    sim.settings["speed_scale"] = round(0.3 + rel_x * 1.2, 2)
-                elif sim.dragging_turn_slider:
-                    rel_x = max(0.0, min(1.0, (mx - turn_slider_rect.x) / turn_slider_rect.width))
-                    sim.settings["turn_scale"] = round(0.3 + rel_x * 1.2, 2)
+                speed_slider.handle_event(event, mx, my)
+                turn_slider.handle_event(event, mx, my)
 
             elif sim.current_mode == "edit":
                 m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
