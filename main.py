@@ -685,9 +685,10 @@ SETTING_W, SETTING_H = 420, 360
 setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
 setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
 
+
+#Scrollview - ui.py
 settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
 
-# Scrollview
 def bind_in(): sim.remapping_key = "intake_in"
 def bind_out(): sim.remapping_key = "intake_out"
 def bind_score(): sim.remapping_key = "outtake_score"
@@ -710,7 +711,7 @@ settings_scrollview.add_child(btn_score)
 settings_scrollview.add_child(btn_mode)
 settings_scrollview.add_child(btn_back)
 
-# Slider and Dropdown 
+# Slider and Dropdown - ui.py
 def update_speed(new_val):
     sim.settings["speed_scale"] = new_val
     save_settings()
@@ -724,6 +725,60 @@ speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplie
 turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
 shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle"], 0, update_add_shape)
 
+#Buttons and textboxes - ui.py
+
+def update_rlen(val):
+    try: bot.length = max(6.0, min(bot.max_size, float(val)))
+    except: pass
+def update_rwid(val):
+    try: bot.track_width = max(6.0, min(bot.max_size, float(val)))
+    except: pass
+def update_cartridge(val):
+    # Extracts "red", "green", or "blue" from the dropdown string
+    color = val.split(" ")[0].lower() 
+    sim.settings["motor_cartridge"] = color
+    bot.calculate_max_speed(color)
+    save_settings()
+def update_wrad(val): #Wheel radius
+    try: 
+        bot.wheel_radius = max(1.0, min(3.0, float(val)))
+        bot.wheel_circ = 2 * math.pi * bot.wheel_radius
+        bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
+        studio_wrad_box.value = f"{bot.wheel_radius:.3f}" # Update the text box visually
+    except: pass
+def set_preset_275(): update_wrad("1.375")
+def set_preset_325(): update_wrad("1.625")
+def set_preset_400(): update_wrad("2.000")
+def update_gin(val):
+    try: bot.gear_in = int(max(1, float(val))); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
+    except: pass
+def update_gout(val):
+    try: bot.gear_out = int(max(1, float(val))); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
+    except: pass
+def update_mass(val):
+    try: bot.total_mass = max(1.0, float(val)); save_settings()
+    except: pass
+
+studio_len_box = UITextbox(FIELD_PIXELS + 20, 115, 100, 24, "Length (in)", str(bot.length), update_rlen)
+studio_wid_box = UITextbox(FIELD_PIXELS + 140, 115, 100, 24, "Width (in)", str(bot.track_width), update_rwid)
+
+# Stats based on current settings
+cart_idx = {"red": 0, "green": 1, "blue": 2}.get(sim.settings.get("motor_cartridge", "green"), 1)
+cartridge_dropdown = UIDropdown(FIELD_PIXELS + 20, 330, 180, 24, ["Red (100 RPM)", "Green (200 RPM)", "Blue (600 RPM)"], cart_idx, update_cartridge)
+
+studio_wrad_box = UITextbox(FIELD_PIXELS + 20, 160, 100, 24, "Wheel's radius (in)", str(bot.wheel_radius), update_wrad)
+btn_w275 = UIButton(FIELD_PIXELS + 130, 160, 55, 24, "2.75\"", action_callback=set_preset_275)
+btn_w325 = UIButton(FIELD_PIXELS + 190, 160, 55, 24, "3.25\"", action_callback=set_preset_325)
+btn_w400 = UIButton(FIELD_PIXELS + 250, 160, 55, 24, "4.00\"", action_callback=set_preset_400)
+
+studio_gin_box = UITextbox(FIELD_PIXELS + 20, 225, 70, 24, "In (teeth)", str(bot.gear_in), update_gin)
+studio_gout_box = UITextbox(FIELD_PIXELS + 110, 225, 70, 24, "Out (teeth)", str(bot.gear_out), update_gout)
+studio_mass_box = UITextbox(FIELD_PIXELS + 20, 275, 100, 24, "Robot's mass (lbs)", str(bot.total_mass), update_mass)
+
+studio_1_ui = [studio_len_box, studio_wid_box, cartridge_dropdown, studio_wrad_box, btn_w275, btn_w325, btn_w400, studio_gin_box, studio_gout_box, studio_mass_box]
+
+
+#Old functions
 def draw_text(text, x, y, color=WHITE, font=FONT):
     screen.blit(font.render(text, True, color), (x, y))
 
@@ -971,49 +1026,12 @@ def draw_everything():
             draw_text("Robot Configuration", FIELD_PIXELS + 20, 65, ORANGE)
             pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
             
-            draw_small("Chassis Dimensions:", FIELD_PIXELS + 20, 105, LIGHT_GRAY)
-            draw_textbox(studio_robot_len_rect, "Length (in)", sim.textbox_value if sim.active_textbox == "rlen" else f"{bot.length:.1f}", sim.active_textbox == "rlen")
-            draw_textbox(studio_robot_wid_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "rwid" else f"{bot.track_width:.1f}", sim.active_textbox == "rwid")
+            draw_small("Drivetrain gear ratio:", FIELD_PIXELS + 20, 190, LIGHT_GRAY)
+            draw_small("Motor Gear Cartridge:", FIELD_PIXELS + 20, 310, LIGHT_GRAY)
 
-            draw_small("Motor Gear Cartridge:", FIELD_PIXELS + 20, 185, LIGHT_GRAY)
-            # Red Cartridge (100 RPM)
-            c_red = RED if sim.settings["motor_cartridge"] == "red" else (100, 40, 40)
-            pygame.draw.rect(screen, c_red, cartridge_red_rect, border_radius=4)
-            if sim.settings["motor_cartridge"] == "red": pygame.draw.rect(screen, YELLOW, cartridge_red_rect, 2, border_radius=4)
-            draw_small("100 RPM", cartridge_red_rect.x + 12, cartridge_red_rect.y + 5, WHITE)
-            # Green Cartridge (200 RPM)
-            c_green = GREEN if sim.settings["motor_cartridge"] == "green" else (40, 100, 60)
-            pygame.draw.rect(screen, c_green, cartridge_green_rect, border_radius=4)
-            if sim.settings["motor_cartridge"] == "green": pygame.draw.rect(screen, YELLOW, cartridge_green_rect, 2, border_radius=4)
-            draw_small("200 RPM", cartridge_green_rect.x + 12, cartridge_green_rect.y + 5, WHITE)
-            # Blue Cartridge (600 RPM)
-            c_blue = CYAN if sim.settings["motor_cartridge"] == "blue" else (20, 80, 140)
-            pygame.draw.rect(screen, c_blue, cartridge_blue_rect, border_radius=4)
-            if sim.settings["motor_cartridge"] == "blue": pygame.draw.rect(screen, YELLOW, cartridge_blue_rect, 2, border_radius=4)
-            draw_small("600 RPM", cartridge_blue_rect.x + 12, cartridge_blue_rect.y + 5, WHITE)
-            #Wheel size section
-            draw_small("Wheel Radius (in):", FIELD_PIXELS + 20, 255, LIGHT_GRAY)
-            # Manual input textbox
-            draw_textbox(studio_wheel_rad_rect, "Radius", sim.textbox_value if sim.active_textbox == "wrad" else f"{bot.wheel_radius:.3f}", sim.active_textbox == "wrad")
-            # 2.75" Preset button
-            c_275 = GREEN if abs(bot.wheel_radius - 1.375) < 0.01 else LIGHT_GRAY
-            pygame.draw.rect(screen, c_275, wheel_275_rect, border_radius=4)
-            draw_small("2.75\"", wheel_275_rect.x + 8, wheel_275_rect.y + 4, BLACK)
-            # 3.25" Preset button
-            c_325 = GREEN if abs(bot.wheel_radius - 1.625) < 0.01 else LIGHT_GRAY
-            pygame.draw.rect(screen, c_325, wheel_325_rect, border_radius=4)
-            draw_small("3.25\"", wheel_325_rect.x + 8, wheel_325_rect.y + 4, BLACK)
-            # 4.00" Preset button
-            c_400 = GREEN if abs(bot.wheel_radius - 2.000) < 0.01 else LIGHT_GRAY
-            pygame.draw.rect(screen, c_400, wheel_400_rect, border_radius=4)
-            draw_small("4.00\"", wheel_400_rect.x + 8, wheel_400_rect.y + 4, BLACK)
-            # External drivetrain gear ratio & mass inputs
-            draw_small("Drivetrain gear ratio:", FIELD_PIXELS + 20, 315, LIGHT_GRAY)
-            draw_textbox(studio_gear_in_rect, "In (teeth)", sim.textbox_value if sim.active_textbox == "gin" else f"{bot.gear_in}", sim.active_textbox == "gin")
-            draw_textbox(studio_gear_out_rect, "Out (teeth)", sim.textbox_value if sim.active_textbox == "gout" else f"{bot.gear_out}", sim.active_textbox == "gout")       
-            # Total robot mass textbox
-            draw_small("Robot total mass:", FIELD_PIXELS + 20, 375, LIGHT_GRAY)
-            draw_textbox(studio_mass_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "rmass" else f"{bot.total_mass:.1f}", sim.active_textbox == "rmass")
+            # Draw all the components
+            for element in studio_1_ui:
+                element.draw(screen)
 
         elif sim.current_page == "studio 2":
             # Header indicator
@@ -1658,6 +1676,13 @@ while running:
                     handled = speed_slider.handle_event(event, mx, my) or turn_slider.handle_event(event, mx, my)
                 elif sim.current_mode == "edit" and sim.current_page == "edit 1":
                     handled = shape_dropdown.handle_event(event, mx, my)
+                    
+                elif sim.current_mode == "studio" and sim.current_page == "studio 1":
+                    for element in studio_1_ui:
+                        if element.handle_event(event, mx, my):
+                            handled = True
+                            break # Stop checking if an element got clicked
+
 
                 if not handled: #Run old function if not detected
                     handle_ui_click(mx, my)
@@ -1749,6 +1774,12 @@ while running:
                         s["y"] = m_fy - sim.drag_offset_y
 
         elif event.type == pygame.KEYDOWN:
+            mx, my = pygame.mouse.get_pos()
+
+            if sim.current_mode == "studio" and sim.current_page == "studio 1":
+                for element in studio_1_ui:
+                    element.handle_event(event, mx, my)
+
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
                 sim.active_textbox = None
