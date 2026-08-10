@@ -109,6 +109,12 @@ Because the new structure uses objects from classes, I can append them to a rend
 
 Overall, after replacing the new code, I have shortened the simulator code by ~15 functioning lines (not counting for spaces/ empty line for comprehensibility)
 
+Visual demonstration of the effectiveness and look of the old and new versions.
+
+Before: ![Old studio mode sidebar 1](images/oldStudio1) After: ![New studio mode sidebar 1](images/newStudio1)
+
+Before ![Old studio mode sidebar 2](images/oldStudio2) After: ![New studio mode sidebar 2](images/newStudio2)
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These would be images that I have taken on various dates, so I can't give you the exact date, sorry!
