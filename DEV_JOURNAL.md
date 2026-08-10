@@ -101,10 +101,18 @@ The ScrollView class: Where the scrolling happens. It acts as a parent container
 
 We built and tested the components with simple buttons first and then completely ripped out the old "Keybinds and Settings" modal draw_everything() and handle_ui_clicks(). Now adding a new button is as simple as "settings_scrollview.add_child()", no more 20+ hardcoded rectangles for textboxes and .collidepoint conditions in the main loop - Dev note: it feels like a real game now :) And expanding the game in the future with this new structure would be so much easier 🍋
 
+[August 10th, 2026] - A revamp in the Studio mode UI (using the new class objects from "ui.py")
+
+Along with UIElement and UIScrollview mentioned on August 8th, I also created UIButton and UITextbox classes in "ui.py". So today I began replacing the old hardcoded UI rects with the new object-based structure, and I decided to start with Studio mode.
+
+Because the new structure uses objects from classes, I can append them to a rendering list, which I can loop through and render in draw_everything(). Additionally, the rect declaration, the function of what to do, and rendering are all done through the class, meaning I no longer need separate global declarations, nor do I have to write out manual checks inside apply_textbox_value() for textboxes or handle_ui_click() for buttons - so not just shortening my code, but it also makes it easier to add a new button and keep the main file so much cleaner (I do still need handle_ui_click() to pass the mouse click coordinates down to the classes so they can do their function detection - like what dropdown option were picked)
+
+Overall, after replacing the new code, I have shortened the simulator code by ~15 functioning lines (not counting for spaces/ empty line for comprehensibility)
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These would be images that I have taken on various dates, so I can't give you the exact date, sorry!
 
-The robot has gone out of control and kept outtakinggg!
+The robot has gone crazy!!
 
 ![The robot has gone out of control](images/infiniteee.png)
