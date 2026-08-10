@@ -606,40 +606,7 @@ field_custom_button_rect = pygame.Rect(FIELD_PIXELS + 160, 85, 120, 26)
 add_shape_button_rect = pygame.Rect(FIELD_PIXELS + 20, 145, 140, 26)
 delete_shape_button_rect = pygame.Rect(FIELD_PIXELS + 180, 145, 120, 26)
 add_shape_dropdown_rect = pygame.Rect(FIELD_PIXELS + 20, 175, 140, 24)
-# Studio Mode UI Rectangles
-studio_robot_len_rect = pygame.Rect(FIELD_PIXELS + 20, 140, 100, 24) #For changing length of bot in Studio Mode
-studio_robot_wid_rect = pygame.Rect(FIELD_PIXELS + 140, 140, 100, 24) #For changing width of bot in Studio Mode
-cartridge_red_rect = pygame.Rect(FIELD_PIXELS + 20, 210, 80, 26)
-cartridge_green_rect = pygame.Rect(FIELD_PIXELS + 110, 210, 80, 26)
-cartridge_blue_rect = pygame.Rect(FIELD_PIXELS + 200, 210, 80, 26)
-#Intake configuration rects
-studio_intake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 285, 110, 24)
-studio_intake_w_rect = pygame.Rect(FIELD_PIXELS + 140, 285, 80, 24)
-studio_intake_l_rect = pygame.Rect(FIELD_PIXELS + 230, 285, 80, 24)
-studio_intake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 385, 35, 24)
-studio_intake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 385, 35, 24)
-studio_intake_rev_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 333, 100, 24)
-studio_max_capacity_rect = pygame.Rect(FIELD_PIXELS+20, 435, 60, 30)
-#Outtake configuration rects
-studio_outtake_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, 125, 110, 24)
-studio_outtake_w_rect = pygame.Rect(FIELD_PIXELS + 145, 125, 80, 24)
-studio_outtake_l_rect = pygame.Rect(FIELD_PIXELS + 235, 125, 80, 24)
-studio_outtake_in_btn = pygame.Rect(FIELD_PIXELS + 20, 225, 35, 24)
-studio_outtake_out_btn = pygame.Rect(FIELD_PIXELS + 60, 225, 35, 24)
-studio_outtake_speed_rect = pygame.Rect(FIELD_PIXELS + 20, 173, 100, 24)
-#Timer delay between intake and score (page 2)
-studio_delay_toggle_rect = pygame.Rect(FIELD_PIXELS+20, 495, 110, 24)
-studio_delay_time_rect = pygame.Rect(FIELD_PIXELS+145, 495, 80, 24)
-# Wheel radius UI rectangles
-studio_wheel_rad_rect = pygame.Rect(FIELD_PIXELS + 20, 290, 100, 24)
-# VEX official size quick-select buttons (diameter)
-wheel_275_rect = pygame.Rect(FIELD_PIXELS + 130, 290, 55, 24)
-wheel_325_rect = pygame.Rect(FIELD_PIXELS + 190, 290, 55, 24)
-wheel_400_rect = pygame.Rect(FIELD_PIXELS + 250, 290, 55, 24)
-# Gear Ratio & Mass UI Rectangles (Studio)
-studio_gear_in_rect = pygame.Rect(FIELD_PIXELS + 20, 350, 70, 24)
-studio_gear_out_rect = pygame.Rect(FIELD_PIXELS + 110, 350, 70, 24)
-studio_mass_rect = pygame.Rect(FIELD_PIXELS + 20, 410, 100, 24)
+
 # Property inputs panel definitions
 shape_panel_y = 245
 #Example .rect(x-cord,y-cord,width,height). button y +-45
@@ -725,8 +692,7 @@ speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplie
 turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
 shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle"], 0, update_add_shape)
 
-#Buttons and textboxes - ui.py
-
+#Studio 1 - ui.py
 def update_rlen(val):
     try: bot.length = max(6.0, min(bot.max_size, float(val)))
     except: pass
@@ -775,8 +741,71 @@ studio_gin_box = UITextbox(FIELD_PIXELS + 20, 225, 70, 24, "In (teeth)", str(bot
 studio_gout_box = UITextbox(FIELD_PIXELS + 110, 225, 70, 24, "Out (teeth)", str(bot.gear_out), update_gout)
 studio_mass_box = UITextbox(FIELD_PIXELS + 20, 275, 100, 24, "Robot's mass (lbs)", str(bot.total_mass), update_mass)
 
+# Rendering list to loop through in draw_everything()
 studio_1_ui = [studio_len_box, studio_wid_box, cartridge_dropdown, studio_wrad_box, btn_w275, btn_w325, btn_w400, studio_gin_box, studio_gout_box, studio_mass_box]
 
+#Studio 2 - ui.py
+def toggle_outtake(): bot.has_outtake = not bot.has_outtake; save_settings()
+def shift_out_in(): bot.outtake_offset = min(bot.outtake_length, bot.outtake_offset + 0.1); save_settings()
+def shift_out_out(): bot.outtake_offset = max(0.0, bot.outtake_offset - 0.1); save_settings()
+
+def toggle_intake(): bot.has_intake = not bot.has_intake; save_settings()
+def shift_in_in(): bot.intake_offset = min(bot.intake_length, bot.intake_offset + 0.1); save_settings()
+def shift_in_out(): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings()
+def toggle_delay(): bot.delay_flag = not bot.delay_flag; save_settings()
+
+def update_owid(val):
+    try: bot.outtake_width = max(5.0, min(bot.track_width, float(val))); save_settings()
+    except: pass
+def update_olen(val):
+    try: bot.outtake_length = max(1.0, min(8.0, float(val))); save_settings()
+    except: pass
+def update_ospd(val):
+    try: sim.settings["outtake_velocity"] = max(0.0, min(100.0, float(val))); save_settings()
+    except: pass
+def update_iwid(val):
+    try: bot.intake_width = max(5.0, min(bot.track_width, float(val))); save_settings()
+    except: pass
+def update_ilen(val):
+    try: bot.intake_length = max(1.0, min(8.0, float(val))); save_settings()
+    except: pass
+def update_ispd(val):
+    try: sim.settings["intake_rev_velocity"] = max(0.0, min(100.0, float(val))); save_settings()
+    except: pass
+def update_icap(val):
+    try: 
+        cap = int(max(0, min(10, float(val))))
+        sim.settings["max_capacity"] = cap; bot.max_capacity = cap; save_settings()
+    except: pass
+def update_tdelay(val):
+    try: bot.timer_delay = max(0.0, min(10.0, float(val))); save_settings()
+    except: pass
+
+# Outtake
+btn_out_toggle = UIButton(FIELD_PIXELS + 20, 125, 110, 24, "Toggle", action_callback=toggle_outtake)
+box_owid = UITextbox(FIELD_PIXELS + 145, 125, 80, 24, "Width (in)", str(bot.outtake_width), update_owid)
+box_olen = UITextbox(FIELD_PIXELS + 235, 125, 80, 24, "Depth (in)", str(bot.outtake_length), update_olen)
+box_ospd = UITextbox(FIELD_PIXELS + 20, 173, 100, 24, "Eject Speed", str(sim.settings.get("outtake_velocity", 30.0)), update_ospd)
+btn_out_shift_in = UIButton(FIELD_PIXELS + 20, 225, 35, 24, "<", action_callback=shift_out_in)
+btn_out_shift_out = UIButton(FIELD_PIXELS + 60, 225, 35, 24, ">", action_callback=shift_out_out)
+
+# Intake
+btn_in_toggle = UIButton(FIELD_PIXELS + 20, 285, 110, 24, "Toggle", action_callback=toggle_intake)
+box_iwid = UITextbox(FIELD_PIXELS + 140, 285, 80, 24, "Width (in)", str(bot.intake_width), update_iwid)
+box_ilen = UITextbox(FIELD_PIXELS + 230, 285, 80, 24, "Depth (in)", str(bot.intake_length), update_ilen)
+box_ispd = UITextbox(FIELD_PIXELS + 20, 333, 100, 24, "Eject Speed", str(sim.settings.get("intake_rev_velocity", 30.0)), update_ispd)
+box_icap = UITextbox(FIELD_PIXELS + 20, 435, 60, 30, "Capacity", str(sim.settings.get("max_capacity", 3)), update_icap)
+btn_in_shift_in = UIButton(FIELD_PIXELS + 20, 385, 35, 24, "<", action_callback=shift_in_in)
+btn_in_shift_out = UIButton(FIELD_PIXELS + 60, 385, 35, 24, ">", action_callback=shift_in_out)
+
+# Delay
+btn_delay_toggle = UIButton(FIELD_PIXELS + 20, 495, 110, 24, "Toggle", action_callback=toggle_delay)
+box_tdelay = UITextbox(FIELD_PIXELS + 145, 495, 80, 24, "Delay (s)", str(bot.timer_delay), update_tdelay)
+
+# Rendering list to loop through in draw_everything()
+studio_2_outtake_ui = [btn_out_toggle, box_owid, box_olen, box_ospd, btn_out_shift_in, btn_out_shift_out]
+studio_2_intake_ui = [btn_in_toggle, box_iwid, box_ilen, box_ispd, box_icap, btn_in_shift_in, btn_in_shift_out]
+studio_2_delay_ui = [btn_delay_toggle, box_tdelay]
 
 #Old functions
 def draw_text(text, x, y, color=WHITE, font=FONT):
@@ -1034,63 +1063,45 @@ def draw_everything():
                 element.draw(screen)
 
         elif sim.current_page == "studio 2":
-            # Header indicator
+        # Header indicator
             draw_text("Intake/Outtake Configuration", FIELD_PIXELS + 20, 65, ORANGE)
             pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
-            #Outtake system section
-            draw_small("Outtake system:", FIELD_PIXELS+20, studio_outtake_toggle_rect.y-20, LIGHT_GRAY)
-            toggle_color = GREEN if bot.has_outtake else LIGHT_GRAY
-            pygame.draw.rect(screen, toggle_color, studio_outtake_toggle_rect, border_radius=4)
-            draw_small("ENABLED" if bot.has_outtake else "DISABLED", studio_outtake_toggle_rect.x + 12, studio_outtake_toggle_rect.y + 4, WHITE)
-
+            
+            # --- Outtake System ---
+            draw_small("Outtake system:", FIELD_PIXELS+20, btn_out_toggle.screen_rect.y - 20, LIGHT_GRAY)
+            btn_out_toggle.text = "ENABLED" if bot.has_outtake else "DISABLED"
+            btn_out_toggle.default_color = GREEN if bot.has_outtake else LIGHT_GRAY
+            for element in studio_2_outtake_ui:
+                # Only draw the extra settings if it is enabled!
+                if element == btn_out_toggle or bot.has_outtake:
+                    element.draw(screen)
+            
             if bot.has_outtake:
-                draw_textbox(studio_outtake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "owid" else f"{bot.outtake_width:.1f}", sim.active_textbox == "owid")
-                draw_textbox(studio_outtake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "olen" else f"{bot.outtake_length:.1f}", sim.active_textbox == "olen")
-                #Outtake offset buttons/ section
-                draw_small("Outtake offset:", FIELD_PIXELS + 20, studio_outtake_in_btn.y-20, LIGHT_GRAY)
-                pygame.draw.rect(screen, LIGHT_GRAY, studio_outtake_in_btn, border_radius=4)
-                draw_small("<", studio_outtake_in_btn.x+13, studio_outtake_in_btn.y+4,WHITE)
-                pygame.draw.rect(screen, LIGHT_GRAY, studio_outtake_out_btn, border_radius=4)
-                draw_small(">", studio_outtake_out_btn.x+13, studio_outtake_out_btn.y+4,WHITE)
-                stick_out_in = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
-                stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
-                total_L = bot.length + stick_out_in + stick_out_out
-                total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
-                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, studio_outtake_in_btn.y+5, total_L_color)    
-                draw_textbox(studio_outtake_speed_rect, "Outtake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_score_spd" else f"{sim.settings.get("outtake_velocity", 30.0):.1f}", sim.active_textbox == "out_score_spd")
-
-            #Intake system section
-            draw_small("Intake system:", FIELD_PIXELS+20, studio_intake_toggle_rect.y-20, LIGHT_GRAY)
-            toggle_color = GREEN if bot.has_intake else LIGHT_GRAY
-            pygame.draw.rect(screen, toggle_color, studio_intake_toggle_rect, border_radius=4)
-            draw_small("ENABLED" if bot.has_intake else "DISABLED", studio_intake_toggle_rect.x + 12, studio_intake_toggle_rect.y + 4, WHITE)
+                draw_small("Outtake offset:", FIELD_PIXELS + 20, btn_out_shift_in.screen_rect.y - 20, LIGHT_GRAY)
+            
+            # --- Intake System ---
+            draw_small("Intake system:", FIELD_PIXELS+20, btn_in_toggle.screen_rect.y - 20, LIGHT_GRAY)
+            btn_in_toggle.text = "ENABLED" if bot.has_intake else "DISABLED"
+            btn_in_toggle.default_color = GREEN if bot.has_intake else LIGHT_GRAY
+            for element in studio_2_intake_ui:
+                if element == btn_in_toggle or bot.has_intake:
+                    element.draw(screen)
 
             if bot.has_intake:
-                draw_textbox(studio_intake_w_rect, "Width (in)", sim.textbox_value if sim.active_textbox == "iwid" else f"{bot.intake_width:.1f}", sim.active_textbox == "iwid")
-                draw_textbox(studio_intake_l_rect, "Depth (in)", sim.textbox_value if sim.active_textbox == "ilen" else f"{bot.intake_length:.1f}", sim.active_textbox == "ilen")
-                #Intake offset buttons/ section
-                draw_small("Intake offset:", FIELD_PIXELS + 20, studio_intake_in_btn.y-20, LIGHT_GRAY)
-                pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_in_btn, border_radius=4)
-                draw_small("<", studio_intake_in_btn.x+13, studio_intake_in_btn.y+4,WHITE)
-                pygame.draw.rect(screen, LIGHT_GRAY, studio_intake_out_btn, border_radius=4)
-                draw_small(">", studio_intake_out_btn.x+13, studio_intake_out_btn.y+4,WHITE)
-                stick_out_in = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
+                draw_small("Intake offset:", FIELD_PIXELS + 20, btn_in_shift_in.screen_rect.y - 20, LIGHT_GRAY)
+                # Max length warning
+                stick_out_in = max(0.0, bot.intake_length - bot.intake_offset)
                 stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
                 total_L = bot.length + stick_out_in + stick_out_out
-                total_L_color = RED if total_L > bot.max_size else GREEN #Ensure the bot stays in the 18" limit
-                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, studio_intake_in_btn.y+5, total_L_color)    
-                draw_textbox(studio_intake_rev_speed_rect, "Intake Ejection Speed (in/s)", sim.textbox_value if sim.active_textbox == "out_spd" else f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}", sim.active_textbox == "out_spd")
-                draw_textbox(studio_max_capacity_rect, "Robot's max capacity", sim.textbox_value if sim.active_textbox == "mcap" else f"{sim.settings.get("max_capacity",3)}", sim.active_textbox == "mcap")
+                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, btn_in_shift_in.screen_rect.y + 5, RED if total_L > bot.max_size else GREEN)
 
-            draw_small("Scoring delay:", FIELD_PIXELS+20, studio_delay_toggle_rect.y - 20, LIGHT_GRAY)
-            delay_on = sim.settings.get("delay_flag", True)
-            toggle_delay_color = GREEN if delay_on else LIGHT_GRAY
-            pygame.draw.rect(screen, toggle_delay_color, studio_delay_toggle_rect, border_radius=4)
-            draw_small("ENABLED" if delay_on else "DISABLED", studio_delay_toggle_rect.x + 12, studio_delay_toggle_rect.y + 4, WHITE)
-
-            # Delay time display
-            if delay_on:
-                draw_textbox(studio_delay_time_rect, "Delay (s)", sim.textbox_value if sim.active_textbox == "tdelay" else f"{bot.timer_delay:.2f}", sim.active_textbox == "tdelay")
+            # --- Delay System ---
+            draw_small("Scoring delay:", FIELD_PIXELS+20, btn_delay_toggle.screen_rect.y - 20, LIGHT_GRAY)
+            btn_delay_toggle.text = "ENABLED" if bot.delay_flag else "DISABLED"
+            btn_delay_toggle.default_color = GREEN if bot.delay_flag else LIGHT_GRAY
+            for element in studio_2_delay_ui:
+                if element == btn_delay_toggle or bot.delay_flag:
+                    element.draw(screen)
                 
         pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
         if sim.current_page == "studio 1":
@@ -1111,10 +1122,6 @@ def draw_everything():
         top_ips = bot.base_max_speed #inches per second
         top_fps = top_ips / 12.0 #feet per second
         draw_small(f"Top Speed: {top_ips:.1f} in/s ({top_fps:.1f} ft/s)", FIELD_PIXELS + 25, studio_display_y+65, GREEN)
-        #Upcoming Function list
-        draw_small("Future CAD Modules:", FIELD_PIXELS + 20, studio_display_y+90, LIGHT_GRAY)
-        draw_small("Intake", FIELD_PIXELS + 25, studio_display_y +115, GRAY)
-        draw_small("Outtake", FIELD_PIXELS + 25, studio_display_y + 135, GRAY)
     #Standart field sidebar (Only show buttons in Drive/Edit mode)
     else:
         # Dynamic settings selectors indicators map
@@ -1398,46 +1405,8 @@ def handle_ui_click(mx, my):
     
     if sim.current_mode == "studio":
         if sim.current_page == "studio 1":
-            #Still able to change size of the robot
-            if studio_robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
-            if studio_robot_wid_rect.collidepoint(mx, my): sim.active_textbox = "rwid"; sim.textbox_value = f"{bot.track_width:.1f}"; return
-            if cartridge_red_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "red"; bot.calculate_max_speed("red");save_settings(); return
-            if cartridge_green_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "green"; bot.calculate_max_speed("green");save_settings(); return
-            if cartridge_blue_rect.collidepoint(mx, my): sim.settings["motor_cartridge"] = "blue"; bot.calculate_max_speed("blue");save_settings(); return
-            if studio_wheel_rad_rect.collidepoint(mx, my):sim.active_textbox = "wrad"; sim.textbox_value = f"{bot.wheel_radius:.3f}"; return
-            if wheel_275_rect.collidepoint(mx, my): bot.wheel_radius = 1.375; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
-            if wheel_325_rect.collidepoint(mx, my): bot.wheel_radius = 1.625; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
-            if wheel_400_rect.collidepoint(mx, my): bot.wheel_radius = 2.0; bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); return
-            if studio_gear_in_rect.collidepoint(mx, my): sim.active_textbox = "gin"; sim.textbox_value = f"{bot.gear_in}"; return
-            if studio_gear_out_rect.collidepoint(mx, my): sim.active_textbox = "gout"; sim.textbox_value = f"{bot.gear_out}"; return
-            if studio_mass_rect.collidepoint(mx, my): sim.active_textbox = "rmass"; sim.textbox_value = f"{bot.total_mass:.1f}"; return
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 2"; return
         elif sim.current_page == "studio 2":
-            if studio_intake_toggle_rect.collidepoint(mx, my): bot.has_intake = not bot.has_intake; save_settings(); return
-            if bot.has_intake: 
-                if studio_intake_w_rect.collidepoint(mx,my): sim.active_textbox = "iwid"; sim.textbox_value = f"{bot.intake_width:.1f}"; return
-                if studio_intake_l_rect.collidepoint(mx,my): sim.active_textbox = "ilen"; sim.textbox_value = f"{bot.intake_length:.1f}"; return
-                #Shift inward (<) by 0.1
-                if studio_intake_in_btn.collidepoint(mx,my): bot.intake_offset = min(bot.intake_length, bot.intake_offset + 0.1); save_settings(); return
-                #Shift outward (>) by 0.1
-                if studio_intake_out_btn.collidepoint(mx,my): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings(); return
-                if studio_intake_rev_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_spd"; sim.textbox_value = f"{sim.settings.get("intake_rev_velocity", 30.0):.1f}"; return
-                if studio_max_capacity_rect.collidepoint(mx,my): sim.active_textbox = "mcap"; sim.textbox_value = f"{sim.settings.get("max_capacity",3)}"; return
-            #Outtake section
-            if studio_outtake_toggle_rect.collidepoint(mx, my): bot.has_outtake = not bot.has_outtake; save_settings(); return
-            if bot.has_outtake: 
-                if studio_outtake_w_rect.collidepoint(mx,my): sim.active_textbox = "owid"; sim.textbox_value = f"{bot.outtake_width:.1f}"; return
-                if studio_outtake_l_rect.collidepoint(mx,my): sim.active_textbox = "olen"; sim.textbox_value = f"{bot.outtake_length:.1f}"; return
-                #Shift inward (<) by 0.1
-                if studio_outtake_in_btn.collidepoint(mx,my): bot.outtake_offset = min(bot.outtake_length, bot.outtake_offset + 0.1); save_settings(); return
-                #Shift outward (>) by 0.1
-                if studio_outtake_out_btn.collidepoint(mx,my): bot.outtake_offset = max(0.0, bot.outtake_offset - 0.1); save_settings(); return
-                if studio_outtake_speed_rect.collidepoint(mx,my): sim.active_textbox = "out_score_spd"; sim.textbox_value = f"{sim.settings.get("outtake_velocity", 30.0):.1f}"; return
-            if studio_delay_toggle_rect.collidepoint(mx,my): bot.delay_flag = not bot.delay_flag; save_settings(); return
-            if bot.delay_flag:
-                if studio_delay_time_rect.collidepoint(mx,my): sim.active_textbox = "tdelay"; sim.textbox_value = f"{bot.timer_delay:.2f}"; return 
-        
-
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 1"; return
 
     elif sim.current_mode == "drive":
@@ -1569,22 +1538,6 @@ def apply_textbox_value():
         elif sim.active_textbox == "ra": ra = val
         bot.start_pose = (rx, ry, ra)
         save_field_data()
-    elif sim.active_textbox == "rlen": bot.length = max(6.0, min(bot.max_size, val))
-    elif sim.active_textbox == "rwid": bot.track_width = max(6.0, min(bot.max_size, val))
-    elif sim.active_textbox == "wrad": bot.wheel_radius = max(1.0, min(3.0 , val)); bot.wheel_circ = 2 * math.pi * bot.wheel_radius; bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-    elif sim.active_textbox == "gin": bot.gear_in = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
-    elif sim.active_textbox == "gout": bot.gear_out = int(max(1, val)); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
-    elif sim.active_textbox == "rmass": bot.total_mass = max(1.0, val); save_settings()
-    #Intake 
-    elif sim.active_textbox == "iwid": bot.intake_width = max(5.0, min(bot.track_width,val)); save_settings() 
-    elif sim.active_textbox == "ilen": bot.intake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
-    elif sim.active_textbox == "out_spd": sim.settings["intake_rev_velocity"] = max(0.0, min(100.0, val)); save_settings()
-    elif sim.active_textbox == "mcap": sim.settings["max_capacity"] = int(max(0, min(10,val))); bot.max_capacity = int(max(0, min(10,val))); save_settings()
-    #Outtake
-    elif sim.active_textbox == "owid": bot.outtake_width = max(5.0, min(bot.track_width,val)); save_settings() 
-    elif sim.active_textbox == "olen": bot.outtake_length = max(1.0, min(8.0,val)); save_settings() #depth of intake
-    elif sim.active_textbox == "out_score_spd": sim.settings["outtake_velocity"] = max(0.0, min(100.0, val)); save_settings()
-    elif sim.active_textbox == "tdelay": bot.timer_delay = max(0.0, min(10.0, val)); save_settings()
     sim.active_textbox = None
 
 # =====================================================================
@@ -1683,6 +1636,13 @@ while running:
                             handled = True
                             break # Stop checking if an element got clicked
 
+                elif sim.current_mode == "studio" and sim.current_page == "studio 2":
+                    elements = studio_2_outtake_ui + studio_2_intake_ui + studio_2_delay_ui
+                    for element in elements:
+                        if element.handle_event(event, mx, my):
+                            handled = True
+                            break
+
 
                 if not handled: #Run old function if not detected
                     handle_ui_click(mx, my)
@@ -1780,6 +1740,11 @@ while running:
                 for element in studio_1_ui:
                     element.handle_event(event, mx, my)
 
+            elif sim.current_mode == "studio" and sim.current_page == "studio 2":
+                elements = studio_2_outtake_ui + studio_2_intake_ui + studio_2_delay_ui
+                for element in elements:
+                    element.handle_event(event, mx, my)
+
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
                 sim.active_textbox = None
@@ -1830,5 +1795,4 @@ while running:
             update_physics(l_speed, r_speed, dt)
 
     draw_everything()
-
 pygame.quit()
