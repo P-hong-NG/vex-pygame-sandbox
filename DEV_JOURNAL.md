@@ -111,9 +111,9 @@ Overall, after replacing the new code, I have shortened the simulator code by ~1
 
 Visual demonstration of the effectiveness and look of the old and new versions.
 
-Before: ![Old studio mode sidebar 1](images/oldStudio1) After: ![New studio mode sidebar 1](images/newStudio1)
+Before: ![Old studio mode sidebar 1](images/oldStudio1.png) After: ![New studio mode sidebar 1](images/newStudio1.png)
 
-Before ![Old studio mode sidebar 2](images/oldStudio2) After: ![New studio mode sidebar 2](images/newStudio2)
+Before ![Old studio mode sidebar 2](images/oldStudio2.png) After: ![New studio mode sidebar 2](images/newStudio2.png)
 
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
