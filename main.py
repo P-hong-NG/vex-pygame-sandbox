@@ -592,14 +592,6 @@ except:
 mode_drive_button_rect = pygame.Rect(FIELD_PIXELS + 20, 20, 120, 30)
 mode_edit_button_rect = pygame.Rect(FIELD_PIXELS + 160, 20, 120, 30)
 mode_page_switch_button_rect = pygame.Rect(FIELD_PIXELS+280, 810, 50, 35)
-drive_mode_tank_rect = pygame.Rect(FIELD_PIXELS + 20, 70, 90, 26)
-drive_mode_arcade_rect = pygame.Rect(FIELD_PIXELS + 120, 70, 90, 26)
-drive_mode_custom_rect = pygame.Rect(FIELD_PIXELS + 220, 70, 90, 26)
-keyboard_button_rect = pygame.Rect(FIELD_PIXELS + 20, 110, 100, 26)
-controller_button_rect = pygame.Rect(FIELD_PIXELS + 140, 110, 100, 26)
-reset_button_rect = pygame.Rect(FIELD_PIXELS + 20, 230, 130, 28)
-reset_pose_button_rect = pygame.Rect(FIELD_PIXELS + 180, 230, 130, 28)
-auton_button_rect = pygame.Rect(FIELD_PIXELS + 20, 270, 280, 28)
 
 field_image_button_rect = pygame.Rect(FIELD_PIXELS + 20, 85, 120, 26)
 field_custom_button_rect = pygame.Rect(FIELD_PIXELS + 160, 85, 120, 26)
@@ -651,7 +643,6 @@ setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
 
 #Scrollview - ui.py
 settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
-
 def bind_in(): sim.remapping_key = "intake_in"
 def bind_out(): sim.remapping_key = "intake_out"
 def bind_score(): sim.remapping_key = "outtake_score"
@@ -713,6 +704,34 @@ btn_pause_exit.default_color = RED
 
 # Rendering list to loop through in draw_everything()
 pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_settings, btn_pause_exit]
+
+#Drive mode sidebar - ui.py
+def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
+def set_drive_arcade(): sim.settings["drive_mode"] = "arcade"; save_settings()
+def set_drive_custom(): sim.settings["drive_mode"] = "custom"; save_settings()
+def set_input_keyboard(): sim.settings["input_mode"] = "keyboard"; save_settings()
+def set_input_controller(): sim.settings["input_mode"] = "controller"; save_settings()
+def action_reset(): bot.reset_to_start()
+def action_reset_center(): bot.reset_to_center()
+def action_run_auton(): 
+    if not sim.auton_running: sim.auton_mode = True
+
+btn_drive_tank = UIButton(FIELD_PIXELS + 20, 70, 90, 26, "Tank", action_callback=set_drive_tank)
+btn_drive_arcade = UIButton(FIELD_PIXELS + 120, 70, 90, 26, "Arcade", action_callback=set_drive_arcade)
+btn_drive_custom = UIButton(FIELD_PIXELS + 220, 70, 90, 26, "Custom", action_callback=set_drive_custom)
+
+btn_input_key = UIButton(FIELD_PIXELS + 20, 110, 100, 26, "Keyboard", action_callback=set_input_keyboard)
+btn_input_ctrl = UIButton(FIELD_PIXELS + 140, 110, 100, 26, "Controller", action_callback=set_input_controller)
+
+btn_reset = UIButton(FIELD_PIXELS + 20, 240, 130, 28, "Reset Robot", action_callback=action_reset)
+btn_reset_center = UIButton(FIELD_PIXELS + 180, 240, 130, 28, "Reset Center", action_callback=action_reset_center)
+btn_auton = UIButton(FIELD_PIXELS + 20, 280, 290, 28, "Run Autonomous", action_callback=action_run_auton)
+
+btn_reset.default_color = (180, 60, 60) # Red
+btn_reset_center.default_color = (80, 80, 180) # Blue
+btn_auton.default_color = GREEN
+
+drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton]
 
 #Studio 1 - ui.py
 def update_rlen(val):
@@ -1148,28 +1167,21 @@ def draw_everything():
     else:
         # Dynamic settings selectors indicators map
         if sim.current_mode == "drive":
-            pygame.draw.rect(screen, GREEN if sim.settings["drive_mode"] == "tank" else LIGHT_GRAY, drive_mode_tank_rect, border_radius=4)
-            pygame.draw.rect(screen, GREEN if sim.settings["drive_mode"] == "arcade" else LIGHT_GRAY, drive_mode_arcade_rect, border_radius=4)
-            pygame.draw.rect(screen, GREEN if sim.settings["drive_mode"] == "custom" else LIGHT_GRAY, drive_mode_custom_rect, border_radius=4)
-            draw_small("Tank", drive_mode_tank_rect.x + 20, drive_mode_tank_rect.y + 5, BLACK)
-            draw_small("Arcade", drive_mode_arcade_rect.x + 15, drive_mode_arcade_rect.y + 5, BLACK)
-            draw_small("Custom", drive_mode_custom_rect.x + 15, drive_mode_custom_rect.y + 5, BLACK)
-        
-            pygame.draw.rect(screen, YELLOW if sim.settings["input_mode"] == "keyboard" else LIGHT_GRAY, keyboard_button_rect, border_radius=4)
-            pygame.draw.rect(screen, YELLOW if sim.settings["input_mode"] == "controller" else LIGHT_GRAY, controller_button_rect, border_radius=4)
-            draw_small("Keyboard", keyboard_button_rect.x + 8, keyboard_button_rect.y + 5, BLACK)
-            draw_small("Controller", controller_button_rect.x + 5, controller_button_rect.y + 5, BLACK)
+            btn_drive_tank.default_color = GREEN if sim.settings["drive_mode"] == "tank" else LIGHT_GRAY
+            btn_drive_arcade.default_color = GREEN if sim.settings["drive_mode"] == "arcade" else LIGHT_GRAY
+            btn_drive_custom.default_color = GREEN if sim.settings["drive_mode"] == "custom" else LIGHT_GRAY
+            
+            btn_input_key.default_color = YELLOW if sim.settings["input_mode"] == "keyboard" else LIGHT_GRAY
+            btn_input_ctrl.default_color = YELLOW if sim.settings["input_mode"] == "controller" else LIGHT_GRAY
+            
+            btn_auton.default_color = GREEN if not sim.auton_running else LIGHT_GRAY
+            btn_auton.text = "Run Autonomous" if not sim.auton_running else "Running..."
 
             speed_slider.draw(screen)
             turn_slider.draw(screen)
         
-            # Action buttons execution
-            pygame.draw.rect(screen, (180, 60, 60), reset_button_rect, border_radius=4)
-            pygame.draw.rect(screen, (80, 80, 180), reset_pose_button_rect, border_radius=4)
-            pygame.draw.rect(screen, GREEN if not sim.auton_running else LIGHT_GRAY, auton_button_rect, border_radius=4)
-            draw_small("Reset Robot", reset_button_rect.x + 15, reset_button_rect.y + 6, BLACK)
-            draw_small("Reset Center", reset_pose_button_rect.x + 10, reset_pose_button_rect.y + 6, BLACK)
-            draw_small("Run Autonomous", auton_button_rect.x + 80, auton_button_rect.y + 6, BLACK)
+            for element in drive_ui:
+                element.draw(screen)
 
             # Drive mode inventory HUD
             inv_y = 180
@@ -1428,16 +1440,6 @@ def handle_ui_click(mx, my):
         elif sim.current_page == "studio 2":
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 1"; return
 
-    elif sim.current_mode == "drive":
-        if drive_mode_tank_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "tank"; save_settings(); return
-        if drive_mode_arcade_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "arcade"; save_settings(); return
-        if drive_mode_custom_rect.collidepoint(mx, my): sim.settings["drive_mode"] = "custom"; save_settings(); return
-        if keyboard_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "keyboard"; save_settings(); return
-        if controller_button_rect.collidepoint(mx, my): sim.settings["input_mode"] = "controller"; save_settings(); return
-        if reset_button_rect.collidepoint(mx, my): bot.reset_to_start(); return
-        if reset_pose_button_rect.collidepoint(mx, my): bot.reset_to_center(); return
-        if auton_button_rect.collidepoint(mx, my) and not sim.auton_running: sim.auton_mode = True; return
-
     elif sim.current_mode == "edit":
         if sim.current_page == "edit 1":
             if field_image_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "image"; save_settings(); return
@@ -1633,6 +1635,13 @@ while running:
                 handled = False
                 if sim.current_mode == "drive":
                     handled = speed_slider.handle_event(event, mx, my) or turn_slider.handle_event(event, mx, my)
+
+                    if not handled:
+                        for element in drive_ui:
+                            if element.handle_event(event, mx, my):
+                                handled = True
+                                break
+
                 elif sim.current_mode == "edit" and sim.current_page == "edit 1":
                     handled = shape_dropdown.handle_event(event, mx, my)
                     
@@ -1649,9 +1658,9 @@ while running:
                             handled = True
                             break
 
-
                 if not handled: #Run old function if not detected
                     handle_ui_click(mx, my)
+
             elif sim.current_mode == "edit":
                 # Check robot drag focus
                 dx, dy = mx - bot.x * SCALE, my - (FIELD_PIXELS - bot.y * SCALE)
