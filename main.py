@@ -593,12 +593,6 @@ mode_drive_button_rect = pygame.Rect(FIELD_PIXELS + 20, 20, 120, 30)
 mode_edit_button_rect = pygame.Rect(FIELD_PIXELS + 160, 20, 120, 30)
 mode_page_switch_button_rect = pygame.Rect(FIELD_PIXELS+280, 810, 50, 35)
 
-field_image_button_rect = pygame.Rect(FIELD_PIXELS + 20, 85, 120, 26)
-field_custom_button_rect = pygame.Rect(FIELD_PIXELS + 160, 85, 120, 26)
-add_shape_button_rect = pygame.Rect(FIELD_PIXELS + 20, 145, 140, 26)
-delete_shape_button_rect = pygame.Rect(FIELD_PIXELS + 180, 145, 120, 26)
-add_shape_dropdown_rect = pygame.Rect(FIELD_PIXELS + 20, 175, 140, 24)
-
 # Property inputs panel definitions
 shape_panel_y = 245
 #Example .rect(x-cord,y-cord,width,height). button y +-45
@@ -612,9 +606,6 @@ textbox_a_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Ang
 textbox_m_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 140, 80, 22)#Mass
 textbox_f_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 140, 80, 22)#Friction
 textbox_e_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 140, 80, 22)#Bounce
-
-shape_type_toggle_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 95, 180, 22)
-passthrough_overpass_toggle_rect = pygame.Rect(FIELD_PIXELS+220, shape_panel_y + 95, 110, 22)
 
 COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,120)]
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 180, 30, 30) for i in range(len(COLOR_PALETTE))]
@@ -732,6 +723,52 @@ btn_reset_center.default_color = (80, 80, 180) # Blue
 btn_auton.default_color = GREEN
 
 drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton]
+
+#Edit 1 - ui.py
+def set_field_image(): sim.settings["field_source"] = "image"; save_settings()
+def set_field_custom(): sim.settings["field_source"] = "custom"; save_settings()
+def action_add_shape():
+    cx, cy = FIELD_INCHES / 2, FIELD_INCHES / 2
+    if sim.add_shape_type == "rect":
+        sim.shapes.append({"type": "rect", "x": cx - 6, "y": cy - 6, "w": 12, "h": 12, "angle": 0.0, "color": (150,150,150), "body_type": "static"})
+    else:
+        sim.shapes.append({"type": "circ", "x": cx, "y": cy, "radius": 6, "color": (150,150,150), "body_type": "dynamic"})
+    sim.selected_shape_idx = len(sim.shapes) - 1
+    save_field_data()
+def action_delete_shape():
+    if sim.selected_shape_idx is not None:
+        removed_s = sim.shapes.pop(sim.selected_shape_idx)
+        if "body" in removed_s and removed_s["body"] in space.bodies: space.remove(removed_s["body"])
+        if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes: space.remove(removed_s["pymunk_shape"])
+        sim.selected_shape_idx = None
+        save_field_data()
+        sync_custom_obstacles_to_physics()
+def toggle_physics_mode():
+    if sim.selected_shape_idx is not None:
+        s = sim.shapes[sim.selected_shape_idx]
+        curr = s.get("body_type", "static")
+        # Cycle through: static -> passthrough -> dynamic -> static
+        s["body_type"] = "passthrough" if curr == "static" else "dynamic" if curr == "passthrough" else "static"
+        save_field_data()
+def toggle_layer_height():
+    if sim.selected_shape_idx is not None:
+        s = sim.shapes[sim.selected_shape_idx]
+        if s.get("body_type") == "passthrough":
+            s["is_overpass"] = not s.get("is_overpass", False)
+            save_field_data()
+
+btn_field_img = UIButton(FIELD_PIXELS + 20, 85, 120, 26, "Image", action_callback=set_field_image)
+btn_field_cust = UIButton(FIELD_PIXELS + 160, 85, 120, 26, "Custom", action_callback=set_field_custom)
+btn_add_shape = UIButton(FIELD_PIXELS + 20, 145, 140, 26, "Add Shape", action_callback=action_add_shape)
+btn_del_shape = UIButton(FIELD_PIXELS + 180, 145, 120, 26, "Delete Shape", action_callback=action_delete_shape)
+btn_del_shape.default_color = (180, 60, 60) # Red
+
+shape_panel_y = 245
+btn_phys_toggle = UIButton(FIELD_PIXELS + 20, shape_panel_y + 95, 180, 22, "STATIC (WALL)", action_callback=toggle_physics_mode)
+btn_layer_toggle = UIButton(FIELD_PIXELS + 220, shape_panel_y + 95, 110, 22, "LOW (GROUND)", action_callback=toggle_layer_height)
+
+edit_buttons_ui = [btn_field_img, btn_field_cust, btn_add_shape, btn_del_shape]
+edit_inspector_ui = [btn_phys_toggle, btn_layer_toggle]
 
 #Studio 1 - ui.py
 def update_rlen(val):
@@ -1283,19 +1320,16 @@ def draw_everything():
                 draw_small("Back", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
 
             if sim.current_page == "edit 1":
-                draw_small("Field Display Option:", field_image_button_rect.x, field_image_button_rect.y - 20, YELLOW)
-                pygame.draw.rect(screen, GREEN if sim.settings["field_source"] == "image" else LIGHT_GRAY, field_image_button_rect, border_radius=4)
-                pygame.draw.rect(screen, GREEN if sim.settings["field_source"] == "custom" else LIGHT_GRAY, field_custom_button_rect, border_radius=4)
-                draw_small("Image", field_image_button_rect.x + 30, field_image_button_rect.y + 4, BLACK)
-                draw_small("Custom", field_custom_button_rect.x + 25, field_custom_button_rect.y + 4, BLACK)
-            
-                draw_small("Game Elements Customization:", add_shape_button_rect.x, add_shape_button_rect.y - 20, YELLOW)
-                pygame.draw.rect(screen, LIGHT_GRAY, add_shape_button_rect, border_radius=4)
-                pygame.draw.rect(screen, (180,60,60), delete_shape_button_rect, border_radius=4)
-                draw_small("Add Shape", add_shape_button_rect.x + 20, add_shape_button_rect.y + 5, BLACK)
-                draw_small("Delete Shape", delete_shape_button_rect.x + 15, delete_shape_button_rect.y + 5, BLACK)
+                draw_small("Field Display Option:", btn_field_img.screen_rect.x, btn_field_img.screen_rect.y - 20, YELLOW)
+                btn_field_img.default_color = GREEN if sim.settings["field_source"] == "image" else LIGHT_GRAY
+                btn_field_cust.default_color = GREEN if sim.settings["field_source"] == "custom" else LIGHT_GRAY
                 
-                shape_dropdown.draw(screen)     
+                draw_small("Game Elements Customization:", btn_add_shape.screen_rect.x, btn_add_shape.screen_rect.y - 20, YELLOW)
+                
+                for element in edit_buttons_ui:
+                    element.draw(screen)
+                
+                shape_dropdown.draw(screen) 
             
                 # Inspector Panel selection layout loop context mapping logic
                 if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
@@ -1330,25 +1364,25 @@ def draw_everything():
                         if col == s["color"]: pygame.draw.rect(screen, YELLOW, color_button_rects[i], 2)
 
                     if current_phys == "static":
-                        button_color = RED
-                        text_label = "STATIC (WALL)"
+                        btn_phys_toggle.default_color = RED
+                        btn_phys_toggle.text = "STATIC (WALL)"
                     elif current_phys == "passthrough":
-                        button_color = CYAN
-                        text_label = "PASSTHROUGH"
-
-                        is_over = s.get("is_overpass", False)
-                        over_color = (106,74,58) if not is_over else (139,108,92)
-                        over_label = "HIGH (OVER)" if is_over else "LOW (GROUND)"
-                        pygame.draw.rect(screen, over_color, passthrough_overpass_toggle_rect, border_radius=4)
-                        draw_small(over_label, passthrough_overpass_toggle_rect.x + 5, passthrough_overpass_toggle_rect.y + 4, BLACK)
-                        draw_small("Layer Height", passthrough_overpass_toggle_rect.x, passthrough_overpass_toggle_rect.y - 16, LIGHT_GRAY)
-                    elif current_phys == "dynamic":
-                        button_color = GREEN
-                        text_label = "DYNAMIC (BALL)"
+                        btn_phys_toggle.default_color = CYAN
+                        btn_phys_toggle.text = "PASSTHROUGH"
                         
-                    pygame.draw.rect(screen, button_color, shape_type_toggle_rect, border_radius=4)
-                    draw_small(text_label, shape_type_toggle_rect.x + 10, shape_type_toggle_rect.y + 4, BLACK)
-                    draw_small("Physics Mode", shape_type_toggle_rect.x, shape_type_toggle_rect.y - 16, LIGHT_GRAY)
+                        # Only update and draw the layer toggle if it's passthrough!
+                        is_over = s.get("is_overpass", False)
+                        btn_layer_toggle.default_color = (139,108,92) if is_over else (106,74,58)
+                        btn_layer_toggle.text = "HIGH (OVER)" if is_over else "LOW (GROUND)"
+                        draw_small("Layer Height", btn_layer_toggle.screen_rect.x, btn_layer_toggle.screen_rect.y - 16, LIGHT_GRAY)
+                        btn_layer_toggle.draw(screen)
+                        
+                    elif current_phys == "dynamic":
+                        btn_phys_toggle.default_color = GREEN
+                        btn_phys_toggle.text = "DYNAMIC (BALL)"
+
+                    draw_small("Physics Mode", btn_phys_toggle.screen_rect.x, btn_phys_toggle.screen_rect.y - 16, LIGHT_GRAY)
+                    btn_phys_toggle.draw(screen)
 
                 else:
                     draw_small("No shape selected", FIELD_PIXELS + 20, shape_panel_y + 25, LIGHT_GRAY)
@@ -1442,60 +1476,9 @@ def handle_ui_click(mx, my):
 
     elif sim.current_mode == "edit":
         if sim.current_page == "edit 1":
-            if field_image_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "image"; save_settings(); return
-            if field_custom_button_rect.collidepoint(mx, my): sim.settings["field_source"] = "custom"; save_settings(); return
-        
-            if add_shape_button_rect.collidepoint(mx, my):
-                cx, cy = FIELD_INCHES / 2, FIELD_INCHES / 2
-                if sim.add_shape_type == "rect":
-                    sim.shapes.append({"type": "rect", 
-                                    "x": cx - 6, "y": cy - 6, 
-                                    "w": 12, "h": 12, "angle": 0.0, 
-                                    "color": (150,150,150), 
-                                    "body_type": "static"})
-                else:
-                    sim.shapes.append({"type": "circ", "x": cx, "y": cy, 
-                                    "radius": 6, 
-                                    "color": (150,150,150),
-                                    "body_type": "dynamic"})
-                sim.selected_shape_idx = len(sim.shapes) - 1; save_field_data(); return
-
-            if delete_shape_button_rect.collidepoint(mx, my):
-                if sim.selected_shape_idx is not None: 
-                    removed_s =sim.shapes.pop(sim.selected_shape_idx)
-                    if "body" in removed_s and removed_s["body"] in space.bodies:
-                        space.remove(removed_s["body"])
-                    if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
-                        space.remove(removed_s["pymunk_shape"])
-                sim.selected_shape_idx = None
-                save_field_data()
-                sync_custom_obstacles_to_physics()
-                return
-            if add_shape_dropdown_rect.collidepoint(mx, my): sim.add_shape_dropdown_open = not sim.add_shape_dropdown_open; return
-
-            if sim.add_shape_dropdown_open:
-                if pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 24, add_shape_dropdown_rect.width, 24).collidepoint(mx, my): sim.add_shape_type = "rect"; sim.add_shape_dropdown_open = False; return
-                if pygame.Rect(add_shape_dropdown_rect.x, add_shape_dropdown_rect.y + 48, add_shape_dropdown_rect.width, 24).collidepoint(mx, my): sim.add_shape_type = "circ"; sim.add_shape_dropdown_open = False; return
-
             # Drop textboxes selection processing checks blocks
             if sim.selected_shape_idx is not None:
                 s = sim.shapes[sim.selected_shape_idx]
-                
-                if shape_type_toggle_rect.collidepoint(mx, my):
-                    curr_type = s.get("body_type", "static")
-                    if curr_type == "static":
-                        s["body_type"] = "passthrough"
-                    elif curr_type == "passthrough":
-                        s["body_type"] = "dynamic"
-                    else:
-                        s["body_type"] = "static"
-                    save_field_data()
-                    return
-
-                if passthrough_overpass_toggle_rect.collidepoint(mx, my) and s.get("body_type") == "passthrough":
-                    s["is_overpass"] = not s.get("is_overpass", False)
-                    save_field_data()
-                    return
                 
                 #Detects when user is typing in mass input box, default to 1.0 if received no inputs    
                 if textbox_m_rect.collidepoint(mx, my) and s.get("body_type") == "dynamic":
@@ -1644,7 +1627,13 @@ while running:
 
                 elif sim.current_mode == "edit" and sim.current_page == "edit 1":
                     handled = shape_dropdown.handle_event(event, mx, my)
-                    
+
+                    if not handled:
+                        for element in edit_buttons_ui + edit_inspector_ui:
+                            if element.handle_event(event, mx, my):
+                                handled = True
+                                break
+
                 elif sim.current_mode == "studio" and sim.current_page == "studio 1":
                     for element in studio_1_ui:
                         if element.handle_event(event, mx, my):
