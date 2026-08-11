@@ -642,10 +642,6 @@ modal_x = (WINDOW_WIDTH - MODAL_W) // 2 #Top-left of the modal
 modal_y = (WINDOW_HEIGHT - MODAL_H) // 2
 
 pause_modal_rect = pygame.Rect(modal_x, modal_y, MODAL_W, MODAL_H)
-pause_resume_btn = pygame.Rect(modal_x + 30, modal_y + 60, 220, 36)
-pause_studio_btn = pygame.Rect(modal_x + 30, modal_y + 105, 220, 36)
-pause_settings_btn = pygame.Rect(modal_x + 30, modal_y + 150, 220, 36)
-pause_exit_btn = pygame.Rect(modal_x + 30, modal_y + 195, 220, 36)
 
 #Settings & Keybinds Modal definitions
 SETTING_W, SETTING_H = 420, 360
@@ -691,6 +687,32 @@ def update_add_shape(new_val):
 speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplier:", 0.3, 1.5, sim.settings.get("speed_scale", 1.0), update_speed)
 turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
 shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle"], 0, update_add_shape)
+
+#Pause menu - ui.py
+def action_resume(): sim.paused = False
+def action_settings(): sim.paused_sub_menu = "settings"
+def action_exit(): pygame.quit(); raise SystemExit
+def action_studio():
+    if sim.current_mode == "studio":
+        sim.current_mode = "drive"
+        sim.selected_shape_idx = None
+        sim.active_textbox = None
+        bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
+        sync_custom_obstacles_to_physics()
+    else:
+        sim.current_mode = "studio"
+        sim.current_page = "studio 1"
+    sim.paused = False
+
+btn_pause_resume = UIButton(modal_x + 30, modal_y + 60, 220, 36, "Resume Game", action_callback=action_resume)
+btn_pause_resume.default_color = GREEN
+btn_pause_studio = UIButton(modal_x + 30, modal_y + 105, 220, 36, "Robot Design Studio", action_callback=action_studio)
+btn_pause_settings = UIButton(modal_x + 30, modal_y + 150, 220, 36, "Settings & Keybinds", action_callback=action_settings)
+btn_pause_exit = UIButton(modal_x + 30, modal_y + 195, 220, 36, "Exit Simulator", action_callback=action_exit)
+btn_pause_exit.default_color = RED
+
+# Rendering list to loop through in draw_everything()
+pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_settings, btn_pause_exit]
 
 #Studio 1 - ui.py
 def update_rlen(val):
@@ -1358,22 +1380,19 @@ def draw_everything():
         #Main pause box (Modal)
         if sim.paused_sub_menu == "main":
             pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
-            pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) #Hollow box with 2px thickness
-            #Title
+            pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) 
             draw_text("GAME PAUSED", pause_modal_rect.x + 85, pause_modal_rect.y + 20, YELLOW)
-            # Buttons box
-            pygame.draw.rect(screen, GREEN, pause_resume_btn, border_radius=6)
-            pygame.draw.rect(screen, LIGHT_GRAY, pause_studio_btn, border_radius=6)
-            pygame.draw.rect(screen, LIGHT_GRAY, pause_settings_btn, border_radius=6)
-            pygame.draw.rect(screen, RED, pause_exit_btn, border_radius=6)
-            # Button Labels
-            draw_small("Resume Game", pause_resume_btn.x + 65, pause_resume_btn.y + 10, BLACK)
+
+            #Update display for different screens
             if sim.current_mode == "drive" or sim.current_mode == "edit":
-                draw_small("Robot Design Studio", pause_studio_btn.x + 35, pause_studio_btn.y + 10, BLACK)
+                btn_pause_studio.text = "Robot Design Studio"
             elif sim.current_mode == "studio":
-                draw_small("Return to Drive mode", pause_studio_btn.x + 32, pause_studio_btn.y + 10, BLACK)
-            draw_small("Settings & Keybinds", pause_settings_btn.x + 35, pause_settings_btn.y + 10, BLACK)
-            draw_small("Exit Simulator", pause_exit_btn.x + 55, pause_exit_btn.y + 10, WHITE)    
+                btn_pause_studio.text = "Return to Drive mode"
+
+            #Loop through and render everything
+            for element in pause_ui:
+                element.draw(screen)   
+
         elif sim.paused_sub_menu == "settings":
             k_in = pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
             k_out = pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
@@ -1602,24 +1621,11 @@ while running:
             #Handling clicks when the game is paused
             if sim.paused:
                 if sim.paused_sub_menu == "main":
-                    if pause_resume_btn.collidepoint(mx,my):
-                        sim.paused = False
-                    elif pause_studio_btn.collidepoint(mx,my):
-                        if sim.current_mode == "studio":
-                            sim.current_mode = "drive"
-                            sim.selected_shape_idx = None
-                            sim.active_textbox = None
-                            bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-                            sync_custom_obstacles_to_physics()
-                            sim.paused = False
-                        else:
-                            sim.current_mode = "studio"
-                            sim.current_page = "studio 1"
-                            sim.paused = False
-                    elif pause_settings_btn.collidepoint(mx,my):
-                        sim.paused_sub_menu = "settings"
-                    elif pause_exit_btn.collidepoint(mx,my):
-                        pygame.quit(); raise SystemExit
+                    #Letting the objects (ui.py) handle their own clicks
+                    for element in pause_ui:
+                        if element.handle_event(event, mx, my):
+                            break
+
                 elif sim.paused_sub_menu == "settings":
                     settings_scrollview.handle_event(event, mx, my)
             #Handling clicks when the game is NOT paused
@@ -1795,4 +1801,5 @@ while running:
             update_physics(l_speed, r_speed, dt)
 
     draw_everything()
+
 pygame.quit()
