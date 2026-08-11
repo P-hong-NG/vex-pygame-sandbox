@@ -62,12 +62,9 @@ class UIButton(UIElement):
     def draw(self, surface):
         # Do not draw anything if the button is hidden
         if not self.is_visible: return
-
-        # Choose the right color based on if the mouse is hovering
-        current_color = self.hover_color if self.is_hovered else self.default_color
         
         # Draw the button background and border
-        pygame.draw.rect(surface, current_color, self.screen_rect, border_radius=4)
+        pygame.draw.rect(surface, self.default_color, self.screen_rect, border_radius=4)
         pygame.draw.rect(surface, BLACK, self.screen_rect, 1, border_radius=4)
 
         # Center the text exactly in the middle of the button
