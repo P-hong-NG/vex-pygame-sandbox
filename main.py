@@ -588,11 +588,6 @@ except:
     field_img = pygame.Surface((FIELD_PIXELS, FIELD_PIXELS))
     field_img.fill(DARK)
 
-# UI Elements Definitions
-mode_drive_button_rect = pygame.Rect(FIELD_PIXELS + 20, 20, 120, 30)
-mode_edit_button_rect = pygame.Rect(FIELD_PIXELS + 160, 20, 120, 30)
-mode_page_switch_button_rect = pygame.Rect(FIELD_PIXELS+280, 810, 50, 35)
-
 # Property inputs panel definitions
 shape_panel_y = 255
 
@@ -611,6 +606,29 @@ SETTING_W, SETTING_H = 420, 360
 setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
 setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
 
+#Global buttons - ui.py
+def set_mode_drive():
+    sim.current_mode = "drive"
+    sim.selected_shape_idx = None
+    sim.active_textbox = None
+    bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
+    sync_custom_obstacles_to_physics()
+
+def set_mode_edit():
+    sim.current_mode = "edit"
+    sim.current_page = "edit 1"
+
+def toggle_page():
+    if sim.current_mode == "studio":
+        sim.current_page = "studio 2" if sim.current_page == "studio 1" else "studio 1"
+    elif sim.current_mode == "edit":
+        sim.current_page = "edit 2" if sim.current_page == "edit 1" else "edit 1"
+
+btn_mode_drive = UIButton(FIELD_PIXELS + 20, 20, 120, 30, "Drive", action_callback=set_mode_drive)
+btn_mode_edit = UIButton(FIELD_PIXELS + 160, 20, 120, 30, "Edit", action_callback=set_mode_edit)
+btn_page_switch = UIButton(FIELD_PIXELS + 280, 810, 50, 35, "Next", action_callback=toggle_page)
+
+global_nav_ui = [btn_mode_drive, btn_mode_edit, btn_page_switch]
 
 #Scrollview - ui.py
 settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
@@ -1118,10 +1136,11 @@ def draw_everything():
     # Control Side UI Column Render Processing
     pygame.draw.rect(screen, (25, 25, 25), (FIELD_PIXELS, 0, UI_WIDTH, WINDOW_HEIGHT))
     draw_text("Mode", FIELD_PIXELS + 20, 0, YELLOW)
-    pygame.draw.rect(screen, GREEN if sim.current_mode == "drive" else LIGHT_GRAY, mode_drive_button_rect, border_radius=6)
-    pygame.draw.rect(screen, GREEN if sim.current_mode == "edit" else LIGHT_GRAY, mode_edit_button_rect, border_radius=6)
-    draw_text("Drive", mode_drive_button_rect.x + 30, mode_drive_button_rect.y + 4, BLACK)
-    draw_text("Edit", mode_edit_button_rect.x + 35, mode_edit_button_rect.y + 4, BLACK)
+    btn_mode_drive.default_color = GREEN if sim.current_mode == "drive" else LIGHT_GRAY
+    btn_mode_edit.default_color = GREEN if sim.current_mode == "edit" else LIGHT_GRAY
+    btn_mode_drive.draw(screen)
+    btn_mode_edit.draw(screen)
+
     #Studio mode sidebar (Different set of buttons for Robot CAD)
     if sim.current_mode == "studio":
         studio_center_x = FIELD_PIXELS / 2
@@ -1221,11 +1240,9 @@ def draw_everything():
                 if element == btn_delay_toggle or bot.delay_flag:
                     element.draw(screen)
                 
-        pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
-        if sim.current_page == "studio 1":
-            draw_small("Next", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
-        elif sim.current_page == "studio 2":
-            draw_small("Back", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
+        if sim.current_mode in ("studio", "edit"):
+            btn_page_switch.text = "Back" if sim.current_page in ("studio 2", "edit 2") else "Next"
+            btn_page_switch.draw(screen)
 
         studio_display_y = 700
         #Calculated performance section
@@ -1353,11 +1370,9 @@ def draw_everything():
                 pygame.draw.line(screen, line_color, (6, line_y), (14, line_y), 2)
                 draw_small(f"{inch}\"", 16, line_y - 6, line_color)
 
-            pygame.draw.rect(screen, LIGHT_GRAY, mode_page_switch_button_rect, border_radius=4)
-            if sim.current_page == "edit 1":
-                draw_small("Next", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
-            elif sim.current_page == "edit 2":
-                draw_small("Back", mode_page_switch_button_rect.x + 9, mode_page_switch_button_rect.y + 11, BLACK)
+                if sim.current_mode in ("studio", "edit"):
+                    btn_page_switch.text = "Back" if sim.current_page in ("studio 2", "edit 2") else "Next"
+                    btn_page_switch.draw(screen)
 
             if sim.current_page == "edit 1":
                 draw_small("Field Display Option:", btn_field_img.screen_rect.x, btn_field_img.screen_rect.y - 20, YELLOW)
@@ -1499,25 +1514,7 @@ def draw_everything():
 # 6. ACTION INTERACTION ROUTINES (UI Click & Inputs Handler)
 # =====================================================================
 def handle_ui_click(mx, my):
-    if mode_drive_button_rect.collidepoint(mx, my): 
-        sim.current_mode = "drive"
-        sim.selected_shape_idx = None
-        sim.active_textbox = None
-        bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-        sync_custom_obstacles_to_physics() #Calling the physics body build
-        return
-    if mode_edit_button_rect.collidepoint(mx, my): 
-        sim.current_mode = "edit"
-        sim.current_page = "edit 1"
-        return
-    
-    if sim.current_mode == "studio":
-        if sim.current_page == "studio 1":
-            if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 2"; return
-        elif sim.current_page == "studio 2":
-            if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "studio 1"; return
-
-    elif sim.current_mode == "edit":
+    if sim.current_mode == "edit":
         if sim.current_page == "edit 1":
             # Drop textboxes selection processing checks blocks
             if sim.selected_shape_idx is not None:
@@ -1525,9 +1522,6 @@ def handle_ui_click(mx, my):
                 for i, rect in enumerate(color_button_rects):
                     if rect.collidepoint(mx, my): s["color"] = COLOR_PALETTE[i]; save_field_data(); return
 
-            if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "edit 2"; return
-        elif sim.current_page == "edit 2":
-            if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "edit 1"; return
 
 # =====================================================================
 # 7. AUTONOMOUS COMMAND EXECUTORS (Hardcoded Sequential Layer)
@@ -1601,6 +1595,11 @@ while running:
             #Handling clicks when the game is NOT paused
             elif mx >= FIELD_PIXELS: 
                 handled = False
+
+                for element in global_nav_ui: #CHeck gobal variables first 
+                    if element.handle_event(event, mx, my):
+                        handled = True
+
                 if sim.current_mode == "drive":
                     handled = speed_slider.handle_event(event, mx, my) or turn_slider.handle_event(event, mx, my)
 
