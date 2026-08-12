@@ -594,30 +594,10 @@ mode_edit_button_rect = pygame.Rect(FIELD_PIXELS + 160, 20, 120, 30)
 mode_page_switch_button_rect = pygame.Rect(FIELD_PIXELS+280, 810, 50, 35)
 
 # Property inputs panel definitions
-shape_panel_y = 245
-#Example .rect(x-cord,y-cord,width,height). button y +-45
-textbox_x_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 15, 80, 22)#X-cord
-textbox_y_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 15, 80, 22)#Y-cord
-textbox_w_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22)#Width
-textbox_h_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22)#Height
-textbox_r_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Radius
-textbox_a_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22)#Angle
-
-textbox_m_rect = pygame.Rect(FIELD_PIXELS + 220, shape_panel_y + 140, 80, 22)#Mass
-textbox_f_rect = pygame.Rect(FIELD_PIXELS + 120, shape_panel_y + 140, 80, 22)#Friction
-textbox_e_rect = pygame.Rect(FIELD_PIXELS + 20, shape_panel_y + 140, 80, 22)#Bounce
+shape_panel_y = 255
 
 COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,120)]
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 180, 30, 30) for i in range(len(COLOR_PALETTE))]
-
-# Robot Config Input definitions
-robot_start_y = shape_panel_y + 250
-robot_x_rect = pygame.Rect(FIELD_PIXELS + 20, robot_start_y + 20, 80, 22)
-robot_y_rect = pygame.Rect(FIELD_PIXELS + 120, robot_start_y + 20, 80, 22)
-robot_a_rect = pygame.Rect(FIELD_PIXELS + 220, robot_start_y + 20, 80, 22)
-robot_len_rect = pygame.Rect(FIELD_PIXELS + 120, robot_start_y + 60, 80, 22)
-robot_wid_rect = pygame.Rect(FIELD_PIXELS + 20, robot_start_y + 60, 80, 22)
-robot_save_rect = pygame.Rect(FIELD_PIXELS + 20, robot_start_y + 95, 130, 26)
 
 #Pause Menu Modal (pop-up) definitions
 MODAL_W, MODAL_H = 280, 260 #Width and Height of modal
@@ -819,8 +799,68 @@ studio_gin_box = UITextbox(FIELD_PIXELS + 20, 225, 70, 24, "In (teeth)", str(bot
 studio_gout_box = UITextbox(FIELD_PIXELS + 110, 225, 70, 24, "Out (teeth)", str(bot.gear_out), update_gout)
 studio_mass_box = UITextbox(FIELD_PIXELS + 20, 275, 100, 24, "Robot's mass (lbs)", str(bot.total_mass), update_mass)
 
-# Rendering list to loop through in draw_everything()
 studio_1_ui = [studio_len_box, studio_wid_box, cartridge_dropdown, studio_wrad_box, btn_w275, btn_w325, btn_w400, studio_gin_box, studio_gout_box, studio_mass_box]
+
+def upd_sx(val): 
+    try: sim.shapes[sim.selected_shape_idx]["x"] = float(val); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sy(val): 
+    try: sim.shapes[sim.selected_shape_idx]["y"] = float(val); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sw(val): 
+    try: sim.shapes[sim.selected_shape_idx]["w"] = max(1.0, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sh(val): 
+    try: sim.shapes[sim.selected_shape_idx]["h"] = max(1.0, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sa(val): 
+    try: sim.shapes[sim.selected_shape_idx]["angle"] = float(val); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sr(val): 
+    try: sim.shapes[sim.selected_shape_idx]["radius"] = max(1.0, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sm(val): 
+    try: sim.shapes[sim.selected_shape_idx]["mass"] = max(0.1, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_sf(val): 
+    try: sim.shapes[sim.selected_shape_idx]["friction"] = max(0.0, min(1.0, float(val))); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+def upd_se(val): 
+    try: sim.shapes[sim.selected_shape_idx]["elasticity"] = max(0.0, min(1.0, float(val))); save_field_data(); sync_custom_obstacles_to_physics()
+    except: pass
+
+box_sx = UITextbox(FIELD_PIXELS + 20, shape_panel_y + 15, 80, 22, "X", "", upd_sx)
+box_sy = UITextbox(FIELD_PIXELS + 120, shape_panel_y + 15, 80, 22, "Y", "", upd_sy)
+box_sw = UITextbox(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22, "W", "", upd_sw)
+box_sh = UITextbox(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22, "H", "", upd_sh)
+box_sr = UITextbox(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22, "Radius", "", upd_sr)
+box_sa = UITextbox(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22, "Angle", "", upd_sa)
+box_sm = UITextbox(FIELD_PIXELS + 220, shape_panel_y + 140, 80, 22, "Mass (lbs)", "", upd_sm)
+box_sf = UITextbox(FIELD_PIXELS + 120, shape_panel_y + 140, 80, 22, "Friction", "", upd_sf)
+box_se = UITextbox(FIELD_PIXELS + 20, shape_panel_y + 140, 80, 22, "Bounce", "", upd_se)
+
+def upd_rx(val): 
+    try: bot.start_pose = (float(val), bot.start_pose[1], bot.start_pose[2]); save_field_data(); bot.reset_to_start()
+    except: pass
+def upd_ry(val): 
+    try: bot.start_pose = (bot.start_pose[0], float(val), bot.start_pose[2]); save_field_data(); bot.reset_to_start()
+    except: pass
+def upd_ra(val): 
+    try: bot.start_pose = (bot.start_pose[0], bot.start_pose[1], float(val)); save_field_data(); bot.reset_to_start()
+    except: pass
+
+robot_start_y = shape_panel_y + 250
+box_rx = UITextbox(FIELD_PIXELS + 20, robot_start_y + 20, 80, 22, "Start X", "", upd_rx)
+box_ry = UITextbox(FIELD_PIXELS + 120, robot_start_y + 20, 80, 22, "Start Y", "", upd_ry)
+box_ra = UITextbox(FIELD_PIXELS + 220, robot_start_y + 20, 80, 22, "Start θ", "", upd_ra)
+box_rlen = UITextbox(FIELD_PIXELS + 120, robot_start_y + 60, 80, 22, "Chassis L", "", update_rlen) # Reuses studio callback!
+box_rwid = UITextbox(FIELD_PIXELS + 20, robot_start_y + 60, 80, 22, "Chassis W", "", update_rwid) # Reuses studio callback!
+btn_rsave = UIButton(FIELD_PIXELS + 20, robot_start_y + 95, 130, 26, "Save Start", action_callback=lambda: save_field_data())
+btn_rsave.default_color = GREEN
+
+# Rendering list to loop through in draw_everything()
+edit_shape_txt = [box_sx, box_sy, box_sw, box_sh, box_sr, box_sa, box_sm, box_sf, box_se]
+edit_robot_ui = [box_rx, box_ry, box_ra, box_rlen, box_rwid, btn_rsave]
 
 #Studio 2 - ui.py
 def toggle_outtake(): bot.has_outtake = not bot.has_outtake; save_settings()
@@ -1337,31 +1377,28 @@ def draw_everything():
                     current_phys = s.get("body_type", "static")
                     
                     if s["type"] == "rect":
-                        draw_textbox(textbox_x_rect, "X", sim.textbox_value if sim.active_textbox == "x" else f"{s['x']:.1f}", sim.active_textbox == "x")
-                        draw_textbox(textbox_y_rect, "Y", sim.textbox_value if sim.active_textbox == "y" else f"{s['y']:.1f}", sim.active_textbox == "y")
-                        draw_textbox(textbox_w_rect, "W", sim.textbox_value if sim.active_textbox == "w" else f"{s['w']:.1f}", sim.active_textbox == "w")
-                        draw_textbox(textbox_h_rect, "H", sim.textbox_value if sim.active_textbox == "h" else f"{s['h']:.1f}", sim.active_textbox == "h")
-                        draw_textbox(textbox_a_rect, "Angle", sim.textbox_value if sim.active_textbox == "a" else f"{s['angle']:.1f}", sim.active_textbox == "a")
-                    elif s["type"] == "circ":
-                        draw_textbox(textbox_x_rect, "Center X", sim.textbox_value if sim.active_textbox == "x" else f"{s['x']:.1f}", sim.active_textbox == "x")
-                        draw_textbox(textbox_y_rect, "Center Y", sim.textbox_value if sim.active_textbox == "y" else f"{s['y']:.1f}", sim.active_textbox == "y")
-                        draw_textbox(textbox_r_rect, "Radius", sim.textbox_value if sim.active_textbox == "r" else f"{s['radius']:.1f}", sim.active_textbox == "r")
+                        if not box_sx.is_active: box_sx.value = f"{s['x']:.1f}"
+                        if not box_sy.is_active: box_sy.value = f"{s['y']:.1f}"
+                        if not box_sw.is_active: box_sw.value = f"{s['w']:.1f}"
+                        if not box_sh.is_active: box_sh.value = f"{s['h']:.1f}"
+                        if not box_sa.is_active: box_sa.value = f"{s['angle']:.1f}"
+                        for box in [box_sx, box_sy, box_sw, box_sh, box_sa]: box.draw(screen)
                         
-                    #Draw mass input box, only if dynamic
+                    elif s["type"] == "circ":
+                        if not box_sx.is_active: box_sx.value = f"{s['x']:.1f}"
+                        if not box_sy.is_active: box_sy.value = f"{s['y']:.1f}"
+                        if not box_sr.is_active: box_sr.value = f"{s['radius']:.1f}"
+                        for box in [box_sx, box_sy, box_sr]: box.draw(screen)
+                        
                     if current_phys == "dynamic":
-                        m_val = s.get("mass", 1.0)
-                        draw_textbox(textbox_m_rect, "Mass (lbs)", sim.textbox_value if sim.active_textbox == "m" else f"{m_val:.1f}", sim.active_textbox == "m")
+                        if not box_sm.is_active: box_sm.value = f"{s.get('mass', 1.0):.1f}"
+                        box_sm.draw(screen)
 
-                    if current_phys != "passthrough":
-                        # Draw Friction & Elasticity textboxes for all selected shapes
-                        f_val = s.get("friction", 0.5) #Grabbing value from dictionary, default to 0.5
-                        e_val = s.get("elasticity", 0.0)
-                        draw_textbox(textbox_f_rect, "Friction", sim.textbox_value if sim.active_textbox == "f" else f"{f_val:.2f}", sim.active_textbox == "f")
-                        draw_textbox(textbox_e_rect, "Bounce", sim.textbox_value if sim.active_textbox == "e" else f"{e_val:.2f}", sim.active_textbox == "e")
-                    
-                    for i, col in enumerate(COLOR_PALETTE):
-                        pygame.draw.rect(screen, col, color_button_rects[i])
-                        if col == s["color"]: pygame.draw.rect(screen, YELLOW, color_button_rects[i], 2)
+                    if current_phys == "passthrough":
+                        if not box_sf.is_active: box_sf.value = f"{s.get('friction', 0.5):.2f}"
+                        if not box_se.is_active: box_se.value = f"{s.get('elasticity', 0.0):.2f}"
+                        box_sf.draw(screen)
+                        box_se.draw(screen)
 
                     if current_phys == "static":
                         btn_phys_toggle.default_color = RED
@@ -1370,7 +1407,7 @@ def draw_everything():
                         btn_phys_toggle.default_color = CYAN
                         btn_phys_toggle.text = "PASSTHROUGH"
                         
-                        # Only update and draw the layer toggle if it's passthrough!
+                        # Only update and draw the layer toggle if it's passthrough
                         is_over = s.get("is_overpass", False)
                         btn_layer_toggle.default_color = (139,108,92) if is_over else (106,74,58)
                         btn_layer_toggle.text = "HIGH (OVER)" if is_over else "LOW (GROUND)"
@@ -1384,21 +1421,27 @@ def draw_everything():
                     draw_small("Physics Mode", btn_phys_toggle.screen_rect.x, btn_phys_toggle.screen_rect.y - 16, LIGHT_GRAY)
                     btn_phys_toggle.draw(screen)
 
+                    draw_small("Color Palette", color_button_rects[0].x, color_button_rects[0].y - 20, YELLOW)
+                    for i, rect in enumerate(color_button_rects):
+                        pygame.draw.rect(screen, COLOR_PALETTE[i], rect, border_radius=4)
+                        if s["color"] == COLOR_PALETTE[i]:
+                            pygame.draw.rect(screen, WHITE, rect, 2, border_radius=4)
+
                 else:
                     draw_small("No shape selected", FIELD_PIXELS + 20, shape_panel_y + 25, LIGHT_GRAY)
-        
-                # Global teleop diagnostics metrics dashboard tracking
-                draw_small("Robot's Starting Pose:", robot_x_rect.x, robot_x_rect.y - 35, YELLOW)
-                rx, ry, ra = bot.start_pose
-                draw_textbox(robot_x_rect, "Start X", sim.textbox_value if sim.active_textbox == "rx" else f"{rx:.1f}", sim.active_textbox == "rx")
-                draw_textbox(robot_y_rect, "Start Y", sim.textbox_value if sim.active_textbox == "ry" else f"{ry:.1f}", sim.active_textbox == "ry")
-                draw_textbox(robot_a_rect, "Start θ", sim.textbox_value if sim.active_textbox == "ra" else f"{ra:.1f}", sim.active_textbox == "ra")
-                pygame.draw.rect(screen, GREEN, robot_save_rect, border_radius=4)
-                draw_small("Save Start", robot_save_rect.x + 20, robot_save_rect.y + 5, BLACK)
-                draw_textbox(robot_len_rect, "Chassis L", sim.textbox_value if sim.active_textbox == "rlen" else f"{bot.length:.1f}", sim.active_textbox == "rlen")
-                draw_textbox(robot_wid_rect, "Chassis W", sim.textbox_value if sim.active_textbox == "rwid" else f"{bot.track_width:.1f}", sim.active_textbox == "rwid")
 
-            
+                # Global teleop diagnostics metrics dashboard tracking
+                draw_small("Robot's Starting Pose:", box_rx.screen_rect.x, box_rx.screen_rect.y - 35, YELLOW)
+                rx, ry, ra = bot.start_pose
+                # Update Robot values dynamically
+                if not box_rx.is_active: box_rx.value = f"{rx:.1f}"
+                if not box_ry.is_active: box_ry.value = f"{ry:.1f}"
+                if not box_ra.is_active: box_ra.value = f"{ra:.1f}"
+                if not box_rlen.is_active: box_rlen.value = f"{bot.length:.1f}"
+                if not box_rwid.is_active: box_rwid.value = f"{bot.track_width:.1f}"
+                for element in edit_robot_ui:
+                    element.draw(screen)       
+
         # Pose/ Odom footer
         info_y = WINDOW_HEIGHT - 90
         draw_text("Pose (Field)", FIELD_PIXELS + 20, info_y, LIGHT_GRAY)
@@ -1478,71 +1521,13 @@ def handle_ui_click(mx, my):
         if sim.current_page == "edit 1":
             # Drop textboxes selection processing checks blocks
             if sim.selected_shape_idx is not None:
-                s = sim.shapes[sim.selected_shape_idx]
-                
-                #Detects when user is typing in mass input box, default to 1.0 if received no inputs    
-                if textbox_m_rect.collidepoint(mx, my) and s.get("body_type") == "dynamic":
-                    sim.active_textbox = "m"
-                    sim.textbox_value = f"{s.get('mass', 1.0):.1f}"
-                    return
-                if textbox_f_rect.collidepoint(mx, my):
-                    sim.active_textbox = "f"
-                    sim.textbox_value = f"{s.get('friction', 0.5):.2f}"
-                    return
-                if textbox_e_rect.collidepoint(mx, my):
-                    sim.active_textbox = "e"
-                    sim.textbox_value = f"{s.get('elasticity', 0.0):.2f}"
-                    return
-                
-                if s["type"] == "rect":
-                    if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
-                    if textbox_y_rect.collidepoint(mx, my): sim.active_textbox = "y"; sim.textbox_value = f"{s['y']:.1f}"; return
-                    if textbox_w_rect.collidepoint(mx, my): sim.active_textbox = "w"; sim.textbox_value = f"{s['w']:.1f}"; return
-                    if textbox_h_rect.collidepoint(mx, my): sim.active_textbox = "h"; sim.textbox_value = f"{s['h']:.1f}"; return
-                    if textbox_a_rect.collidepoint(mx, my): sim.active_textbox = "a"; sim.textbox_value = f"{s['angle']:.1f}"; return
-                elif s["type"] == "circ":
-                    if textbox_x_rect.collidepoint(mx, my): sim.active_textbox = "x"; sim.textbox_value = f"{s['x']:.1f}"; return
-                    if textbox_y_rect.collidepoint(mx, my): sim.active_textbox = "y"; sim.textbox_value = f"{s['y']:.1f}"; return
-                    if textbox_r_rect.collidepoint(mx, my): sim.active_textbox = "r"; sim.textbox_value = f"{s['radius']:.1f}"; return
+                s = sim.shapes[sim.selected_shape_idx]               
                 for i, rect in enumerate(color_button_rects):
                     if rect.collidepoint(mx, my): s["color"] = COLOR_PALETTE[i]; save_field_data(); return
 
-            if robot_x_rect.collidepoint(mx, my): sim.active_textbox = "rx"; sim.textbox_value = f"{bot.start_pose[0]:.1f}"; return
-            if robot_y_rect.collidepoint(mx, my): sim.active_textbox = "ry"; sim.textbox_value = f"{bot.start_pose[1]:.1f}"; return
-            if robot_a_rect.collidepoint(mx, my): sim.active_textbox = "ra"; sim.textbox_value = f"{bot.start_pose[2]:.1f}"; return
-            if robot_save_rect.collidepoint(mx, my): save_field_data(); return
-            if robot_len_rect.collidepoint(mx, my): sim.active_textbox = "rlen"; sim.textbox_value = f"{bot.length:.1f}"; return
-            if robot_wid_rect.collidepoint(mx, my): sim.active_textbox = "rwid"; sim.textbox_value = f"{bot.track_width:.1f}"; return
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "edit 2"; return
         elif sim.current_page == "edit 2":
             if mode_page_switch_button_rect.collidepoint(mx,my): sim.current_page = "edit 1"; return
-
-#Save typed values into the shape dictionary/file
-def apply_textbox_value(): 
-    if sim.active_textbox is None: return
-    try: val = float(sim.textbox_value)
-    except: sim.active_textbox = None; return
-
-    if sim.active_textbox in ("x","y","w","h","r","a","m", "f", "e") and sim.selected_shape_idx is not None:
-        s = sim.shapes[sim.selected_shape_idx]
-        if sim.active_textbox == "x": s["x"] = val
-        elif sim.active_textbox == "y": s["y"] = val
-        elif sim.active_textbox == "w" and s["type"] == "rect": s["w"] = max(1.0, val)
-        elif sim.active_textbox == "h" and s["type"] == "rect": s["h"] = max(1.0, val)
-        elif sim.active_textbox == "r" and s["type"] == "circ": s["radius"] = max(1.0, val)
-        elif sim.active_textbox == "a" and s["type"] == "rect": s["angle"] = val
-        elif sim.active_textbox == "m": s["mass"] = max(0.1, val)  # Prevent zero or negative mass
-        elif sim.active_textbox == "f": s["friction"] = max(0.0, min(1.0,val)) #Prevent negative and limit between 0 and 1 (rubber)
-        elif sim.active_textbox == "e": s["elasticity"] = max(0.0, min(1.0,val)) #Prevent negative and limit between 0 and 1 (max bounce)
-        save_field_data()
-    elif sim.active_textbox in ("rx","ry","ra"):
-        rx, ry, ra = bot.start_pose
-        if sim.active_textbox == "rx": rx = val
-        elif sim.active_textbox == "ry": ry = val
-        elif sim.active_textbox == "ra": ra = val
-        bot.start_pose = (rx, ry, ra)
-        save_field_data()
-    sim.active_textbox = None
 
 # =====================================================================
 # 7. AUTONOMOUS COMMAND EXECUTORS (Hardcoded Sequential Layer)
@@ -1623,34 +1608,34 @@ while running:
                         for element in drive_ui:
                             if element.handle_event(event, mx, my):
                                 handled = True
-                                break
 
                 elif sim.current_mode == "edit" and sim.current_page == "edit 1":
                     handled = shape_dropdown.handle_event(event, mx, my)
 
                     if not handled:
-                        for element in edit_buttons_ui + edit_inspector_ui:
+                        for element in edit_buttons_ui + edit_inspector_ui + edit_shape_txt + edit_robot_ui:
                             if element.handle_event(event, mx, my):
                                 handled = True
-                                break
 
                 elif sim.current_mode == "studio" and sim.current_page == "studio 1":
                     for element in studio_1_ui:
                         if element.handle_event(event, mx, my):
                             handled = True
-                            break # Stop checking if an element got clicked
 
                 elif sim.current_mode == "studio" and sim.current_page == "studio 2":
                     elements = studio_2_outtake_ui + studio_2_intake_ui + studio_2_delay_ui
                     for element in elements:
                         if element.handle_event(event, mx, my):
                             handled = True
-                            break
 
                 if not handled: #Run old function if not detected
                     handle_ui_click(mx, my)
 
             elif sim.current_mode == "edit":
+                if sim.current_page == "edit 1":
+                    fake_click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(-100, -100), button=1)
+                    for element in edit_shape_txt + edit_robot_ui:
+                        element.handle_event(fake_click, -100, -100)
                 # Check robot drag focus
                 dx, dy = mx - bot.x * SCALE, my - (FIELD_PIXELS - bot.y * SCALE)
                 r_radius = max(bot.length, bot.track_width) * SCALE / 2 + 10
@@ -1743,10 +1728,12 @@ while running:
             if sim.current_mode == "studio" and sim.current_page == "studio 1":
                 for element in studio_1_ui:
                     element.handle_event(event, mx, my)
-
             elif sim.current_mode == "studio" and sim.current_page == "studio 2":
                 elements = studio_2_outtake_ui + studio_2_intake_ui + studio_2_delay_ui
                 for element in elements:
+                    element.handle_event(event, mx, my)
+            elif sim.current_mode == "edit" and sim.current_page == "edit 1":
+                for element in edit_shape_txt + edit_robot_ui:
                     element.handle_event(event, mx, my)
 
             # Global Pause Toggle (ESC Key)
@@ -1761,19 +1748,23 @@ while running:
                     sim.settings["keybinds"][sim.remapping_key] = event.key
                     sim.remapping_key = None
                     save_settings()
-            elif sim.active_textbox is not None and not sim.paused: #Only process typing if NOT paused
-                if event.key == pygame.K_RETURN: apply_textbox_value()
-                elif event.key == pygame.K_BACKSPACE: sim.textbox_value = sim.textbox_value[:-1]
-                elif event.unicode.isdigit() or event.unicode in ".-": sim.textbox_value += event.unicode
             elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
-                removed_s = sim.shapes.pop(sim.selected_shape_idx)
-                if "body" in removed_s and removed_s["body"] in space.bodies:
-                    space.remove(removed_s["body"])
-                if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
-                    space.remove(removed_s["pymunk_shape"])
-                sim.selected_shape_idx = None
-                save_field_data()
-                sync_custom_obstacles_to_physics()
+                is_typing = False
+                if sim.current_page == "edit 1":
+                    for box in edit_shape_txt + edit_robot_ui:
+                        if getattr(box, "is_active", False):
+                            is_typing = True
+                            break
+                            
+                if not is_typing:
+                    removed_s = sim.shapes.pop(sim.selected_shape_idx)
+                    if "body" in removed_s and removed_s["body"] in space.bodies:
+                        space.remove(removed_s["body"])
+                    if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
+                        space.remove(removed_s["pymunk_shape"])
+                    sim.selected_shape_idx = None
+                    save_field_data()
+                    sync_custom_obstacles_to_physics()
 
             # Toggle mode intake switching
             elif sim.current_mode == "drive" and not sim.paused and sim.settings["intake_control_mode"] == "toggle":
