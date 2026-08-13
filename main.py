@@ -930,7 +930,7 @@ btn_in_toggle = UIButton(FIELD_PIXELS + 20, 285, 110, 24, "Toggle", action_callb
 box_iwid = UITextbox(FIELD_PIXELS + 140, 285, 80, 24, "Width (in)", str(bot.intake_width), update_iwid)
 box_ilen = UITextbox(FIELD_PIXELS + 230, 285, 80, 24, "Depth (in)", str(bot.intake_length), update_ilen)
 box_ispd = UITextbox(FIELD_PIXELS + 20, 333, 100, 24, "Eject Speed", str(sim.settings.get("intake_rev_velocity", 30.0)), update_ispd)
-box_icap = UITextbox(FIELD_PIXELS + 20, 435, 60, 30, "Capacity", str(sim.settings.get("max_capacity", 3)), update_icap)
+box_icap = UITextbox(FIELD_PIXELS + 20, 435, 60, 24, "Max Capacity", str(sim.settings.get("max_capacity", 3)), update_icap)
 btn_in_shift_in = UIButton(FIELD_PIXELS + 20, 385, 35, 24, "<", action_callback=shift_in_in)
 btn_in_shift_out = UIButton(FIELD_PIXELS + 60, 385, 35, 24, ">", action_callback=shift_in_out)
 
@@ -1184,8 +1184,8 @@ def draw_everything():
             pygame.draw.rect(screen, (200, 80, 220), outtake_rect, 2) 
 
         # Dimension labels on CAD canvas
-        draw_small(f"L: {bot.length:.1f}\"", cad_rect.centerx - 25, cad_rect.bottom + 8, DARK)
-        draw_small(f"W: {bot.track_width:.1f}\"", cad_rect.right + 15, cad_rect.centery - 6, DARK)
+        draw_small(f"L (Chasis): {bot.length:.1f}\"", cad_rect.centerx - 60, cad_rect.bottom + 8, DARK)
+        draw_small(f"W (Chasis): {bot.track_width:.1f}\"", cad_rect.right + 15, cad_rect.centery - 6, DARK)
 
         if sim.current_page == "studio 1":
             # Header indicator
