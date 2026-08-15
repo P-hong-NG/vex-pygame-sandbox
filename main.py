@@ -5,6 +5,7 @@ import math
 import json
 import os
 from ui import UIButton, UITextbox, ScrollView, UIDropdown, UISlider
+from blocking_bot import BlockingBot
 
 pygame.init()
 
@@ -178,6 +179,10 @@ class SimulatorState:
 # Instantiate our unified states
 bot = Robot()
 sim = SimulatorState()
+
+blocker = BlockingBot(space, SCALE, FIELD_INCHES)
+bot.shape.collision_type = blocker.COLLISION_TYPE_PLAYER
+blocker.register_collision_handler()
 
 # =====================================================================
 # 3. DATA PERSISTENCE (IO Systems)
@@ -460,6 +465,9 @@ def update_physics(left_speed, right_speed, dt):
             # Reset state if in toggle mode
             if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
                 bot.outtake_state = "off"
+
+    #Updating blocker steering
+    blocker.update(bot, dt)
         
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
@@ -468,6 +476,8 @@ def update_physics(left_speed, right_speed, dt):
     bot.x = bot.body.position.x / SCALE
     bot.y = bot.body.position.y / SCALE
     bot.angle = math.degrees(bot.body.angle)
+
+    blocker.sync_from_physics() #Syncing the blocker's cords
 
     for item in bot.inventory:
         if item.get("travel_timer", 0.0) > 0.0:
@@ -704,6 +714,9 @@ def action_reset(): bot.reset_to_start()
 def action_reset_center(): bot.reset_to_center()
 def action_run_auton(): 
     if not sim.auton_running: sim.auton_mode = True
+def toggle_blocker():
+    blocker.disable() if blocker.enabled else blocker.enable()
+btn_blocker = UIButton(FIELD_PIXELS + 20, 400, 130, 28, "Toggle Blocker", action_callback=toggle_blocker)
 
 btn_drive_tank = UIButton(FIELD_PIXELS + 20, 70, 90, 26, "Tank", action_callback=set_drive_tank)
 btn_drive_arcade = UIButton(FIELD_PIXELS + 120, 70, 90, 26, "Arcade", action_callback=set_drive_arcade)
@@ -720,7 +733,7 @@ btn_reset.default_color = (180, 60, 60) # Red
 btn_reset_center.default_color = (80, 80, 180) # Blue
 btn_auton.default_color = GREEN
 
-drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton]
+drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker]
 
 #Edit 1 - ui.py
 def set_field_image(): sim.settings["field_source"] = "image"; save_settings()
@@ -1110,6 +1123,8 @@ def draw_everything():
         bot_rect = rot_bot.get_rect(center=(bot_center_x, bot_center_y))
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
+
+        blocker.draw(screen, SCALE, FIELD_PIXELS)
 
     if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
         for i, s in enumerate(sim.shapes):
@@ -1791,3 +1806,5 @@ while running:
     draw_everything()
 
 pygame.quit()
+
+print(blocker.get_summary())
