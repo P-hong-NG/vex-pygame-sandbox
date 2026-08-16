@@ -115,6 +115,29 @@ Before: ![Old studio mode sidebar 1](images/oldStudio1.png) After: ![New studio 
 
 Before ![Old studio mode sidebar 2](images/oldStudio2.png) After: ![New studio mode sidebar 2](images/newStudio2.png)
 
+[August 15th, 2026] - A disadvantage of the virtual simulator, and brainstorming how to fix it
+
+One of the main reasons I built this simulator is the limitation of my school's robotics room: we only have one field to drive, practice, and test autonomous routines on. The simulator solves most of that - testing drivetrains and auton routes doesn't need the physical field. But I realized the physical field still has one advantage the sim doesn't: the opportunity to run scrimmages and practice matches against other teams. So I started thinking about how to fix that.
+
+I came up with three ways to upgrade the sim:
+
+_A simple collision detection system that records any hard impacts the user makes with static objects and walls, paired with a "Start" and "Finish" zone on a custom map the user has to maneuver around while carrying a game element.
+
+_A fully dedicated bot that learns the user's driving style and movement to give improvement suggestions and predictions - essentially an "NPC" bot that drives and behaves like a real player based on collected data, able to pick up, score, and run autonomous routines, so it feels like driving against an actual opponent.
+
+_A combination of both: a less "smart" NPC bot that simply tracks the user and deliberately drives up against them, collecting data on where they made mistakes for a final report showing when and where those mistakes happened most.
+
+Based on the past few commits and the title of today's entry, you can probably
+guess which one I picked - and it wasn't random.
+
+- Option 1: The easiest to code, since it's just extra collision detection and logging. But it requires a whole new UI layout and mode, where every practice map has to be custom-built - and building a map complex enough to generate genuinely useful data would take a lot of time. It also doesn't solve the actual problem: simulating a real opponent. It just becomes individual driving-skill practice, which normal Drive mode already covers.
+  
+- Option 2: Normally the best option for realistic, useful data - but also the hardest and most time-consuming. Getting enough training data would require someone driving a huge amount, and even then, could the bot realistically simulate a real driver? People drive with keyboard, controller, tank drive, or arcade drive, and each gives a different style, tactic, and advantage. On top of that, the amount of ML I'd have to learn and the data I'd have to store made this unrealistic for the timeline.
+  
+- **Option 3 (Picked):** The middle ground between Options 1 and 2. Data collection happens around a specific objective the user completes while being tracked for mistakes, but it doesn't require a custom-built map that would eventually get boring and memorized - the user can just use Edit mode to build their own map, or one similar to that year's competition field. The "advanced NPC bot" gets simplified into a lead-point tracking system that follows the user's position, using driving math and turn/drive speeds similar to the user's own bot.
+
+Started building this with my AI co-partner - I'm responsible for the design decisions above and the path to take, and they helped with implementation and complex ideas that I may not know about to make a more efficient version.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These would be images that I have taken on various dates, so I can't give you the exact date, sorry!
