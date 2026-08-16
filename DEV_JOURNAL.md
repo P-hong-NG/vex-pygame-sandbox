@@ -138,6 +138,16 @@ guess which one I picked - and it wasn't random.
 
 Started building this with my AI co-partner - I'm responsible for the design decisions above and the path to take, and they helped with implementation and complex ideas that I may not know about to make a more efficient version.
 
+[August 16th, 2026] - Understanding what I built
+
+Got a working "blocking_bot.py" done with my AI co-partner yesterday. Today's work was about going through the whole file myself to make sure I actually understood it, not just that it ran.
+
+I went line by line and wrote out explanations for the parts that weren't immediately obvious to me (like the angle-wrapping math for turning, the pairwise zip trick for calculating gaps between impacts, and how PyMunk's on_colisions and post_solve callback fit in the data recording process. I chose the easy-to-understand parts of those explanations to put into inline comments (above the code) so the file explains itself to anyone reading it later, including future me :). And of course, I still have my own Doc that have the "not so easy to understand" personal explanation that I have.
+
+In the process, I've found an issue: since the sim runs at 60 ticks per second, a single collision could be counted as several separate "mistakes" while the player's speed was still backing up (the frames and bodies can sometimes get overlapped - calling multiple post_collision), because the speed-drop check re-evaluates every tick. So I've added a recent_impact boolean so each collision only counts once.
+
+Note: I've gotten an error because my PyMunk in blocking_bot.py and main.py are in different versions (6 and 7 - hahaha) that require different syntax and code structure - remember to double-check if the structure of PyMunk's post_collision, etc are up to date to ensure that your file won't error
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These would be images that I have taken on various dates, so I can't give you the exact date, sorry!
