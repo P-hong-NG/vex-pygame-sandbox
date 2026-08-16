@@ -7,6 +7,8 @@ import pymunk
 
 # Two dedicated collision tags so we can tell "player-blocker collision"
 # apart from every other collision already happening in the sim
+# Defined once here (outside the class, globally) so the numbers are easy to
+# see and won't collide with new (global) tags as the file grows.
 COLLISION_TYPE_PLAYER = 10
 COLLISION_TYPE_BLOCKER = 11
 
@@ -29,6 +31,10 @@ class BlockingBot:
         blocking_bot.draw(screen, SCALE, FIELD_PIXELS)
     """
 
+
+    # Aliasing: re-introduce constants above as class attributes, 
+    # so main.py can reach/call them as BlockingBot.COLLISION_TYPE_PLAYER
+    # without a separate import
     COLLISION_TYPE_PLAYER = COLLISION_TYPE_PLAYER
     COLLISION_TYPE_BLOCKER = COLLISION_TYPE_BLOCKER
 
@@ -109,6 +115,9 @@ class BlockingBot:
         # Call once, after main.py's create_field_boundaries()/space setup.
         # Logs an "impact" every time the blocker and the player robot touch
         # Currently using PyMunk 7 version - change format if using a different version
+        # post_solve=: run _on_impact() right after PyMunk resolves a collision
+        # between these two tags, so we always have final, saved contact data 
+        # (not a collision that got cancelled/ignored earlier)
         self.space.on_collision(
             COLLISION_TYPE_PLAYER, 
             COLLISION_TYPE_BLOCKER, 
@@ -118,6 +127,9 @@ class BlockingBot:
     def _on_impact(self, arbiter, space, data):
         if not self.enabled:
             return
+        # arbiter = PyMunk's data object for this specific collision.
+        # .total_impulse = a vector; .length turns it into one number 
+        # ()"how hard" the hit was, regardless of direction) for logging
         impulse = arbiter.total_impulse.length
         sim_time = self._elapsed()
         self.impacts.append({
@@ -150,12 +162,18 @@ class BlockingBot:
         lead_x = player_bot.x + math.cos(rad) * player_bot.current_speed * self.lead_time
         lead_y = player_bot.y + math.sin(rad) * player_bot.current_speed * self.lead_time
 
+        # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
+        # numerically stable at very small values (plus cleaner format)
         dx = lead_x - self.x
         dy = lead_y - self.y
         dist = math.hypot(dx, dy)
         target_angle = math.degrees(math.atan2(dy, dx))
 
         # Shortest signed angle difference in [-180, 180]
+        # displacement = target_angle - self.angle: the heading the blocker
+        # WANT minus the heading it currently HAS (angles, not positions)
+        # "Wrapping" it into [-180, 180] stops the bot from ever
+        # turning the "wrong way". Example: -350 degrees when +10 gets there just as fast.
         angle_diff = (target_angle - self.angle + 180) % 360 - 180
 
         # Proportional steering: turn hard when misaligned, drive straight when lined up
@@ -167,7 +185,7 @@ class BlockingBot:
         alignment = max(0.0, 1.0 - abs(angle_diff) / 90.0)
         # Measure from bumper to bumper (not .x and .y that is in the bot or blocker)
         bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2))
-        distance_factor = min(1.0, bumper_dist / 12.0)  # Apply brakes (gets closer to 0) as blocker approaches bot
+        distance_factor = min(1.0, bumper_dist / 12.0)  # ease off inside ~1 ft
         forward_speed = self.max_speed * alignment * distance_factor
 
         self.body.angular_velocity = math.radians(omega)
@@ -193,14 +211,17 @@ class BlockingBot:
     def _track_player_speed(self, player_bot):
         now = self._elapsed()
         self._recent_speed_history.append((now, player_bot.current_speed))
-        # Trim anything older than the rolling window
+        # Trim anything older than the rolling window. Without it, 
+        # the list would grow every tick for the whole session. Keeping only
+        # the last 0.5s of (time, speed) pairs keeps it small and fast
+        # to scan for the "significant speed change" check below
         cutoff = now - self._speed_history_window
         self._recent_speed_history = [(t, s) for (t, s) in self._recent_speed_history if t >= cutoff]
 
         # "Mistake" definition: speed was decent, then collapsed hard within
         # the rolling window, and there was a logged impact in that window.
-        # This is intentionally simple -- it's meant to flag review-worthy
-        # moments for the driver, not to be a precise physics judgement.
+        # This is intentionally simple, it's meant to flag review-worthy
+        # moments for the driver, not to be a precise physics judgement
         if len(self._recent_speed_history) < 2:
             return
         peak_speed = max(s for (_, s) in self._recent_speed_history)
@@ -219,6 +240,10 @@ class BlockingBot:
                 })
 
     def _already_logged_recently(self, now, window=1.0):
+        # any(...) returns True the moment ONE mistake in the list is recent
+        # enough. Stopping the same collision from getting logged as a
+        # separate "mistake" on every tick for 60 ticks/sec while the
+        # player is still slowed down from it.
         return any(now - m["t"] < window for m in self.mistakes)
 
     # ------------------------------------------------------------------
@@ -231,6 +256,10 @@ class BlockingBot:
         avg_gap = None
         if n_impacts >= 2:
             times = [imp["t"] for imp in self.impacts]
+            # Pairwise trick: zip(times, times[1:]) lines up each impact
+            # time with the one right after it -[(6,17),(17,25),(25,31)]-
+            # so the gap between consecutive hits is one subtraction each,
+            # no manual indexing (aka for loops).
             gaps = [t2 - t1 for t1, t2 in zip(times, times[1:])]#?
             avg_gap = sum(gaps) / len(gaps)
         return {
