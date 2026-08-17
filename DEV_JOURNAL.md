@@ -111,9 +111,9 @@ Overall, after replacing the new code, I have shortened the simulator code by ~1
 
 Visual demonstration of the effectiveness and look of the old and new versions.
 
-Before: ![Old studio mode sidebar 1](images/oldStudio1.png) After: ![New studio mode sidebar 1](images/newStudio1.png)
+Before: <img src="images/oldStudio1.png" alt="Old studio mode sidebar 1" width="300"> After: <img src="images/newStudio1.png" alt="New studio mode sidebar 1" width="300">
 
-Before ![Old studio mode sidebar 2](images/oldStudio2.png) After: ![New studio mode sidebar 2](images/newStudio2.png)
+Before: <img src="images/oldStudio2.png" alt="Old studio mode sidebar 2" width="300"> After: <img src="images/newStudio2.png" alt="New studio mode sidebar 2" width="300">
 
 [August 15th, 2026] - A disadvantage of the virtual simulator, and brainstorming how to fix it
 
