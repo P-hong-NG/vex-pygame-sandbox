@@ -184,8 +184,8 @@ class BlockingBot:
         # "blocks" instead of just ramming through.
         alignment = max(0.0, 1.0 - abs(angle_diff) / 90.0)
         # Measure from bumper to bumper (not .x and .y that is in the bot or blocker)
-        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2))
-        distance_factor = min(1.0, bumper_dist / 12.0)  # ease off inside ~1 ft
+        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2) - 5)
+        distance_factor = min(1.0, bumper_dist / 12.0) 
         forward_speed = self.max_speed * alignment * distance_factor
 
         self.body.angular_velocity = math.radians(omega)
