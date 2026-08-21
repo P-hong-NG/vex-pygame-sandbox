@@ -716,7 +716,11 @@ def action_run_auton():
     if not sim.auton_running: sim.auton_mode = True
 def toggle_blocker():
     blocker.disable() if blocker.enabled else blocker.enable()
+def update_blocker_diff(val):
+    blocker.set_difficulty(val.lower()) #Lowercase the selected option ("Easy" to "easy") to match the blocker class difficulty dictionary
+
 btn_blocker = UIButton(FIELD_PIXELS + 20, 400, 130, 28, "Toggle Blocker", action_callback=toggle_blocker)
+blocker_diff_dropdown = UIDropdown(FIELD_PIXELS + 160, 400, 130, 28, ["Easy", "Medium", "Hard"], 0, update_blocker_diff)
 
 btn_drive_tank = UIButton(FIELD_PIXELS + 20, 70, 90, 26, "Tank", action_callback=set_drive_tank)
 btn_drive_arcade = UIButton(FIELD_PIXELS + 120, 70, 90, 26, "Arcade", action_callback=set_drive_arcade)
@@ -733,7 +737,7 @@ btn_reset.default_color = (180, 60, 60) # Red
 btn_reset_center.default_color = (80, 80, 180) # Blue
 btn_auton.default_color = GREEN
 
-drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker]
+drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker, blocker_diff_dropdown]
 
 #Edit 1 - ui.py
 def set_field_image(): sim.settings["field_source"] = "image"; save_settings()
