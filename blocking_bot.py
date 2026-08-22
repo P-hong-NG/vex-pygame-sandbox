@@ -160,13 +160,15 @@ class BlockingBot:
         # --- Predict where the player is heading (lead-point pursuit) ---
         rad = math.radians(player_bot.angle)
         # player_bot.current_speed is in in/s along its own heading
-        lead_x = player_bot.x + math.cos(rad) * player_bot.current_speed * self.lead_time
-        lead_y = player_bot.y + math.sin(rad) * player_bot.current_speed * self.lead_time
+        # self.lead_x instead of lead_x (Scope):
+        # lead_x is temporary value that can't be used in def draw() in the same class
+        self.lead_x = player_bot.x + math.cos(rad) * player_bot.current_speed * self.lead_time 
+        self.lead_y = player_bot.y + math.sin(rad) * player_bot.current_speed * self.lead_time
 
         # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
         # numerically stable at very small values (plus cleaner format)
-        dx = lead_x - self.x
-        dy = lead_y - self.y
+        dx = self.lead_x - self.x
+        dy = self.lead_y - self.y
         dist = math.hypot(dx, dy)
         target_angle = math.degrees(math.atan2(dy, dx))
 
@@ -300,3 +302,13 @@ class BlockingBot:
         center_y = field_pixels - (self.y * scale)
         rect = rot.get_rect(center=(center_x, center_y))
         screen.blit(rot, rect)
+
+        if hasattr(self, 'lead_x') and hasattr(self, 'lead_y'):
+            start_pos = (center_x, center_y)
+            target_px_x = self.lead_x * scale
+            target_px_y = field_pixels - (self.lead_y * scale)
+            end_pos = (target_px_x, target_px_y)
+            
+            # Red Line of Sight and Blue Target Circle
+            pygame.draw.line(screen, (255, 100, 100), start_pos, end_pos, 2)
+            pygame.draw.circle(screen, (100, 200, 255), end_pos, 8, 2)
