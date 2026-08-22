@@ -148,6 +148,7 @@ class SimulatorState:
             "field_source": "image",    
             "drive_mode": "tank",     
             "motor_cartridge": "green", #(red, green, blue)
+            "blocker_difficulty": "medium",
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
             "keybinds": {
@@ -296,6 +297,7 @@ def save_settings():
 # Initial data payload configuration setup
 load_all_data()
 bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
+blocker.set_difficulty(sim.settings.get("blocker_difficulty", "medium"))
 
 # =====================================================================
 # 4. PHYSICS & MOVEMENT ENGINE
@@ -717,10 +719,15 @@ def action_run_auton():
 def toggle_blocker():
     blocker.disable() if blocker.enabled else blocker.enable()
 def update_blocker_diff(val):
-    blocker.set_difficulty(val.lower()) #Lowercase the selected option ("Easy" to "easy") to match the blocker class difficulty dictionary
+    diff = val.lower()
+    blocker.set_difficulty(diff) #Lowercase the selected option ("Easy" to "easy") to match the blocker class difficulty dictionary
+    sim.settings["blocker_difficulty"] = diff
+    save_settings()
 
 btn_blocker = UIButton(FIELD_PIXELS + 20, 400, 130, 28, "Toggle Blocker", action_callback=toggle_blocker)
-blocker_diff_dropdown = UIDropdown(FIELD_PIXELS + 160, 400, 130, 28, ["Easy", "Medium", "Hard"], 0, update_blocker_diff)
+diff_list = ["Easy", "Medium", "Hard"]
+curr_diff = sim.settings.get("blocker_difficulty").capitalize()
+blocker_diff_dropdown = UIDropdown(FIELD_PIXELS + 160, 400, 130, 28, diff_list, diff_list.index(curr_diff), update_blocker_diff)
 
 btn_drive_tank = UIButton(FIELD_PIXELS + 20, 70, 90, 26, "Tank", action_callback=set_drive_tank)
 btn_drive_arcade = UIButton(FIELD_PIXELS + 120, 70, 90, 26, "Arcade", action_callback=set_drive_arcade)
