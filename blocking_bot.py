@@ -41,9 +41,9 @@ class BlockingBot:
     # Difficulty presets: how aggressively the blocker pursues
     #Bot's speed/ how quicking blocker turns to bot/ how far into the future it predict user's movement
     DIFFICULTY_PRESETS = {
-        "easy":   {"max_speed_in_per_s": 30.0, "turn_gain": 2.0, "lead_time": 0.15}, 
-        "medium": {"max_speed_in_per_s": 45.0, "turn_gain": 3.0, "lead_time": 0.30},
-        "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.45},
+        "easy":   {"max_speed_in_per_s": 30.0, "turn_gain": 2.0, "lead_time": 0.15, "stop_distance": 10.0}, 
+        "medium": {"max_speed_in_per_s": 45.0, "turn_gain": 3.0, "lead_time": 0.30, "stop_distance": 3.0},
+        "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.50, "stop_distance": -3.0},
     }
 
     def __init__(self, space, scale, field_inches, difficulty="medium",
@@ -93,6 +93,7 @@ class BlockingBot:
         self.max_speed = preset["max_speed_in_per_s"]
         self.turn_gain = preset["turn_gain"]
         self.lead_time = preset["lead_time"]
+        self.stop_distance = preset["stop_distance"]
 
     def enable(self):
         if not self._added_to_space:
@@ -184,7 +185,7 @@ class BlockingBot:
         # "blocks" instead of just ramming through.
         alignment = max(0.0, 1.0 - abs(angle_diff) / 90.0)
         # Measure from bumper to bumper (not .x and .y that is in the bot or blocker)
-        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2) - 5)
+        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2) - self.stop_distance)
         distance_factor = min(1.0, bumper_dist / 12.0) 
         forward_speed = self.max_speed * alignment * distance_factor
 
