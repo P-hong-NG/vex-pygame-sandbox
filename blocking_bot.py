@@ -155,15 +155,28 @@ class BlockingBot:
         if not self.enabled:
             return
 
-        self._track_player_speed(player_bot)
+        if not hasattr(self, '_prev_player_x'):
+            self._prev_player_x = player_bot.x
+            self._prev_player_y = player_bot.y
 
-        # --- Predict where the player is heading (lead-point pursuit) ---
-        rad = math.radians(player_bot.angle)
-        # player_bot.current_speed is in in/s along its own heading
-        # self.lead_x instead of lead_x (Scope):
-        # lead_x is temporary value that can't be used in def draw() in the same class
-        self.lead_x = player_bot.x + math.cos(rad) * player_bot.current_speed * self.lead_time 
-        self.lead_y = player_bot.y + math.sin(rad) * player_bot.current_speed * self.lead_time
+        # Calculate real inches moved per sec based on physical changes
+        if dt > 0:
+            true_vx = (player_bot.x - self._prev_player_x) / dt
+            true_vy = (player_bot.y - self._prev_player_y) / dt
+        else:
+            true_vx, true_vy = 0.0, 0.0
+
+        true_speed = math.hypot(true_vx, true_vy)
+
+        # Save current position to use in the next tick
+        self._prev_player_x = player_bot.x
+        self._prev_player_y = player_bot.y
+
+        self._track_player_speed(player_bot, true_speed)
+
+        # Predict based entirely on actual physical (in-field) values
+        self.lead_x = player_bot.x + (true_vx * self.lead_time)
+        self.lead_y = player_bot.y + (true_vy * self.lead_time)
 
         # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
         # numerically stable at very small values (plus cleaner format)
@@ -211,9 +224,12 @@ class BlockingBot:
         self.y = self.body.position.y / self.scale
         self.angle = math.degrees(self.body.angle)
 
-    def _track_player_speed(self, player_bot):
+    def _track_player_speed(self, player_bot, true_speed):
         now = self._elapsed()
-        self._recent_speed_history.append((now, player_bot.current_speed))
+
+        #Log physical speed (not inputed) in inches/sec
+        self._recent_speed_history.append((now, true_speed))
+
         # Trim anything older than the rolling window. Without it, 
         # the list would grow every tick for the whole session. Keeping only
         # the last 0.5s of (time, speed) pairs keeps it small and fast
@@ -230,8 +246,8 @@ class BlockingBot:
         peak_speed = max(s for (_, s) in self._recent_speed_history)
         if peak_speed < 5.0:
             return
-        current = player_bot.current_speed
-        if current < peak_speed * 0.3:
+        
+        if true_speed < peak_speed * 0.3:
             recent_impact = any(now - imp["t"] < self._speed_history_window for imp in self.impacts)
             if recent_impact and not self._already_logged_recently(now):
                 self.mistakes.append({
@@ -239,7 +255,7 @@ class BlockingBot:
                     "x": round(player_bot.x, 2),
                     "y": round(player_bot.y, 2),
                     "speed_before": round(peak_speed, 2),
-                    "speed_after": round(current, 2),
+                    "speed_after": round(true_speed, 2),
                 })
 
     def _already_logged_recently(self, now, window=1.0):
