@@ -210,6 +210,26 @@ class BlockingBot:
             forward_speed * math.cos(heading) * self.scale,
             forward_speed * math.sin(heading) * self.scale,
         )
+
+        direction = pymunk.Vec2d(math.cos(heading), math.sin(heading))
+        
+        bumper_offset = (self.length / 2 + 0.5) * self.scale
+        start_pt = self.body.position + (direction * bumper_offset)
+
+        look_dist = 24.0 * self.scale
+        end_pt = start_pt + pymunk.Vec2d(math.cos(heading), math.sin(heading)) * look_dist
+
+        self.ray_start = start_pt
+        self.ray_end = end_pt
+
+        hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
+
+        if hit_info:
+            hit_shape = hit_info.shape
+            # Ignore any driving bodies, only static object/obstacles
+            if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
+                print("Detected obstacle!")
+
         # Note: self.x/self.y/self.angle are NOT updated here. Call
         # sync_from_physics() AFTER space.step() runs (same ordering
         # main.py already uses for the player robot), otherwise this
@@ -328,3 +348,13 @@ class BlockingBot:
             # Red Line of Sight and Blue Target Circle
             pygame.draw.line(screen, (255, 100, 100), start_pos, end_pos, 2)
             pygame.draw.circle(screen, (100, 200, 255), end_pos, 8, 2)
+
+        if hasattr(self, 'ray_start') and hasattr(self, 'ray_end'):
+            # Convert PyMunk inches to Pygame pixels and flip the Y-axis
+            sx = self.ray_start.x
+            sy = field_pixels - self.ray_start.y
+            ex = self.ray_end.x
+            ey = field_pixels - self.ray_end.y
+            
+            # Draw a yellow line
+            pygame.draw.line(screen, (255, 255, 0), (sx, sy), (ex, ey), 2)
