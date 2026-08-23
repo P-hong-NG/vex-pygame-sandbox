@@ -211,24 +211,45 @@ class BlockingBot:
             forward_speed * math.sin(heading) * self.scale,
         )
 
-        direction = pymunk.Vec2d(math.cos(heading), math.sin(heading))
-        
-        bumper_offset = (self.length / 2 + 0.5) * self.scale
-        start_pt = self.body.position + (direction * bumper_offset)
-
+        num_rays = 6 # number of rays casted
+        spread_deg = 15.0 # degrees between each laser
         look_dist = 24.0 * self.scale
-        end_pt = start_pt + pymunk.Vec2d(math.cos(heading), math.sin(heading)) * look_dist
 
-        self.ray_start = start_pt
-        self.ray_end = end_pt
-
-        hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
-
-        if hit_info:
-            hit_shape = hit_info.shape
-            # Ignore any driving bodies, only static object/obstacles
-            if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
-                print("Detected obstacle!")
+        # Calculate the starting angle offset so the rays are centered
+        start_offset = -((num_rays - 1) / 2) * spread_deg 
+        
+        vision_array = []
+        self.ray_lines = [] # Save the lines/bring up the scope
+        
+        for i in range(num_rays):
+            # Calculate the specific angle for current ray
+            offset_rad = math.radians(start_offset + (i * spread_deg))
+            ray_angle = math.radians(self.angle) + offset_rad
+            
+            direction = pymunk.Vec2d(math.cos(ray_angle), math.sin(ray_angle))
+            
+            # Start slightly outside the absolute maximum corner radius of the robot
+            # This guarantees no ray starts inside the rectangular chassis
+            # (Theres already a layer of check but that just quits the printing)
+            max_radius = math.hypot(self.length / 2, self.track_width / 2)
+            bumper_offset = (max_radius + 0.5) * self.scale
+            
+            start_pt = self.body.position + (direction * bumper_offset)
+            end_pt = start_pt + (direction * look_dist)
+            hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
+            
+            hit_status = 0 # Default to 0 (0 - clear path; 1 - obstructed path)
+            
+            if hit_info:
+                hit_shape = hit_info.shape
+                # Ignore the driving bodies (blocker + user)
+                if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
+                    hit_status = 1 # (Obstacle detected)
+            
+            vision_array.append(hit_status)
+            self.ray_lines.append((start_pt, end_pt, hit_status)) # Save for drawing
+            
+        print(f"Vision: {vision_array}") 
 
         # Note: self.x/self.y/self.angle are NOT updated here. Call
         # sync_from_physics() AFTER space.step() runs (same ordering
@@ -349,12 +370,14 @@ class BlockingBot:
             pygame.draw.line(screen, (255, 100, 100), start_pos, end_pos, 2)
             pygame.draw.circle(screen, (100, 200, 255), end_pos, 8, 2)
 
-        if hasattr(self, 'ray_start') and hasattr(self, 'ray_end'):
-            # Convert PyMunk inches to Pygame pixels and flip the Y-axis
-            sx = self.ray_start.x
-            sy = field_pixels - self.ray_start.y
-            ex = self.ray_end.x
-            ey = field_pixels - self.ray_end.y
-            
-            # Draw a yellow line
-            pygame.draw.line(screen, (255, 255, 0), (sx, sy), (ex, ey), 2)
+        if hasattr(self, 'ray_lines'):
+            for start_pt, end_pt, hit_status in self.ray_lines:
+                # Convert PyMunk coordinates to Pygame pixels (and flip the Y-axis)
+                sx = start_pt.x
+                sy = field_pixels - start_pt.y
+                ex = end_pt.x
+                ey = field_pixels - end_pt.y
+                
+                # Draw Red if it hit something (1), Yellow if clear (0)
+                color = (255, 60, 60) if hit_status == 1 else (255, 255, 0)
+                pygame.draw.line(screen, color, (sx, sy), (ex, ey), 2)
