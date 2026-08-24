@@ -178,39 +178,6 @@ class BlockingBot:
         self.lead_x = player_bot.x + (true_vx * self.lead_time)
         self.lead_y = player_bot.y + (true_vy * self.lead_time)
 
-        # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
-        # numerically stable at very small values (plus cleaner format)
-        dx = self.lead_x - self.x
-        dy = self.lead_y - self.y
-        dist = math.hypot(dx, dy)
-        target_angle = math.degrees(math.atan2(dy, dx))
-
-        # Shortest signed angle difference in [-180, 180]
-        # displacement = target_angle - self.angle: the heading the blocker
-        # WANT minus the heading it currently HAS (angles, not positions)
-        # "Wrapping" it into [-180, 180] stops the bot from ever
-        # turning the "wrong way". Example: -350 degrees when +10 gets there just as fast.
-        angle_diff = (target_angle - self.angle + 180) % 360 - 180
-
-        # Proportional steering: turn hard when misaligned, drive straight when lined up
-        omega = max(-180.0, min(180.0, angle_diff * self.turn_gain))
-
-        # Slow down while turning sharply (mirrors how a real tank drive behaves),
-        # and stop closing distance once basically on top of the player so it
-        # "blocks" instead of just ramming through.
-        alignment = max(0.0, 1.0 - abs(angle_diff) / 90.0)
-        # Measure from bumper to bumper (not .x and .y that is in the bot or blocker)
-        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2) - self.stop_distance)
-        distance_factor = min(1.0, bumper_dist / 12.0) 
-        forward_speed = self.max_speed * alignment * distance_factor
-
-        self.body.angular_velocity = math.radians(omega)
-        heading = math.radians(self.angle)
-        self.body.velocity = (
-            forward_speed * math.cos(heading) * self.scale,
-            forward_speed * math.sin(heading) * self.scale,
-        )
-
         num_rays = 6 # number of rays casted
         spread_deg = 15.0 # degrees between each laser
         look_dist = 24.0 * self.scale
@@ -250,6 +217,42 @@ class BlockingBot:
             self.ray_lines.append((start_pt, end_pt, hit_status)) # Save for drawing
             
         print(f"Vision: {vision_array}") 
+
+        # Slowing the blocker down to 30% speed when the front rays detect an obstacle
+        obstacle_brake = 0.3 if vision_array[2] == 1 and vision_array[3] == 1 else 1.0
+
+        # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
+        # numerically stable at very small values (plus cleaner format)
+        dx = self.lead_x - self.x
+        dy = self.lead_y - self.y
+        dist = math.hypot(dx, dy)
+        target_angle = math.degrees(math.atan2(dy, dx))
+
+        # Shortest signed angle difference in [-180, 180]
+        # displacement = target_angle - self.angle: the heading the blocker
+        # WANT minus the heading it currently HAS (angles, not positions)
+        # "Wrapping" it into [-180, 180] stops the bot from ever
+        # turning the "wrong way". Example: -350 degrees when +10 gets there just as fast.
+        angle_diff = (target_angle - self.angle + 180) % 360 - 180
+        # Proportional steering: turn hard when misaligned, drive straight when lined up
+        omega = max(-180.0, min(180.0, angle_diff * self.turn_gain))
+
+        # Slow down while turning sharply (mirrors how a real tank drive behaves),
+        # and stop closing distance once basically on top of the player so it
+        # "blocks" instead of just ramming through.
+        alignment = max(0.0, 1.0 - abs(angle_diff) / 90.0)
+        # Measure from bumper to bumper (not .x and .y that is in the bot or blocker)
+        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2) - self.stop_distance)
+        distance_factor = min(1.0, bumper_dist / 12.0) 
+
+        forward_speed = self.max_speed * alignment * distance_factor * obstacle_brake
+
+        self.body.angular_velocity = math.radians(omega)
+        heading = math.radians(self.angle)
+        self.body.velocity = (
+            forward_speed * math.cos(heading) * self.scale,
+            forward_speed * math.sin(heading) * self.scale,
+        )
 
         # Note: self.x/self.y/self.angle are NOT updated here. Call
         # sync_from_physics() AFTER space.step() runs (same ordering
