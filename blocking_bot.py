@@ -226,7 +226,43 @@ class BlockingBot:
         dx = self.lead_x - self.x
         dy = self.lead_y - self.y
         dist = math.hypot(dx, dy)
-        target_angle = math.degrees(math.atan2(dy, dx))
+
+        # Normalizing (from 0 to 1 - meaning 1 is max speed and 0 is none)
+        if dist > 0: 
+            dx /= dist
+            dy /= dist
+
+        safe_dx = 0.0
+        safe_dy = 0.0
+        clear_paths = 0
+
+        # Loop through the array and add up the directions of all the safe "0" rays
+        for i, status in enumerate(vision_array):
+            if status == 0:  
+                ray_angle = math.radians(self.angle + start_offset + (i * spread_deg))
+                safe_dx += math.cos(ray_angle)
+                safe_dy += math.sin(ray_angle)
+                clear_paths += 1
+
+        if 1 in vision_array and clear_paths > 0:
+            escape_mag = math.hypot(safe_dx, safe_dy)
+            # Normalizing (0-to-1 scale)
+            safe_dx /= escape_mag
+            safe_dy /= escape_mag
+
+            final_dx = (dx * 0.3) + (safe_dx * 0.7)
+            final_dy = (dy * 0.3) + (safe_dy * 0.7)
+
+        elif clear_paths == 0:
+            final_dx = -math.cos(math.radians(self.angle))
+            final_dy = -math.sin(math.radians(self.angle))
+
+        else:
+            final_dx = dx
+            final_dy = dy
+            
+        # Convert the final blended vector back into an angle for the steering wheel
+        target_angle = math.degrees(math.atan2(final_dy, final_dx))
 
         # Shortest signed angle difference in [-180, 180]
         # displacement = target_angle - self.angle: the heading the blocker
