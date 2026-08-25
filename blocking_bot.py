@@ -178,7 +178,9 @@ class BlockingBot:
         self.lead_x = player_bot.x + (true_vx * self.lead_time)
         self.lead_y = player_bot.y + (true_vy * self.lead_time)
 
-        num_rays = 6 # number of rays casted
+        #=========================Rays & LiDAR section=================================
+        num_rays = 7 # number of rays casted
+
         spread_deg = 15.0 # degrees between each laser
         look_dist = 24.0 * self.scale
 
@@ -216,10 +218,20 @@ class BlockingBot:
             vision_array.append(hit_status)
             self.ray_lines.append((start_pt, end_pt, hit_status)) # Save for drawing
             
-        print(f"Vision: {vision_array}") 
+        #print(vision_array) 
+
+        center_ray_index = num_rays // 2 #Floor division so always int
+        middle_hits = vision_array[center_ray_index-1] + vision_array[center_ray_index] + vision_array[center_ray_index+1]
 
         # Slowing the blocker down to 30% speed when the front rays detect an obstacle
-        obstacle_brake = 0.3 if vision_array[2] == 1 and vision_array[3] == 1 else 1.0
+        if middle_hits == 3:
+            obstacle_brake = 0.3    # Down 70%
+        elif middle_hits == 2:
+            obstacle_brake = 0.55   # Down 45%
+        elif middle_hits == 1:
+            obstacle_brake = 0.80   # Down 20%
+        else:
+            obstacle_brake = 1.0    
 
         # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
         # numerically stable at very small values (plus cleaner format)
@@ -232,6 +244,9 @@ class BlockingBot:
             dx /= dist
             dy /= dist
 
+        user_angle = math.degrees(math.atan2(dy, dx)) # Return -180 to 180
+        relative_player_angle = (user_angle - self.angle + 180) % 360 - 180
+
         safe_dx = 0.0
         safe_dy = 0.0
         clear_paths = 0
@@ -239,14 +254,23 @@ class BlockingBot:
         # Loop through the array and add up the directions of all the safe "0" rays
         for i, status in enumerate(vision_array):
             if status == 0:  
-                ray_angle = math.radians(self.angle + start_offset + (i * spread_deg))
-                safe_dx += math.cos(ray_angle)
-                safe_dy += math.sin(ray_angle)
+                ray_offset_deg = start_offset + (i * spread_deg)
+                ray_angle = math.radians(self.angle + ray_offset_deg)
+
+                weight = 1.0
+                # If the ray is on the same side as the player, increase weight to 1.5
+                # Priorities turning toward the side of user
+                if (ray_offset_deg > 0 and relative_player_angle > 0) or (ray_offset_deg < 0 and relative_player_angle < 0):
+                    weight = 1.5
+
+                safe_dx += math.cos(ray_angle) * weight
+                safe_dy += math.sin(ray_angle) * weight
                 clear_paths += 1
 
         if 1 in vision_array and clear_paths > 0:
             escape_mag = math.hypot(safe_dx, safe_dy)
             # Normalizing (0-to-1 scale)
+
             safe_dx /= escape_mag
             safe_dy /= escape_mag
 
@@ -267,8 +291,7 @@ class BlockingBot:
         # Shortest signed angle difference in [-180, 180]
         # displacement = target_angle - self.angle: the heading the blocker
         # WANT minus the heading it currently HAS (angles, not positions)
-        # "Wrapping" it into [-180, 180] stops the bot from ever
-        # turning the "wrong way". Example: -350 degrees when +10 gets there just as fast.
+        # "Wrapping" it into [-180, 180] stops the bot from ever turning the "wrong way"
         angle_diff = (target_angle - self.angle + 180) % 360 - 180
         # Proportional steering: turn hard when misaligned, drive straight when lined up
         omega = max(-180.0, min(180.0, angle_diff * self.turn_gain))
