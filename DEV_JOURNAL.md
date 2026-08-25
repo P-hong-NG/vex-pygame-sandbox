@@ -180,6 +180,23 @@ While playtesting (driving around with the new Blocker's visual prediction line)
 
 No implementation yet; this is just a "problem identification" and the direction I'm taking, but expect the next journal to include a working version!!
 
+[August 24th, 2026] - Status update and identifying new problems for Blocker's "AI pathfinding"
+
+I implemented multiple rays (currently 7), which need to be odd to accommodate my new weighted steering system. 
+
+===How it works==== Every tick, the Blocker would recalculate its angular velocity (degrees to turn) by adding every 0s (aka clear) ray's angle to a new desired angle variable - clear rays on the left would subtract, and on the right of the Blocker would add - except the middle front rays (reason for odd number of rays). This ensures that if there's nothing in front, the variable's value is 0, but if one side has more 0 rays, it's deemed a "safe" route to turn to. But for a situation where the obstacle is right in fronr of the Blocker, it would need to pick a side to steer to; hard-coding a side is possible, but I decided on a "weighted" or "bias" system where rays toward the direction of the user's bot would be weighted more (multiplied the added angle by 1.5) so Blocker would lean toward the user. Additionally, I have implemented a new braking system: the more front rays (the middle one and the two next to it) detect an obstacle, the more braking (1 ray -> 20% down; 2 rays -> 45% down; 3 rays -> 70% down)
+
+===The Problem==== However, this new system I created results in some problems/flaws when I test drive. It would work most of the time but there are certain situations where the Blocker would begin breaking down
+
+ - The weighted system works well assuming the user is either on the left or right of the Blocker's driving direction - but when the user is directly in front of the Blocker, and there's an obstacle between them, no "side" would be "biased"; thus, they keep canceling each other and result in no change in direction/ steering.
+ - The blocker has no memory of the surroundings; thus, the moment it gets stuck in the wall, it can't back up and retrace where it was to try another direction. This is not realistic, as in a VEX V5 match, the driver has a whole map view (meaning they know what is behind the so-called "obstacle" that the simulator's Blocker is seeing) and can pick the best route without needing to get stuck and recalculate their new direction like the Blocker
+
+===The Proposed Solution==== I currently have in mind of what to do to fix the problems mentioned 
+
+- For the first problem: Instead of purely based on the "biased" rays to pick a direction to turn, I plan to add another variable (or list) that tracks the user's previous routes/locations, and the Blocker would take that side as another "biased" side to turn to . However, it would be difficult to determine the correct locations the bot was in to use - Im currently looking into how to fix it
+- For the second problem: I plan to use a grid system that would progressively grow branches from the Blocker until it reaches the user similar to 
+a version of Dijkstra's algorithm used in Maps and GPSs to pick the best route to go from one point to another. More in the next documentation
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can't give you the exact date, sorry!
