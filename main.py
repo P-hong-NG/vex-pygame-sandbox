@@ -78,6 +78,23 @@ class Robot:
         self.angle = 0.0
         self.current_speed = 0.0
 
+        # --- Rolling performance stats (for scaling the Blocking Bot to
+        # THIS player's own driving style, instead of fixed difficulty
+        # numbers -- see DEV_JOURNAL for the DDA/roguelike reasoning) ---
+        # Uses simulation time (accumulated dt), not wall-clock time, so it
+        # naturally freezes correctly while paused, same as the rest of the sim.
+        self.sim_elapsed = 0.0
+        self._stat_history = []        # [(t, speed_in_per_s, turn_rate_deg_per_s), ...]
+        self.stat_window_seconds = 8.0 # longer horizon than blocking_bot.py's 0.5s
+                                        # mistake-detection window -- this one is meant
+                                        # to capture "how this player generally drives",
+                                        # not instant-to-instant blips
+        self.avg_speed = 0.0           # in/s, mean over the window
+        self.avg_turn_rate = 0.0       # deg/s (unsigned magnitude), mean over the window
+        self.has_enough_stats = False  # False until there's a real sample of data --
+                                        # BlockingBot should fall back to preset defaults
+                                        # until this flips True (the "cold start" problem)
+
         #Moment of inertia for solid rectangle box 
         moment = pymunk.moment_for_box(self.total_mass, (self.length * SCALE, self.track_width * SCALE))
         
@@ -96,6 +113,37 @@ class Robot:
         self.odom_origin_x = self.x
         self.odom_origin_y = self.y
         self.start_pose = (self.x, self.y, self.angle)
+
+    def update_performance_stats(self, dt):
+        """
+        Call once per tick, AFTER PyMunk has resolved this tick's physics
+        (i.e. after self.body.velocity/angular_velocity reflect what
+        actually happened, not just what was commanded). Same principle
+        as the Flaw 1 fix in blocking_bot.py: measure the REAL, physics-
+        resolved motion, not the input the driver commanded, so a robot
+        stuck against a wall doesn't get counted as "still moving fast."
+        """
+        self.sim_elapsed += dt
+
+        actual_speed = self.body.velocity.length / SCALE          # in/s
+        actual_turn_rate = abs(math.degrees(self.body.angular_velocity))  # deg/s
+
+        self._stat_history.append((self.sim_elapsed, actual_speed, actual_turn_rate))
+
+        # Trim anything older than the window -- same pattern as the
+        # rolling speed history in blocking_bot.py, just a longer window
+        cutoff = self.sim_elapsed - self.stat_window_seconds
+        self._stat_history = [(t, s, tr) for (t, s, tr) in self._stat_history if t >= cutoff]
+
+        if self._stat_history:
+            self.avg_speed = sum(s for (_, s, _) in self._stat_history) / len(self._stat_history)
+            self.avg_turn_rate = sum(tr for (_, _, tr) in self._stat_history) / len(self._stat_history)
+
+        # Only trust these numbers once we've actually seen a reasonable
+        # chunk of the window -- otherwise a blocker enabled 0.2s into a
+        # match would scale itself off almost no data. Half the window is
+        # a reasonable, easy-to-explain threshold; tune if it feels off.
+        self.has_enough_stats = self.sim_elapsed >= (self.stat_window_seconds / 2)
 
     def reset_to_start(self):
         self.x, self.y, self.angle = self.start_pose
@@ -478,6 +526,7 @@ def update_physics(left_speed, right_speed, dt):
     bot.x = bot.body.position.x / SCALE
     bot.y = bot.body.position.y / SCALE
     bot.angle = math.degrees(bot.body.angle)
+    bot.update_performance_stats(dt)
 
     blocker.sync_from_physics() #Syncing the blocker's cords
 
@@ -1136,6 +1185,16 @@ def draw_everything():
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
         blocker.draw(screen, SCALE, FIELD_PIXELS)
+
+        if blocker.enabled and sim.current_mode == "drive":
+            # Debug-only readout for the new DDA stat tracking -- confirms
+            # the numbers look sane before blocking_bot.py is wired to read
+            # them. Safe to remove once that hookup is done and trusted.
+            stat_color = GREEN if bot.has_enough_stats else LIGHT_GRAY
+            draw_small(f"Player avg speed: {bot.avg_speed:.1f} in/s", 18, 110, stat_color)
+            draw_small(f"Player avg turn rate: {bot.avg_turn_rate:.1f} deg/s", 18, 128, stat_color)
+            if not bot.has_enough_stats:
+                draw_small("(warming up -- not enough data yet)", 18, 146, LIGHT_GRAY)
 
     if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
         for i, s in enumerate(sim.shapes):
