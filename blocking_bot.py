@@ -1,6 +1,7 @@
 import math
 import time
 import json
+import random
 
 import pymunk
 
@@ -45,6 +46,18 @@ class BlockingBot:
         "medium": {"max_speed_in_per_s": 45.0, "turn_gain": 3.0, "lead_time": 0.30, "stop_distance": 3.0},
         "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.50, "stop_distance": -3.0},
     }
+
+    # --- DDA (Dynamic Difficulty Adjustment) constants ---
+    # Roguelike-style variance, re-rolled each blocker "life": instead of a
+    # fixed max_speed, scale off the PLAYER's own measured average speed
+    # (main.py's Robot.update_performance_stats) so the blocker feels like
+    # "roughly as fast as you've been driving, give or take" rather than a
+    # flat number. See DEV_JOURNAL for the fuller reasoning (Crash Bandicoot/
+    # Mario Kart DDA comparison, why randomized offset over strict rubber-banding).
+    DDA_OFFSET_RANGE = (0.9, 1.1)  # random +/-10% variance around the baseline
+    MIN_BLOCKER_SPEED = 15.0       # in/s floor -- guards against a near-stationary
+                                   # blocker if the player's own sampled avg_speed
+                                   # happened to be very low (e.g. mostly idle)
 
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
@@ -95,7 +108,7 @@ class BlockingBot:
         self.lead_time = preset["lead_time"]
         self.stop_distance = preset["stop_distance"]
 
-    def enable(self):
+    def enable(self, player_bot=None):
         if not self._added_to_space:
             self.space.add(self.body, self.shape)
             self._added_to_space = True
@@ -104,6 +117,39 @@ class BlockingBot:
         self.impacts.clear()
         self.mistakes.clear()
         self._recent_speed_history.clear()
+        self._roll_dda_stats(player_bot)
+
+    def _roll_dda_stats(self, player_bot):
+        """
+        Called once per "life" (each time enable() runs). Re-rolls this
+        life's max_speed off the PLAYER's own measured average speed, plus
+        a randomized +/-10% offset -- so the blocker isn't a fixed number,
+        it's "roughly as fast as you've been driving lately, give or take."
+
+        Falls back to the difficulty preset's max_speed if we don't have
+        trustworthy player data yet (player_bot is None, or main.py's
+        has_enough_stats is still False early in a session) -- this is the
+        "cold start" case.
+
+        turn_gain/lead_time/stop_distance are left at their difficulty-preset
+        values for now. turn_gain in particular isn't a direct unit match to
+        the player's avg_turn_rate (deg/s vs. a steering-gain constant), so
+        scaling it needs its own normalization decision -- doing that as a
+        separate, later step rather than guessing at a conversion here.
+        """
+        if player_bot is not None and getattr(player_bot, "has_enough_stats", False):
+            baseline_speed = player_bot.avg_speed
+        else:
+            baseline_speed = self.DIFFICULTY_PRESETS[self.difficulty]["max_speed_in_per_s"]
+
+        offset = random.uniform(*self.DDA_OFFSET_RANGE)
+        self.max_speed = max(self.MIN_BLOCKER_SPEED, baseline_speed * offset)
+
+        # Kept around for the end-of-session report/debug HUD -- lets a
+        # reader see what this life's blocker was actually scaled to, and
+        # off of what baseline, instead of just a final number with no context.
+        self.dda_baseline_speed = baseline_speed
+        self.dda_offset = offset
 
     def disable(self):
         self.enabled = False
@@ -389,6 +435,9 @@ class BlockingBot:
             "impacts": n_impacts,
             "mistakes": n_mistakes,
             "avg_seconds_between_impacts": round(avg_gap, 2) if avg_gap else None,
+            "dda_baseline_speed": round(getattr(self, "dda_baseline_speed", 0.0), 1),
+            "dda_offset": round(getattr(self, "dda_offset", 1.0), 2),
+            "max_speed": round(self.max_speed, 1),
         }
 
     def save_report(self, path):
