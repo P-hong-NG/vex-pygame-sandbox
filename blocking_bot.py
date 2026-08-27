@@ -59,6 +59,13 @@ class BlockingBot:
                                    # blocker if the player's own sampled avg_speed
                                    # happened to be very low (e.g. mostly idle)
 
+    # --- "Fully boxed in" escape constants (used starting next commit) ---
+    BOXED_IN_CLEARANCE_THRESHOLD = 0.15  # below this even the "best" ray is
+                                          # basically point-blank (~3.6in at a
+                                          # 24in look_dist)
+    STUCK_ESCAPE_BIAS_DEG = 15.0  # fixed, always-the-same-direction nudge off
+                                  # dead-180 for a true last-resort reverse
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -234,6 +241,8 @@ class BlockingBot:
         start_offset = -((num_rays - 1) / 2) * spread_deg 
         
         vision_array = []
+        clearance_array = []  # per-ray "how much room" (0=touching, 1=clear to look_dist) --
+                               # kept even for blocked rays, not used yet (next commit)
         self.ray_lines = [] # Save the lines/bring up the scope
         
         for i in range(num_rays):
@@ -254,14 +263,17 @@ class BlockingBot:
             hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
             
             hit_status = 0 # Default to 0 (0 - clear path; 1 - obstructed path)
+            clearance = 1.0  # 1.0 = fully clear to look_dist, same default as "no hit"
             
             if hit_info:
                 hit_shape = hit_info.shape
                 # Ignore the driving bodies (blocker + user)
                 if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
                     hit_status = 1 # (Obstacle detected)
+                    clearance = hit_info.alpha  # 0 (touching) to 1 (hit right at look_dist)
             
             vision_array.append(hit_status)
+            clearance_array.append(clearance)
             self.ray_lines.append((start_pt, end_pt, hit_status)) # Save for drawing
             
         #print(vision_array) 
