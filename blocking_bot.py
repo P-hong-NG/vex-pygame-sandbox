@@ -55,14 +55,14 @@ class BlockingBot:
     # flat number. See DEV_JOURNAL for the fuller reasoning (Crash Bandicoot/
     # Mario Kart DDA comparison, why randomized offset over strict rubber-banding).
     DDA_OFFSET_RANGE = (0.9, 1.1)  # random +/-10% variance around the baseline
-    MIN_BLOCKER_SPEED = 15.0       # in/s floor - guards against a near-stationary
+    MIN_BLOCKER_SPEED = 15.0       # in/s floor -- guards against a near-stationary
                                    # blocker if the player's own sampled avg_speed
-                                   # happened to be very low (example mostly idle)
+                                   # happened to be very low (e.g. mostly idle)
 
     # --- "Fully boxed in" escape constants ---
     BOXED_IN_CLEARANCE_THRESHOLD = 0.15  # below this even the "best" ray is
-                                         # basically point-blank (~3.6in at a
-                                         # 24in look_dist)
+                                          # basically point-blank (~3.6in at a
+                                          # 24in look_dist)
     STUCK_ESCAPE_BIAS_DEG = 15.0  # fixed, always-the-same-direction nudge off
                                   # dead-180 for a true last-resort reverse
 
@@ -130,18 +130,18 @@ class BlockingBot:
         """
         Called once per "life" (each time enable() runs). Re-rolls this
         life's max_speed off the PLAYER's own measured average speed, plus
-        a randomized +/-10% offset - so the blocker isn't a fixed number,
+        a randomized +/-10% offset -- so the blocker isn't a fixed number,
         it's "roughly as fast as you've been driving lately, give or take."
 
         Falls back to the difficulty preset's max_speed if we don't have
         trustworthy player data yet (player_bot is None, or main.py's
-        has_enough_stats is still False early in a session) - this is the
+        has_enough_stats is still False early in a session) -- this is the
         "cold start" case.
 
         turn_gain/lead_time/stop_distance are left at their difficulty-preset
         values for now. turn_gain in particular isn't a direct unit match to
         the player's avg_turn_rate (deg/s vs. a steering-gain constant), so
-        scaling it needs its own normalization decision - doing that as a
+        scaling it needs its own normalization decision -- doing that as a
         separate, later step rather than guessing at a conversion here.
         """
         if player_bot is not None and getattr(player_bot, "has_enough_stats", False):
@@ -152,7 +152,7 @@ class BlockingBot:
         offset = random.uniform(*self.DDA_OFFSET_RANGE)
         self.max_speed = max(self.MIN_BLOCKER_SPEED, baseline_speed * offset)
 
-        # Kept around for the end-of-session report/debug HUD - lets a
+        # Kept around for the end-of-session report/debug HUD -- lets a
         # reader see what this life's blocker was actually scaled to, and
         # off of what baseline, instead of just a final number with no context.
         self.dda_baseline_speed = baseline_speed
@@ -241,8 +241,8 @@ class BlockingBot:
         start_offset = -((num_rays - 1) / 2) * spread_deg 
         
         vision_array = []
-        clearance_array = []  # per-ray "how much room" (0=touching, 1=clear to look_dist) 
-                              # kept even for blocked rays (prototype - not used yet)
+        clearance_array = []  # per-ray "how much room" (0=touching, 1=clear to look_dist) --
+                               # kept even for blocked rays (prototype - not consumed yet)
         self.ray_lines = [] # Save the lines/bring up the scope
         
         for i in range(num_rays):
@@ -252,11 +252,25 @@ class BlockingBot:
             
             direction = pymunk.Vec2d(math.cos(ray_angle), math.sin(ray_angle))
             
-            # Start slightly outside the absolute maximum corner radius of the robot
-            # This guarantees no ray starts inside the rectangular chassis
-            # (Theres already a layer of check but that just quits the printing)
-            max_radius = math.hypot(self.length / 2, self.track_width / 2)
-            bumper_offset = (max_radius + 0.5) * self.scale
+            # Start right at the robot's own rectangular edge for THIS ray's
+            # angle, not one fixed circle radius for every ray. The old
+            # version used the diagonal-to-corner distance for every ray,
+            # which is correct for the angled rays but leaves a real gap
+            # (~2.76in for this chassis) in front of the straight-ahead ray,
+            # since it's not actually a corner - a thin obstacle sitting in
+            # that gap would never get seen, since a ray can't detect
+            # anything behind where it starts.
+            half_length = self.length / 2
+            half_width = self.track_width / 2
+            cos_a = abs(math.cos(offset_rad))
+            sin_a = abs(math.sin(offset_rad))
+            edge_candidates = []
+            if cos_a > 1e-9:
+                edge_candidates.append(half_length / cos_a)
+            if sin_a > 1e-9: #Make sure not divide by 0
+                edge_candidates.append(half_width / sin_a)
+            box_edge_dist = min(edge_candidates) if edge_candidates else half_length
+            bumper_offset = (box_edge_dist + 0.5) * self.scale
             
             start_pt = self.body.position + (direction * bumper_offset)
             end_pt = start_pt + (direction * look_dist)
@@ -336,7 +350,7 @@ class BlockingBot:
             final_dy = (dy * 0.3) + (safe_dy * 0.7)
 
         elif clear_paths == 0:
-            # Every ray reads "blocked" within look_dist - but "blocked"
+            # Every ray reads "blocked" within look_dist -- but "blocked"
             # isn't the same as "equally blocked." Uses the clearance data
             # from the ray loop above to head toward whichever ray has the
             # most room, instead of always reversing.
@@ -345,14 +359,15 @@ class BlockingBot:
 
             if best_clearance < self.BOXED_IN_CLEARANCE_THRESHOLD:
                 # Even the best direction is basically point-blank (every
-                # way is genuinely boxed in) - true last resort: reverse.
+                # way is genuinely boxed in) -- true last resort: reverse.
                 # Reversing exactly 180deg from self.angle is numerically
                 # unstable (floating-point noise in the cos/sin/atan2
                 # round-trip can land at just-under +180 one frame and
                 # just-under -180 the next, flipping the turn direction
-                # every tick and never actually completing it - this was
+                # every tick and never actually completing it -- this was
                 # the "won't turn around" bug). A small, ALWAYS-the-same-
-                # direction bias breaks that tie instead of leaving it to floating-point chance.
+                # direction bias breaks that tie deterministically instead
+                # of leaving it to floating-point chance.
                 escape_angle = math.radians(self.angle + 180 + self.STUCK_ESCAPE_BIAS_DEG)
             else:
                 best_offset_deg = start_offset + (best_idx * spread_deg)
