@@ -1,1880 +1,584 @@
-import pygame
-import pymunk
-import pymunk.pygame_util
 import math
+import time
 import json
-import os
-from ui import UIButton, UITextbox, ScrollView, UIDropdown, UISlider
-from blocking_bot import BlockingBot
+import random
 
-pygame.init()
+import pymunk
 
-# =====================================================================
-# 1. GLOBAL CONSTANTS & CONFIGURATION
-# =====================================================================
-FIELD_INCHES = 144
-FIELD_PIXELS = 900
-SCALE = FIELD_PIXELS / FIELD_INCHES
 
-UI_WIDTH = 340
-WINDOW_WIDTH = FIELD_PIXELS + UI_WIDTH
-WINDOW_HEIGHT = FIELD_PIXELS
-# Initializing PyMunk (Physics collisions) 
-space = pymunk.Space()
-space.gravity = (0,0) #Gravity in (x,y) directions -bottom left is (0,0)- for top-down perspective
+# Two dedicated collision tags so we can tell "player-blocker collision"
+# apart from every other collision already happening in the sim
+# Defined once here (outside the class, globally) so the numbers are easy to
+# see and won't collide with new (global) tags as the file grows.
+COLLISION_TYPE_PLAYER = 10
+COLLISION_TYPE_BLOCKER = 11
 
-# Colors
-RED, BLUE, GRAY, DARK, CYAN, WHITE = (255, 80, 80), (80, 80, 255), (200, 200, 200), (40, 40, 40), (0, 150, 255), (255, 255, 255)
-LIGHT_GRAY, YELLOW, BLACK, GREEN, ORANGE = (160, 160, 160), (255, 220, 0), (0, 0, 0), (80, 200, 120), (255, 140, 0)
-GRID_LIGHT, GRID_DARK = (220, 220, 220), (180, 180, 180)
 
-FONT = pygame.font.SysFont("consolas", 18)
-SMALL_FONT = pygame.font.SysFont("consolas", 14)
+class BlockingBot:
+    """
+    A second robot-like PyMunk body that chases/blocks the player.
 
-# File Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    Usage from main.py:
 
-SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
-FIELD_FILE = os.path.join(BASE_DIR, "custom_field.txt")
-DRIVE_FILE = os.path.join(BASE_DIR, "custom_drive.txt")
+        from blocking_bot import BlockingBot
 
-# =====================================================================
-# 2. STATE OBJECTS (Robot & Simulator Classes)
-# =====================================================================
-class Robot:
-    def __init__(self):
-        # Physical Specs
-        self.length = 16.25   
-        self.track_width = 14.5  
-        self.max_size = 18.0
-        self.wheel_radius = 1.625
-        self.wheel_circ = 2 * math.pi * self.wheel_radius
-        self.max_rps = 450 / 60
-        self.base_max_speed = self.wheel_circ * self.max_rps
-        self.gear_in = 60 #Amount of teeth (36t, 60t, etc.). Gear attached to motor
-        self.gear_out = 60 #Gear attached to wheel
-        #Typical weight, 12-16lbs, for high-performing team. Should be changed to match the actual bot weight
-        self.total_mass = 14.0
-        #Intake
-        self.has_intake = True
-        self.intake_width = 6.7 #Width of roller (in), should be smaller than self.track_width
-        self.intake_length = 3.0 #How far intake extends (in), creating an intake range
-        self.intake_offset = 0.0 #Inches inside the chassis (0.0 = all the way in front)
-        self.inventory = []
-        self.max_capacity = 4
-        self.intake_state = "off" #off / in / out
-        #Outtake
-        self.has_outtake = True
-        self.outtake_width = 6.7
-        self.outtake_length = 3.0
-        self.outtake_offset = 0.0
-        self.outtake_state = "off" #off / out
-        #Delay from intake to score
-        self.delay_flag = True
-        self.timer_delay = 1
-        # Real-World Screen Position (True State)
-        self.x = FIELD_INCHES / 2
-        self.y = FIELD_INCHES / 2
+        blocking_bot = BlockingBot(space, SCALE, FIELD_INCHES)
+        bot.shape.collision_type = blocking_bot.COLLISION_TYPE_PLAYER  # tag the player shape once
+
+        # inside update_physics(), only when enabled + drive mode + not paused:
+        blocking_bot.update(bot, dt)
+
+        # inside draw_everything(), after the player bot is drawn:
+        blocking_bot.draw(screen, SCALE, FIELD_PIXELS)
+    """
+
+
+    # Aliasing: re-introduce constants above as class attributes, 
+    # so main.py can reach/call them as BlockingBot.COLLISION_TYPE_PLAYER
+    # without a separate import
+    COLLISION_TYPE_PLAYER = COLLISION_TYPE_PLAYER
+    COLLISION_TYPE_BLOCKER = COLLISION_TYPE_BLOCKER
+
+    # Difficulty presets: how aggressively the blocker pursues
+    #Bot's speed/ how quicking blocker turns to bot/ how far into the future it predict user's movement
+    DIFFICULTY_PRESETS = {
+        "easy":   {"max_speed_in_per_s": 30.0, "turn_gain": 2.0, "lead_time": 0.15, "stop_distance": 10.0}, 
+        "medium": {"max_speed_in_per_s": 45.0, "turn_gain": 3.0, "lead_time": 0.30, "stop_distance": 3.0},
+        "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.50, "stop_distance": -3.0},
+    }
+
+    # === DDA (Dynamic Difficulty Adjustment) constants ===
+    # Roguelike-style variance, re-rolled each blocker "life": instead of a
+    # fixed max_speed, scale off the PLAYER's own measured average speed
+    # (main.py's Robot.update_performance_stats) so the blocker feels like
+    # "roughly as fast as you've been driving, give or take" rather than a
+    # flat number. See DEV_JOURNAL for the fuller reasoning (Crash Bandicoot/
+    # Mario Kart DDA comparison, why randomized offset over strict rubber-banding).
+    DDA_OFFSET_RANGE = (0.9, 1.1)  # random +/-10% variance around the baseline
+    MIN_BLOCKER_SPEED = 15.0       # in/s floor -- guards against a near-stationary
+                                   # blocker if the player's own sampled avg_speed
+                                   # happened to be very low (e.g. mostly idle)
+
+    # === "Fully boxed in" escape constants ===
+    BOXED_IN_CLEARANCE_THRESHOLD = 0.15  # below this even the "best" ray is
+                                         # basically point-blank (~3.6in at a 24in look_dist)
+    STUCK_ESCAPE_BIAS_DEG = 15.0  # fixed, always-the-same-direction nudge off
+                                  # dead-180 for a true last-resort reverse
+
+    # === Reverse-driving constants (prototype - not wired into behavior yet) ===
+    REVERSE_SPEED_FACTOR = 0.5  # fraction of max_speed used when actively
+                                 # backing away, instead of standing still
+    SEVERE_MISALIGNMENT_DEG = 90.0  # angle_diff beyond this means "basically
+                                     # facing the wrong way" - candidate for
+                                     # backing up instead of just rotating in place
+
+    #===Partial-block hysteresis (prevents flip-flopping near a symmetric obstacle)===
+    ESCAPE_BIAS_DEADZONE_DEG = 5.0  # relative_player_angle has to be at least
+                                     # this far off dead-ahead before we trust
+                                     # its sign enough to switch sides
+
+    def __init__(self, space, scale, field_inches, difficulty="medium",
+                 length=16.25, track_width=14.5, mass=14.0):
+        self.space = space
+        self.scale = scale
+        self.field_inches = field_inches
+
+        self.length = length
+        self.track_width = track_width
+        self.mass = mass
+
+        self.enabled = False
+        self.set_difficulty(difficulty)
+
+        # Blocker will spawn in the left bottom quarter of the 144in by 144in field (36in out and 36in up from bottom left)
+        # Can be changed to simulate where the opponent would be at the start of match (changing every year)
+        self.x = field_inches * 0.25
+        self.y = field_inches * 0.25
         self.angle = 0.0
-        self.current_speed = 0.0
 
-        # --- Rolling performance stats (for scaling the Blocking Bot to
-        # THIS player's own driving style, instead of fixed difficulty
-        # numbers -- see DEV_JOURNAL for the DDA/roguelike reasoning) ---
-        # Uses simulation time (accumulated dt), not wall-clock time, so it
-        # naturally freezes correctly while paused, same as the rest of the sim.
-        self.sim_elapsed = 0.0
-        self._stat_history = []        # [(t, speed_in_per_s, turn_rate_deg_per_s), ...]
-        self.stat_window_seconds = 8.0 # longer horizon than blocking_bot.py's 0.5s
-                                        # mistake-detection window -- this one is meant
-                                        # to capture "how this player generally drives",
-                                        # not instant-to-instant blips
-        self.avg_speed = 0.0           # in/s, mean over the window
-        self.avg_turn_rate = 0.0       # deg/s (unsigned magnitude), mean over the window
-        self.has_enough_stats = False  # False until there's a real sample of data --
-                                        # BlockingBot should fall back to preset defaults
-                                        # until this flips True (the "cold start" problem)
-
-        #Moment of inertia for solid rectangle box 
-        moment = pymunk.moment_for_box(self.total_mass, (self.length * SCALE, self.track_width * SCALE))
-        
-        #Body used for physics calculations (Includes: mass, inertia, position, angle, velocity, torque, etc)
-        self.body = pymunk.Body(self.total_mass, moment, body_type=pymunk.Body.DYNAMIC) #Dynamic means it moves/ can be interacted with
-        #Starting cords so that PyMunk can match the body (back-end) to the shape (front-end) 
-        self.body.position = (self.x * SCALE, self.y * SCALE)
+        moment = pymunk.moment_for_box(self.mass, (length * scale, track_width * scale))
+        self.body = pymunk.Body(self.mass, moment, body_type=pymunk.Body.DYNAMIC)
+        self.body.position = (self.x * scale, self.y * scale)
         self.body.angle = math.radians(self.angle)
 
-        self.shape = pymunk.Poly.create_box(self.body, (self.length * SCALE, self.track_width * SCALE))
-        self.shape.friction = 0.3 #Can be changed
+        self.shape = pymunk.Poly.create_box(self.body, (length * scale, track_width * scale))
+        self.shape.friction = 0.3
+        self.shape.collision_type = COLLISION_TYPE_BLOCKER
 
-        space.add(self.body, self.shape)
-        
-        # Odometry Origin Anchor
-        self.odom_origin_x = self.x
-        self.odom_origin_y = self.y
-        self.start_pose = (self.x, self.y, self.angle)
+        # Bot starts OUT of the space until enabled
+        self._added_to_space = False
 
-    def update_performance_stats(self, dt):
+        # Which side (+1/-1) the partial-block weighting last committed to -
+        # see ESCAPE_BIAS_DEADZONE_DEG in update(). Arbitrary default, gets
+        # overwritten the first time relative_player_angle is decisive.
+        self._escape_side_bias = 1
+
+        # === data collection state ===
+        self.impacts = []          # [{t, x, y, impulse}, ...]
+        self.mistakes = []         # [{t, x, y, speed_before, speed_after}, ...]
+        self._match_start_time = None
+        self._recent_speed_history = []   # [(sim_time, player_speed), ...] short rolling window
+        self._speed_history_window = 0.5  # seconds
+
+    # ------------------------------------------------------------------
+    # Setup / teardown
+    # ------------------------------------------------------------------
+    def set_difficulty(self, difficulty):
+        preset = self.DIFFICULTY_PRESETS.get(difficulty, self.DIFFICULTY_PRESETS["medium"])
+        self.difficulty = difficulty
+        self.max_speed = preset["max_speed_in_per_s"]
+        self.turn_gain = preset["turn_gain"]
+        self.lead_time = preset["lead_time"]
+        self.stop_distance = preset["stop_distance"]
+
+    def enable(self, player_bot=None):
+        if not self._added_to_space:
+            self.space.add(self.body, self.shape)
+            self._added_to_space = True
+        self.enabled = True
+        self._match_start_time = time.time()
+        self.impacts.clear()
+        self.mistakes.clear()
+        self._recent_speed_history.clear()
+        self._escape_side_bias = 1
+        self._roll_dda_stats(player_bot)
+
+    def _roll_dda_stats(self, player_bot):
         """
-        Call once per tick, AFTER PyMunk has resolved this tick's physics
-        (i.e. after self.body.velocity/angular_velocity reflect what
-        actually happened, not just what was commanded). Same principle
-        as the Flaw 1 fix in blocking_bot.py: measure the REAL, physics-
-        resolved motion, not the input the driver commanded, so a robot
-        stuck against a wall doesn't get counted as "still moving fast."
+        Called once per "life" (each time enable() runs). Re-rolls this
+        life's max_speed off the PLAYER's own measured average speed, plus
+        a randomized +/-10% offset -- so the blocker isn't a fixed number,
+        it's "roughly as fast as you've been driving lately, give or take."
+
+        Falls back to the difficulty preset's max_speed if we don't have
+        trustworthy player data yet (player_bot is None, or main.py's
+        has_enough_stats is still False early in a session) -- this is the
+        "cold start" case.
+
+        turn_gain/lead_time/stop_distance are left at their difficulty-preset
+        values for now. turn_gain in particular isn't a direct unit match to
+        the player's avg_turn_rate (deg/s vs. a steering-gain constant), so
+        scaling it needs its own normalization decision -- doing that as a
+        separate, later step rather than guessing at a conversion here.
         """
-        self.sim_elapsed += dt
-
-        actual_speed = self.body.velocity.length / SCALE          # in/s
-        actual_turn_rate = abs(math.degrees(self.body.angular_velocity))  # deg/s
-
-        self._stat_history.append((self.sim_elapsed, actual_speed, actual_turn_rate))
-
-        # Trim anything older than the window -- same pattern as the
-        # rolling speed history in blocking_bot.py, just a longer window
-        cutoff = self.sim_elapsed - self.stat_window_seconds
-        self._stat_history = [(t, s, tr) for (t, s, tr) in self._stat_history if t >= cutoff]
-
-        if self._stat_history:
-            self.avg_speed = sum(s for (_, s, _) in self._stat_history) / len(self._stat_history)
-            self.avg_turn_rate = sum(tr for (_, _, tr) in self._stat_history) / len(self._stat_history)
-
-        # Only trust these numbers once we've actually seen a reasonable
-        # chunk of the window -- otherwise a blocker enabled 0.2s into a
-        # match would scale itself off almost no data. Half the window is
-        # a reasonable, easy-to-explain threshold; tune if it feels off.
-        self.has_enough_stats = self.sim_elapsed >= (self.stat_window_seconds / 2)
-
-    def reset_to_start(self):
-        self.x, self.y, self.angle = self.start_pose
-        self.odom_origin_x, self.odom_origin_y = self.x, self.y
-        #Teleport body to starting cords
-        self.body.position = (self.x * SCALE, self.y * SCALE)
-        self.body.angle = math.radians(self.angle)
-        self.body.velocity = (0, 0)
-        self.body.angular_velocity = 0
-
-    def reset_to_center(self):
-        self.x, self.y, self.angle = FIELD_INCHES / 2, FIELD_INCHES / 2, 0.0
-        self.odom_origin_x, self.odom_origin_y = self.x, self.y
-        #Teleport body to center cords
-        self.body.position = (self.x * SCALE, self.y * SCALE)
-        self.body.angle = math.radians(self.angle)
-        self.body.velocity = (0, 0)
-        self.body.angular_velocity = 0
-
-    def get_odom_pose(self):
-        return self.x - self.odom_origin_x, self.y - self.odom_origin_y
-
-    
-    def calculate_max_speed(self, cartridge_color):
-        rpm_map = {"red": 100.0, "green": 200.0, "blue": 600.0}
-        base_rpm = rpm_map.get(cartridge_color, 200.0) #default to 200 if cant find key in dict
-        gear_ratio = self.gear_in / float(self.gear_out) if self.gear_out > 0 else 1.0
-        self.output_rpm = base_rpm * gear_ratio
-        max_rps = self.output_rpm / 60.0
-        self.base_max_speed = self.wheel_circ * max_rps
-
-class SimulatorState:
-    def __init__(self):
-        self.current_mode = "drive" # drive / edit / studio
-        self.current_page = "edit 1" #studio 1 / studio 2 / edit 1 / edit 2
-        self.paused = False
-        self.paused_sub_menu = "main" # main / settings
-        self.remapping_key = None 
-        self.auton_mode = False
-        self.auton_running = False
-        self.resizing_shape = False
-        self.dragging_speed_slider = False
-        self.dragging_turn_slider = False
-        self.settings = {
-            "input_mode": "keyboard",   
-            "speed_scale": 1.0,
-            "turn_scale": 1.0,
-            "intake_rev_velocity": 30.0, #Reverse intake ejection speed
-            "outtake_velocity": 15.0, 
-            "field_source": "image",    
-            "drive_mode": "tank",     
-            "motor_cartridge": "green", #(red, green, blue)
-            "blocker_difficulty": "medium",
-            "intake_control_mode": "toggle",#Hold or toggle
-            "outtake_control_mode": "toggle", #Hold or toggle
-            "keybinds": {
-                "intake_in": pygame.K_e,
-                "intake_out": pygame.K_f,
-                "outtake_score": pygame.K_q
-            }
-        }
-        self.drive_config = {
-            "forward_axis": 1, "turn_axis": 0, "left_axis": 1, "right_axis": 3,
-            "invert_forward": -1, "invert_turn": 1, "invert_left": -1, "invert_right": -1
-        }
-        self.shapes = []
-        
-        # Editor Selection tracking
-        self.selected_shape_idx = None
-        self.dragging_shape = False
-        self.drag_offset_x = 0
-        self.drag_offset_y = 0
-        self.dragging_robot = False
-        self.robot_drag_offset_x = 0.0
-        self.robot_drag_offset_y = 0.0
-        self.active_textbox = None  
-        self.textbox_value = ""
-        self.add_shape_dropdown_open = False
-        self.add_shape_type = "rect"  
-
-
-# Instantiate our unified states
-bot = Robot()
-sim = SimulatorState()
-
-blocker = BlockingBot(space, SCALE, FIELD_INCHES)
-bot.shape.collision_type = blocker.COLLISION_TYPE_PLAYER
-blocker.register_collision_handler()
-
-# =====================================================================
-# 3. DATA PERSISTENCE (IO Systems)
-# =====================================================================
-def load_all_data():
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, "r") as f:
-                loaded_data = json.load(f)
-                if "keybinds" in loaded_data:
-                    sim.settings["keybinds"].update(loaded_data["keybinds"])
-                    del loaded_data["keybinds"]
-                sim.settings.update(loaded_data)
-                bot.gear_in = sim.settings.get("gear_in", bot.gear_in)
-                bot.gear_out = sim.settings.get("gear_out", bot.gear_out)
-                bot.total_mass = sim.settings.get("total_mass", bot.total_mass)
-                bot.wheel_radius = sim.settings.get("wheel_radius", bot.wheel_radius)
-                bot.has_intake = sim.settings.get("has_intake", bot.has_intake)
-                bot.intake_length = sim.settings.get("intake_length", bot.intake_length)
-                bot.intake_width = sim.settings.get("intake_width", bot.intake_width)
-                bot.wheel_circ = 2 * math.pi * bot.wheel_radius
-                bot.intake_offset = sim.settings.get("intake_offset", bot.intake_offset)
-                bot.max_capacity = sim.settings.get("max_capacity", 4)
-                bot.has_outtake = sim.settings.get("has_outtake", bot.has_outtake)
-                bot.outtake_length = sim.settings.get("outtake_length", bot.outtake_length)
-                bot.outtake_width = sim.settings.get("outtake_width", bot.outtake_width)
-                bot.outtake_offset = sim.settings.get("outtake_offset", bot.outtake_offset)
-                bot.timer_delay = sim.settings.get("timer_delay", bot.timer_delay)
-                bot.delay_flag = sim.settings.get("delay_flag", bot.delay_flag)
-
-        except: pass
-    if os.path.exists(DRIVE_FILE):
-        try:
-            with open(DRIVE_FILE, "r") as f:
-                sim.drive_config.update(json.load(f))
-        except: pass
-        
-    if os.path.exists(FIELD_FILE):
-        with open(FIELD_FILE, "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                if not parts: continue
-                tag = parts[0]
-                
-                if tag == "RECT" and len(parts) >= 9:
-                    b_type = parts[9] if len(parts) >= 10 else "static"
-                    m_val = float(parts[10]) if len(parts) >= 11 else 1.0
-                    fric_val = float(parts[11]) if len(parts) >= 12 else 0.5
-                    elas_val = float(parts[12]) if len(parts) >= 13 else 0.0
-                    is_over = bool(int(parts[13])) if len(parts) >= 14 else False
-                    _, x, y, w, h, ang, r, g, b = parts[:9]
-                    sim.shapes.append({"type": "rect", "x": float(x), "y": float(y), 
-                                       "w": float(w), "h": float(h), 
-                                       "angle": float(ang), 
-                                       "color": (int(r), int(g), int(b)),
-                                       "body_type": b_type, "mass": m_val,
-                                       "friction": fric_val, "elasticity": elas_val,
-                                       "is_overpass": is_over})
-                elif tag == "CIRC" and len(parts) >= 7:
-                    b_type = parts[7] if len(parts) >= 8 else "dynamic"
-                    m_val = float(parts[8]) if len(parts) >= 9 else 1.0
-                    fric_val = float(parts[9]) if len(parts) >= 10 else 0.5
-                    elas_val = float(parts[10]) if len(parts) >= 11 else 0.0
-                    is_over = bool(int(parts[11])) if len(parts) >= 12 else False
-                    _, x, y, radius, r, g, b = parts[:7]
-                    sim.shapes.append({"type": "circ", "x": float(x), "y": float(y), 
-                                       "radius": float(radius), 
-                                       "color": (int(r), int(g), int(b)),
-                                       "body_type": b_type, "mass": m_val,
-                                       "friction": fric_val, "elasticity": elas_val,
-                                       "is_overpass": is_over})
-                elif tag == "ROBOT_START" and len(parts) == 4:
-                    _, x, y, ang = parts
-                    bot.start_pose = (float(x), float(y), float(ang))
-                    bot.x, bot.y, bot.angle = bot.start_pose
-
-def save_field_data():
-    with open(FIELD_FILE, "w") as f:
-        for s in sim.shapes:
-            b_type = s.get("body_type", "static")
-            mass_val = s.get("mass", 1.0)
-            fric_val = s.get("friction", 0.5)
-            elas_val = s.get("elasticity", 0.0)
-            is_over = 1 if s.get("is_overpass", False) else 0
-            if s["type"] == "rect":
-                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
-            elif s["type"] == "circ":
-                f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
-        f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
-
-def save_settings():
-    try:
-        sim.settings["gear_in"] = bot.gear_in
-        sim.settings["gear_out"] = bot.gear_out
-        sim.settings["total_mass"] = bot.total_mass
-        sim.settings["wheel_radius"] = bot.wheel_radius
-        sim.settings["has_intake"] = bot.has_intake
-        sim.settings["intake_width"] = bot.intake_width
-        sim.settings["intake_length"] = bot.intake_length
-        sim.settings["intake_offset"] = bot.intake_offset
-        sim.settings["max_capacity"] = bot.max_capacity
-        sim.settings["has_outtake"] = bot.has_outtake
-        sim.settings["outtake_width"] = bot.outtake_width
-        sim.settings["outtake_length"] = bot.outtake_length
-        sim.settings["outtake_offset"] = bot.outtake_offset
-        sim.settings["delay_flag"] = bot.delay_flag
-        sim.settings["timer_delay"] = bot.timer_delay
-        with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
-    except Exception as e: 
-        print(f"Error saving settings: {e}")
-# Initial data payload configuration setup
-load_all_data()
-bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-blocker.set_difficulty(sim.settings.get("blocker_difficulty", "medium"))
-
-# =====================================================================
-# 4. PHYSICS & MOVEMENT ENGINE
-# =====================================================================
-def get_inputs(dt):
-    max_speed = bot.base_max_speed * sim.settings["speed_scale"]
-    left_speed, right_speed = 0.0, 0.0
-
-    if sim.settings["input_mode"] == "keyboard":
-        keys = pygame.key.get_pressed()
-        forward, turn, left, right = 0.0, 0.0, 0.0, 0.0
-
-        if sim.settings["drive_mode"] in ("arcade","custom"):
-            if keys[pygame.K_w]: forward += 1.0
-            if keys[pygame.K_s]: forward -= 1.0
-            if keys[pygame.K_d]: turn -= 1.0
-            if keys[pygame.K_a]: turn += 1.0
-        if sim.settings["drive_mode"] == "tank":
-            if keys[pygame.K_i]: left += 1.0
-            if keys[pygame.K_k]: left -= 1.0
-            if keys[pygame.K_j]: right -= 1.0
-            if keys[pygame.K_l]: right += 1.0
-
-        if sim.settings["drive_mode"] == "tank":
-            left_speed = max(-1.0, min(1.0, left)) * max_speed
-            right_speed = max(-1.0, min(1.0, right)) * max_speed
+        if player_bot is not None and getattr(player_bot, "has_enough_stats", False):
+            baseline_speed = player_bot.avg_speed
         else:
-            forward = max(-1.0, min(1.0, forward))
-            turn = max(-1.0, min(1.0, turn))
-            left_cmd = forward + turn
-            right_cmd = forward - turn
-            max_cmd = max(1.0, abs(left_cmd), abs(right_cmd))
-            left_speed = (left_cmd / max_cmd) * max_speed
-            right_speed = (right_cmd / max_cmd) * max_speed
-            
-        in_key = sim.settings["keybinds"]["intake_in"]
-        out_key = sim.settings["keybinds"]["intake_out"]
-        score_key = sim.settings["keybinds"]["outtake_score"]
+            baseline_speed = self.DIFFICULTY_PRESETS[self.difficulty]["max_speed_in_per_s"]
+
+        offset = random.uniform(*self.DDA_OFFSET_RANGE)
+        self.max_speed = max(self.MIN_BLOCKER_SPEED, baseline_speed * offset)
+
+        # Kept around for the end-of-session report/debug HUD -- lets a
+        # reader see what this life's blocker was actually scaled to, and
+        # off of what baseline, instead of just a final number with no context.
+        self.dda_baseline_speed = baseline_speed
+        self.dda_offset = offset
+
+    def disable(self):
+        self.enabled = False
+        if self._added_to_space:
+            self.space.remove(self.body, self.shape)
+            self._added_to_space = False
+
+    def register_collision_handler(self):
+
+        # Call once, after main.py's create_field_boundaries()/space setup.
+        # Logs an "impact" every time the blocker and the player robot touch
+        # Currently using PyMunk 7 version - change format if using a different version
+        # post_solve=: run _on_impact() right after PyMunk resolves a collision
+        # between these two tags, so we always have final, saved contact data 
+        # (not a collision that got cancelled/ignored earlier)
+        self.space.on_collision(
+            COLLISION_TYPE_PLAYER, 
+            COLLISION_TYPE_BLOCKER, 
+            post_solve=self._on_impact
+        )
+
+    def _on_impact(self, arbiter, space, data):
+        if not self.enabled:
+            return
+        # arbiter = PyMunk's data object for this specific collision.
+        # .total_impulse = a vector; .length turns it into one number 
+        # ()"how hard" the hit was, regardless of direction) for logging
+        impulse = arbiter.total_impulse.length
+        sim_time = self._elapsed()
+        self.impacts.append({
+            "t": round(sim_time, 2),
+            "x": round(self.x, 2),
+            "y": round(self.y, 2),
+            "impulse": round(impulse, 2),
+        })
+
+    def _elapsed(self):
+        if self._match_start_time is None:
+            return 0.0
+        return time.time() - self._match_start_time
+
+    # ------------------------------------------------------------------
+    # Per-frame update
+    # ------------------------------------------------------------------
+    def update(self, player_bot, dt):
+        # player_bot: the existing Robot instance from main.py (needs
+        # .x, .y, .angle (degrees), .current_speed, .body.velocity)
         
-        if sim.settings["intake_control_mode"] == "hold":
-            if keys[in_key]:
-                bot.intake_state = "in"
-            elif keys[out_key]:
-                bot.intake_state = "out"
-            elif keys[score_key]:
-                bot.outtake_state = "out"
-            else:
-                bot.intake_state = "off"
-        
-    return left_speed, right_speed
-
-#Run 60 times a second, do all the collisions, calculations, and visual updates
-def update_physics(left_speed, right_speed, dt):
-    bot.current_speed = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
-    turn_multiplier = 40.0 * sim.settings.get("turn_scale", 1.0)
-    omega = ((left_speed - right_speed) / bot.track_width)*turn_multiplier  #Difference 
-    
-    rad = bot.body.angle #Radians for PyMunk
-    bot.body.velocity = (bot.current_speed * math.cos(rad) * SCALE, bot.current_speed * math.sin(rad) * SCALE) #Linear
-    bot.body.angular_velocity = math.radians(omega) #If positive, spin counter-clockwise, else negative, spin clockwise
-
-    for s in sim.shapes:
-        if s.get("body_type") == "dynamic" and "body" in s and not s.get("stored",False):
-            b = s["body"]
-            
-            # Read shape friction (0.0 - ice, 1.0 = rubber)
-            fric = s.get("friction", 0.5)
-            
-            # Calculate floor resistance multiplier based on dt
-            # High friction drops velocity faster, heavier mass resists stopping
-            drag = max(0.0, 1.0 - (fric * 3.0 * dt)) #3.0 is a damping constant, change number to change the overal field to be more or less slippery
-            
-            # Apply floor resistance to both movement and spinning. 
-            # If drag = 0.9, the object retains 90% of the initial velocity
-            b.velocity = b.velocity * drag
-            b.angular_velocity = b.angular_velocity * drag
-    
-    if bot.has_intake and bot.intake_state == "in" and len(bot.inventory) < bot.max_capacity:
-        #Calculate intake zone box in world coordinates (inches)
-        rad = math.radians(bot.angle)
-        stick_out = max(0.0, bot.intake_length - bot.intake_offset)
-        #Front center of chassis plus offset to intake center
-        intake_center_dist = (bot.length / 2) + (stick_out / 2)
-        intake_cx = bot.x + intake_center_dist * math.cos(rad)
-        intake_cy = bot.y + intake_center_dist * math.sin(rad)
-
-        #Check collision with dynamic shapes
-        for s in list(sim.shapes):
-            if s.get("body_type") == "dynamic" and "body" in s and not s.get("stored",False):
-                dx = abs(s["x"] - intake_cx)
-                dy = abs(s["y"] - intake_cy)
-                
-                reach = (bot.intake_length / 2) + 2.0
-                if dx < reach and dy < reach:
-                    #Collect item means remove from PyMunk space (temporarily)
-                    space.remove(s["body"])
-                    for shape_ref in list(space.shapes):
-                        if shape_ref.body == s["body"]:
-                            space.remove(shape_ref)      
-                            s["pymunk_shape"] = shape_ref
-                    #Store in inventory 
-                    s["stored"] = True
-                    s["travel_timer"] = bot.timer_delay if bot.delay_flag else 0.0
-                    bot.inventory.append(s)
-                    break
-    
-    elif bot.has_intake and bot.intake_state == "out" and len(bot.inventory) > 0:
-        rad = math.radians(bot.angle)
-        stick_out = max(0.0, bot.intake_length - bot.intake_offset)
-        spawn_dist = (bot.length / 2) + (stick_out / 2) + 3 #Can be changed!
-        spawn_x = bot.x + spawn_dist * math.cos(rad)
-        spawn_y = bot.y + spawn_dist * math.sin(rad)
-
-        s = bot.inventory.pop()
-
-        s["stored"] = False
-        s["x"] = spawn_x
-        s["y"] = spawn_y
-        
-        #Re-position physics body
-        b = s["body"]
-        eject_speed = sim.settings.get("intake_rev_velocity") * SCALE
-        
-        b.position = (spawn_x * SCALE, spawn_y * SCALE)
-        b.velocity = (bot.body.velocity.x + eject_speed * math.cos(rad),
-                      bot.body.velocity.y + eject_speed * math.sin(rad))
-        
-        #Re-add body & shape to space
-        space.add(b)
-        if "pymunk_shape" in s:
-            space.add(s["pymunk_shape"])
-                
-        if sim.settings.get("intake_control_mode") == "toggle":
-            bot.intake_state = "off"
-
-    elif bot.has_outtake and bot.outtake_state == "out" and len(bot.inventory) > 0:
-        cur_item = bot.inventory[0]
-        if cur_item.get("travel_timer", 0.0) <= 0.0:
-            rad = math.radians(bot.angle)
-            
-            stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset)
-            spawn_dist = (bot.length / 2) + (stick_out_out / 2) + 3.0
-            
-            spawn_x = bot.x - spawn_dist * math.cos(rad) #Opposite side
-            spawn_y = bot.y - spawn_dist * math.sin(rad)
-
-            s = bot.inventory.pop(0)
-
-            s["stored"] = False
-            s["x"] = spawn_x
-            s["y"] = spawn_y
-            
-            # Re-position physics body
-            b = s["body"]
-            eject_speed = sim.settings.get("outtake_velocity", 15.0) * SCALE
-            
-            b.position = (spawn_x * SCALE, spawn_y * SCALE)
-            # Apply ejection speed in the backward/opposite direction
-            b.velocity = (bot.body.velocity.x - eject_speed * math.cos(rad),
-                        bot.body.velocity.y - eject_speed * math.sin(rad))
-            
-            # Re-add body to PyMunk space
-            space.add(b)
-            if "pymunk_shape" in s:
-                space.add(s["pymunk_shape"])
-                
-            # Reset state if in toggle mode
-            if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
-                bot.outtake_state = "off"
-
-    #Updating blocker steering
-    blocker.update(bot, dt)
-        
-    #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
-    for _ in range(10):
-        space.step(dt/10.0)
-    #Translate backend position back to normal inches for frontend code
-    bot.x = bot.body.position.x / SCALE
-    bot.y = bot.body.position.y / SCALE
-    bot.angle = math.degrees(bot.body.angle)
-    bot.update_performance_stats(dt)
-
-    blocker.sync_from_physics() #Syncing the blocker's cords
-
-    for item in bot.inventory:
-        if item.get("travel_timer", 0.0) > 0.0:
-            item["travel_timer"] = max(0.0, item["travel_timer"] - dt)
-
-    #Making every shape that has "dynamic" and a backend "body" to follow/teleport to its invisible body location
-    #Do this every tick so create visually smooth movement for user
-    for s in sim.shapes:
-        if s.get("body_type") == "dynamic" and "body" in s:
-            b = s["body"]
-            #Overriding the shape's location with the body's location
-            if s["type"] == "rect":
-                s["x"] = (b.position.x / SCALE) - (s["w"] / 2)
-                s["y"] = (b.position.y / SCALE) - (s["h"] / 2)
-                s["angle"] = math.degrees(b.angle)
-            elif s["type"] == "circ":
-                s["x"] = b.position.x / SCALE
-                s["y"] = b.position.y / SCALE  
-                s["angle"] = math.degrees(b.angle)
-    
-def create_field_boundaries():
-    #Example: Segment(body type, starting point, end point, thickness)
-    left_wall = pymunk.Segment(space.static_body, (0,0), (0,FIELD_PIXELS), 5)
-    right_wall = pymunk.Segment(space.static_body, (FIELD_PIXELS,0), (FIELD_PIXELS,FIELD_PIXELS), 5)
-    #For PyMunk, the origin (0,0) is bottom left rather than top left like Pygame - Remember it!
-    top_wall = pymunk.Segment(space.static_body, (0,FIELD_PIXELS), (FIELD_PIXELS,FIELD_PIXELS), 5)
-    bottom_wall = pymunk.Segment(space.static_body, (0,0), (FIELD_PIXELS, 0), 5)
-
-    for wall in [left_wall, right_wall, top_wall, bottom_wall]:
-        wall.friction = 0.5 #Ability to change to whatever, depending on the user's needs
-        wall.elasticity = 1.0
-        space.add(wall)
-
-#The initial "setup" function reads UI shapes and user inputs (Static or Dynamic) and creates corresponding PyMunk bodies with mass, friction, etc.
-def sync_custom_obstacles_to_physics():
-    #Not allowing for stack-ups
-    for body in list(space.bodies):
-        if body != bot.body and body != space.static_body:
-            space.remove(body)
-
-    for shape in list(space.shapes):
-        if shape != bot.shape:
-            # Keep field boundary segments safe
-            if isinstance(shape, pymunk.Segment): continue
-            space.remove(shape)
-
-    #Looping through UI shapes and spawning them to the PyMunk backend
-    for s in sim.shapes:
-        b_type = s.get("body_type", "static")
-        fric_val = s.get("friction", 0.5)
-        elas_val = s.get("elasticity", 0.0)
-        if b_type == "static":
-            # Static: Can't be moved
-            if s["type"] == "rect":
-                body = space.static_body
-                # Calculate center and dimensions (pixel scale)
-                cx = (s["x"] + s["w"]/2) * SCALE
-                cy = (s["y"] + s["h"]/2) * SCALE
-                box_shape = pymunk.Poly.create_box(body, (s["w"] * SCALE, s["h"] * SCALE))
-                box_shape.unsafe_set_vertices([
-                    pymunk.Vec2d(v.x + cx, v.y + cy) for v in box_shape.get_vertices()
-                ])
-                box_shape.friction = fric_val
-                box_shape.elasticity = elas_val
-                space.add(box_shape)
-
-            elif s["type"] == "circ":
-                body = space.static_body
-                cx = s["x"] * SCALE
-                cy = s["y"] * SCALE
-                circ_shape = pymunk.Circle(body, s["radius"] * SCALE, (cx, cy))
-                circ_shape.friction = fric_val
-                circ_shape.elasticity = elas_val
-                space.add(circ_shape)
-            
-        elif b_type == "dynamic":
-            # Dynamic: Movable objects on the field
-            #Read mass from shape dictionary, default to 1.0 if none
-            mass = s.get("mass", 1.0) # Weight in arbitrary physics units
-            
-            if s["type"] == "rect":
-                w_px, h_px = s["w"] * SCALE, s["h"] * SCALE
-                moment = pymunk.moment_for_box(mass, (w_px, h_px)) #Calculate moment of inertia (rotational resistance) based on shape)
-                body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC) #Creating a body with the given attributes
-                body.position = ((s["x"] + s["w"]/2) * SCALE, (s["y"] + s["h"]/2) * SCALE) 
-                body.angle = math.radians(s.get("angle", 0.0))
-                
-                shape = pymunk.Poly.create_box(body, (w_px, h_px))
-                shape.friction = fric_val
-                shape.elasticity = elas_val
-                space.add(body, shape)
-                s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
-
-            elif s["type"] == "circ":
-                rad_px = s["radius"] * SCALE
-                moment = pymunk.moment_for_circle(mass, 0, rad_px)
-                body = pymunk.Body(mass, moment, body_type=pymunk.Body.DYNAMIC)
-                body.position = (s["x"] * SCALE, s["y"] * SCALE)
-                
-                shape = pymunk.Circle(body, rad_px)
-                shape.friction = fric_val
-                shape.elasticity = elas_val
-                space.add(body, shape)
-                s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
-# =====================================================================
-# 5. GRAPHICS & UI DRAWING SYSTEM
-# =====================================================================
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("VEX Simulator - Clean Architecture")
-clock = pygame.time.Clock()
-
-# Load Field Graphics safely
-try:
-    raw_field = pygame.image.load("field.png").convert()
-    field_img = pygame.transform.rotate(raw_field, -90)
-    field_img = pygame.transform.scale(field_img, (FIELD_PIXELS, FIELD_PIXELS))
-except:
-    field_img = pygame.Surface((FIELD_PIXELS, FIELD_PIXELS))
-    field_img.fill(DARK)
-
-# Property inputs panel definitions
-shape_panel_y = 255
-
-COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,120)]
-color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 180, 30, 30) for i in range(len(COLOR_PALETTE))]
-
-#Pause Menu Modal (pop-up) definitions
-MODAL_W, MODAL_H = 280, 260 #Width and Height of modal
-modal_x = (WINDOW_WIDTH - MODAL_W) // 2 #Top-left of the modal
-modal_y = (WINDOW_HEIGHT - MODAL_H) // 2
-
-pause_modal_rect = pygame.Rect(modal_x, modal_y, MODAL_W, MODAL_H)
-
-#Settings & Keybinds Modal definitions
-SETTING_W, SETTING_H = 420, 360
-setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
-setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
-
-#Global buttons - ui.py
-def set_mode_drive():
-    sim.current_mode = "drive"
-    sim.selected_shape_idx = None
-    sim.active_textbox = None
-    bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-    sync_custom_obstacles_to_physics()
-
-def set_mode_edit():
-    sim.current_mode = "edit"
-    sim.current_page = "edit 1"
-
-def toggle_page():
-    if sim.current_mode == "studio":
-        sim.current_page = "studio 2" if sim.current_page == "studio 1" else "studio 1"
-    elif sim.current_mode == "edit":
-        sim.current_page = "edit 2" if sim.current_page == "edit 1" else "edit 1"
-
-btn_mode_drive = UIButton(FIELD_PIXELS + 20, 20, 120, 30, "Drive", action_callback=set_mode_drive)
-btn_mode_edit = UIButton(FIELD_PIXELS + 160, 20, 120, 30, "Edit", action_callback=set_mode_edit)
-btn_page_switch = UIButton(FIELD_PIXELS + 280, 810, 50, 35, "Next", action_callback=toggle_page)
-
-global_nav_ui = [btn_mode_drive, btn_mode_edit, btn_page_switch]
-
-#Scrollview - ui.py
-settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
-def bind_in(): sim.remapping_key = "intake_in"
-def bind_out(): sim.remapping_key = "intake_out"
-def bind_score(): sim.remapping_key = "outtake_score"
-def toggle_mode(): 
-    sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
-    save_settings()
-def close_settings(): 
-    sim.remapping_key = None
-    sim.paused_sub_menu = "main"
-
-btn_in = UIButton(60, 40, 300, 40, "Intake In", action_callback=bind_in)
-btn_out = UIButton(60, 100, 300, 40, "Intake Out", action_callback=bind_out)
-btn_score = UIButton(60, 160, 300, 40, "Outtake Score", action_callback=bind_score)
-btn_mode = UIButton(60, 220, 300, 40, "Intake Mode", action_callback=toggle_mode)
-btn_back = UIButton(60, 400, 300, 40, "Back to Pause Menu", action_callback=close_settings)
-
-settings_scrollview.add_child(btn_in)
-settings_scrollview.add_child(btn_out)
-settings_scrollview.add_child(btn_score)
-settings_scrollview.add_child(btn_mode)
-settings_scrollview.add_child(btn_back)
-
-# Slider and Dropdown - ui.py
-def update_speed(new_val):
-    sim.settings["speed_scale"] = new_val
-    save_settings()
-def update_turn(new_val):
-    sim.settings["turn_scale"] = new_val
-    save_settings()
-def update_add_shape(new_val):
-    sim.add_shape_type = "rect" if new_val == "Rectangle" else "circ"
-
-speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplier:", 0.3, 1.5, sim.settings.get("speed_scale", 1.0), update_speed)
-turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
-shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle"], 0, update_add_shape)
-
-#Pause menu - ui.py
-def action_resume(): sim.paused = False
-def action_settings(): sim.paused_sub_menu = "settings"
-def action_exit(): pygame.quit(); raise SystemExit
-def action_studio():
-    if sim.current_mode == "studio":
-        sim.current_mode = "drive"
-        sim.selected_shape_idx = None
-        sim.active_textbox = None
-        bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-        sync_custom_obstacles_to_physics()
-    else:
-        sim.current_mode = "studio"
-        sim.current_page = "studio 1"
-    sim.paused = False
-
-btn_pause_resume = UIButton(modal_x + 30, modal_y + 60, 220, 36, "Resume Game", action_callback=action_resume)
-btn_pause_resume.default_color = GREEN
-btn_pause_studio = UIButton(modal_x + 30, modal_y + 105, 220, 36, "Robot Design Studio", action_callback=action_studio)
-btn_pause_settings = UIButton(modal_x + 30, modal_y + 150, 220, 36, "Settings & Keybinds", action_callback=action_settings)
-btn_pause_exit = UIButton(modal_x + 30, modal_y + 195, 220, 36, "Exit Simulator", action_callback=action_exit)
-btn_pause_exit.default_color = RED
-
-# Rendering list to loop through in draw_everything()
-pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_settings, btn_pause_exit]
-
-#Drive mode sidebar - ui.py
-def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
-def set_drive_arcade(): sim.settings["drive_mode"] = "arcade"; save_settings()
-def set_drive_custom(): sim.settings["drive_mode"] = "custom"; save_settings()
-def set_input_keyboard(): sim.settings["input_mode"] = "keyboard"; save_settings()
-def set_input_controller(): sim.settings["input_mode"] = "controller"; save_settings()
-def action_reset(): bot.reset_to_start()
-def action_reset_center(): bot.reset_to_center()
-def action_run_auton(): 
-    if not sim.auton_running: sim.auton_mode = True
-def toggle_blocker():
-    blocker.disable() if blocker.enabled else blocker.enable()
-def update_blocker_diff(val):
-    diff = val.lower()
-    blocker.set_difficulty(diff) #Lowercase the selected option ("Easy" to "easy") to match the blocker class difficulty dictionary
-    sim.settings["blocker_difficulty"] = diff
-    save_settings()
-
-btn_blocker = UIButton(FIELD_PIXELS + 20, 400, 130, 28, "Toggle Blocker", action_callback=toggle_blocker)
-diff_list = ["Easy", "Medium", "Hard"]
-curr_diff = sim.settings.get("blocker_difficulty").capitalize()
-blocker_diff_dropdown = UIDropdown(FIELD_PIXELS + 160, 400, 130, 28, diff_list, diff_list.index(curr_diff), update_blocker_diff)
-
-btn_drive_tank = UIButton(FIELD_PIXELS + 20, 70, 90, 26, "Tank", action_callback=set_drive_tank)
-btn_drive_arcade = UIButton(FIELD_PIXELS + 120, 70, 90, 26, "Arcade", action_callback=set_drive_arcade)
-btn_drive_custom = UIButton(FIELD_PIXELS + 220, 70, 90, 26, "Custom", action_callback=set_drive_custom)
-
-btn_input_key = UIButton(FIELD_PIXELS + 20, 110, 100, 26, "Keyboard", action_callback=set_input_keyboard)
-btn_input_ctrl = UIButton(FIELD_PIXELS + 140, 110, 100, 26, "Controller", action_callback=set_input_controller)
-
-btn_reset = UIButton(FIELD_PIXELS + 20, 240, 130, 28, "Reset Robot", action_callback=action_reset)
-btn_reset_center = UIButton(FIELD_PIXELS + 180, 240, 130, 28, "Reset Center", action_callback=action_reset_center)
-btn_auton = UIButton(FIELD_PIXELS + 20, 280, 290, 28, "Run Autonomous", action_callback=action_run_auton)
-
-btn_reset.default_color = (180, 60, 60) # Red
-btn_reset_center.default_color = (80, 80, 180) # Blue
-btn_auton.default_color = GREEN
-
-drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker, blocker_diff_dropdown]
-
-#Edit 1 - ui.py
-def set_field_image(): sim.settings["field_source"] = "image"; save_settings()
-def set_field_custom(): sim.settings["field_source"] = "custom"; save_settings()
-def action_add_shape():
-    cx, cy = FIELD_INCHES / 2, FIELD_INCHES / 2
-    if sim.add_shape_type == "rect":
-        sim.shapes.append({"type": "rect", "x": cx - 6, "y": cy - 6, "w": 12, "h": 12, "angle": 0.0, "color": (150,150,150), "body_type": "static"})
-    else:
-        sim.shapes.append({"type": "circ", "x": cx, "y": cy, "radius": 6, "color": (150,150,150), "body_type": "dynamic"})
-    sim.selected_shape_idx = len(sim.shapes) - 1
-    save_field_data()
-def action_delete_shape():
-    if sim.selected_shape_idx is not None:
-        removed_s = sim.shapes.pop(sim.selected_shape_idx)
-        if "body" in removed_s and removed_s["body"] in space.bodies: space.remove(removed_s["body"])
-        if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes: space.remove(removed_s["pymunk_shape"])
-        sim.selected_shape_idx = None
-        save_field_data()
-        sync_custom_obstacles_to_physics()
-def toggle_physics_mode():
-    if sim.selected_shape_idx is not None:
-        s = sim.shapes[sim.selected_shape_idx]
-        curr = s.get("body_type", "static")
-        # Cycle through: static -> passthrough -> dynamic -> static
-        s["body_type"] = "passthrough" if curr == "static" else "dynamic" if curr == "passthrough" else "static"
-        save_field_data()
-def toggle_layer_height():
-    if sim.selected_shape_idx is not None:
-        s = sim.shapes[sim.selected_shape_idx]
-        if s.get("body_type") == "passthrough":
-            s["is_overpass"] = not s.get("is_overpass", False)
-            save_field_data()
-
-btn_field_img = UIButton(FIELD_PIXELS + 20, 85, 120, 26, "Image", action_callback=set_field_image)
-btn_field_cust = UIButton(FIELD_PIXELS + 160, 85, 120, 26, "Custom", action_callback=set_field_custom)
-btn_add_shape = UIButton(FIELD_PIXELS + 20, 145, 140, 26, "Add Shape", action_callback=action_add_shape)
-btn_del_shape = UIButton(FIELD_PIXELS + 180, 145, 120, 26, "Delete Shape", action_callback=action_delete_shape)
-btn_del_shape.default_color = (180, 60, 60) # Red
-
-shape_panel_y = 245
-btn_phys_toggle = UIButton(FIELD_PIXELS + 20, shape_panel_y + 95, 180, 22, "STATIC (WALL)", action_callback=toggle_physics_mode)
-btn_layer_toggle = UIButton(FIELD_PIXELS + 220, shape_panel_y + 95, 110, 22, "LOW (GROUND)", action_callback=toggle_layer_height)
-
-edit_buttons_ui = [btn_field_img, btn_field_cust, btn_add_shape, btn_del_shape]
-edit_inspector_ui = [btn_phys_toggle, btn_layer_toggle]
-
-#Studio 1 - ui.py
-def update_rlen(val):
-    try: bot.length = max(6.0, min(bot.max_size, float(val)))
-    except: pass
-def update_rwid(val):
-    try: bot.track_width = max(6.0, min(bot.max_size, float(val)))
-    except: pass
-def update_cartridge(val):
-    # Extracts "red", "green", or "blue" from the dropdown string
-    color = val.split(" ")[0].lower() 
-    sim.settings["motor_cartridge"] = color
-    bot.calculate_max_speed(color)
-    save_settings()
-def update_wrad(val): #Wheel radius
-    try: 
-        bot.wheel_radius = max(1.0, min(3.0, float(val)))
-        bot.wheel_circ = 2 * math.pi * bot.wheel_radius
-        bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
-        studio_wrad_box.value = f"{bot.wheel_radius:.3f}" # Update the text box visually
-    except: pass
-def set_preset_275(): update_wrad("1.375")
-def set_preset_325(): update_wrad("1.625")
-def set_preset_400(): update_wrad("2.000")
-def update_gin(val):
-    try: bot.gear_in = int(max(1, float(val))); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
-    except: pass
-def update_gout(val):
-    try: bot.gear_out = int(max(1, float(val))); bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green")); save_settings()
-    except: pass
-def update_mass(val):
-    try: bot.total_mass = max(1.0, float(val)); save_settings()
-    except: pass
-
-studio_len_box = UITextbox(FIELD_PIXELS + 20, 115, 100, 24, "Length (in)", str(bot.length), update_rlen)
-studio_wid_box = UITextbox(FIELD_PIXELS + 140, 115, 100, 24, "Width (in)", str(bot.track_width), update_rwid)
-
-# Stats based on current settings
-cart_idx = {"red": 0, "green": 1, "blue": 2}.get(sim.settings.get("motor_cartridge", "green"), 1)
-cartridge_dropdown = UIDropdown(FIELD_PIXELS + 20, 330, 180, 24, ["Red (100 RPM)", "Green (200 RPM)", "Blue (600 RPM)"], cart_idx, update_cartridge)
-
-studio_wrad_box = UITextbox(FIELD_PIXELS + 20, 160, 100, 24, "Wheel's radius (in)", str(bot.wheel_radius), update_wrad)
-btn_w275 = UIButton(FIELD_PIXELS + 130, 160, 55, 24, "2.75\"", action_callback=set_preset_275)
-btn_w325 = UIButton(FIELD_PIXELS + 190, 160, 55, 24, "3.25\"", action_callback=set_preset_325)
-btn_w400 = UIButton(FIELD_PIXELS + 250, 160, 55, 24, "4.00\"", action_callback=set_preset_400)
-
-studio_gin_box = UITextbox(FIELD_PIXELS + 20, 225, 70, 24, "In (teeth)", str(bot.gear_in), update_gin)
-studio_gout_box = UITextbox(FIELD_PIXELS + 110, 225, 70, 24, "Out (teeth)", str(bot.gear_out), update_gout)
-studio_mass_box = UITextbox(FIELD_PIXELS + 20, 275, 100, 24, "Robot's mass (lbs)", str(bot.total_mass), update_mass)
-
-studio_1_ui = [studio_len_box, studio_wid_box, cartridge_dropdown, studio_wrad_box, btn_w275, btn_w325, btn_w400, studio_gin_box, studio_gout_box, studio_mass_box]
-
-def upd_sx(val): 
-    try: sim.shapes[sim.selected_shape_idx]["x"] = float(val); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sy(val): 
-    try: sim.shapes[sim.selected_shape_idx]["y"] = float(val); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sw(val): 
-    try: sim.shapes[sim.selected_shape_idx]["w"] = max(1.0, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sh(val): 
-    try: sim.shapes[sim.selected_shape_idx]["h"] = max(1.0, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sa(val): 
-    try: sim.shapes[sim.selected_shape_idx]["angle"] = float(val); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sr(val): 
-    try: sim.shapes[sim.selected_shape_idx]["radius"] = max(1.0, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sm(val): 
-    try: sim.shapes[sim.selected_shape_idx]["mass"] = max(0.1, float(val)); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_sf(val): 
-    try: sim.shapes[sim.selected_shape_idx]["friction"] = max(0.0, min(1.0, float(val))); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-def upd_se(val): 
-    try: sim.shapes[sim.selected_shape_idx]["elasticity"] = max(0.0, min(1.0, float(val))); save_field_data(); sync_custom_obstacles_to_physics()
-    except: pass
-
-box_sx = UITextbox(FIELD_PIXELS + 20, shape_panel_y + 15, 80, 22, "X", "", upd_sx)
-box_sy = UITextbox(FIELD_PIXELS + 120, shape_panel_y + 15, 80, 22, "Y", "", upd_sy)
-box_sw = UITextbox(FIELD_PIXELS + 20, shape_panel_y + 55, 80, 22, "W", "", upd_sw)
-box_sh = UITextbox(FIELD_PIXELS + 120, shape_panel_y + 55, 80, 22, "H", "", upd_sh)
-box_sr = UITextbox(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22, "Radius", "", upd_sr)
-box_sa = UITextbox(FIELD_PIXELS + 220, shape_panel_y + 15, 80, 22, "Angle", "", upd_sa)
-box_sm = UITextbox(FIELD_PIXELS + 220, shape_panel_y + 140, 80, 22, "Mass (lbs)", "", upd_sm)
-box_sf = UITextbox(FIELD_PIXELS + 120, shape_panel_y + 140, 80, 22, "Friction", "", upd_sf)
-box_se = UITextbox(FIELD_PIXELS + 20, shape_panel_y + 140, 80, 22, "Bounce", "", upd_se)
-
-def upd_rx(val): 
-    try: bot.start_pose = (float(val), bot.start_pose[1], bot.start_pose[2]); save_field_data(); bot.reset_to_start()
-    except: pass
-def upd_ry(val): 
-    try: bot.start_pose = (bot.start_pose[0], float(val), bot.start_pose[2]); save_field_data(); bot.reset_to_start()
-    except: pass
-def upd_ra(val): 
-    try: bot.start_pose = (bot.start_pose[0], bot.start_pose[1], float(val)); save_field_data(); bot.reset_to_start()
-    except: pass
-
-robot_start_y = shape_panel_y + 250
-box_rx = UITextbox(FIELD_PIXELS + 20, robot_start_y + 20, 80, 22, "Start X", "", upd_rx)
-box_ry = UITextbox(FIELD_PIXELS + 120, robot_start_y + 20, 80, 22, "Start Y", "", upd_ry)
-box_ra = UITextbox(FIELD_PIXELS + 220, robot_start_y + 20, 80, 22, "Start θ", "", upd_ra)
-box_rlen = UITextbox(FIELD_PIXELS + 120, robot_start_y + 60, 80, 22, "Chassis L", "", update_rlen) # Reuses studio callback!
-box_rwid = UITextbox(FIELD_PIXELS + 20, robot_start_y + 60, 80, 22, "Chassis W", "", update_rwid) # Reuses studio callback!
-btn_rsave = UIButton(FIELD_PIXELS + 20, robot_start_y + 95, 130, 26, "Save Start", action_callback=lambda: save_field_data())
-btn_rsave.default_color = GREEN
-
-# Rendering list to loop through in draw_everything()
-edit_shape_txt = [box_sx, box_sy, box_sw, box_sh, box_sr, box_sa, box_sm, box_sf, box_se]
-edit_robot_ui = [box_rx, box_ry, box_ra, box_rlen, box_rwid, btn_rsave]
-
-#Studio 2 - ui.py
-def toggle_outtake(): bot.has_outtake = not bot.has_outtake; save_settings()
-def shift_out_in(): bot.outtake_offset = min(bot.outtake_length, bot.outtake_offset + 0.1); save_settings()
-def shift_out_out(): bot.outtake_offset = max(0.0, bot.outtake_offset - 0.1); save_settings()
-
-def toggle_intake(): bot.has_intake = not bot.has_intake; save_settings()
-def shift_in_in(): bot.intake_offset = min(bot.intake_length, bot.intake_offset + 0.1); save_settings()
-def shift_in_out(): bot.intake_offset = max(0.0, bot.intake_offset - 0.1); save_settings()
-def toggle_delay(): bot.delay_flag = not bot.delay_flag; save_settings()
-
-def update_owid(val):
-    try: bot.outtake_width = max(5.0, min(bot.track_width, float(val))); save_settings()
-    except: pass
-def update_olen(val):
-    try: bot.outtake_length = max(1.0, min(8.0, float(val))); save_settings()
-    except: pass
-def update_ospd(val):
-    try: sim.settings["outtake_velocity"] = max(0.0, min(100.0, float(val))); save_settings()
-    except: pass
-def update_iwid(val):
-    try: bot.intake_width = max(5.0, min(bot.track_width, float(val))); save_settings()
-    except: pass
-def update_ilen(val):
-    try: bot.intake_length = max(1.0, min(8.0, float(val))); save_settings()
-    except: pass
-def update_ispd(val):
-    try: sim.settings["intake_rev_velocity"] = max(0.0, min(100.0, float(val))); save_settings()
-    except: pass
-def update_icap(val):
-    try: 
-        cap = int(max(0, min(10, float(val))))
-        sim.settings["max_capacity"] = cap; bot.max_capacity = cap; save_settings()
-    except: pass
-def update_tdelay(val):
-    try: bot.timer_delay = max(0.0, min(10.0, float(val))); save_settings()
-    except: pass
-
-# Outtake
-btn_out_toggle = UIButton(FIELD_PIXELS + 20, 125, 110, 24, "Toggle", action_callback=toggle_outtake)
-box_owid = UITextbox(FIELD_PIXELS + 145, 125, 80, 24, "Width (in)", str(bot.outtake_width), update_owid)
-box_olen = UITextbox(FIELD_PIXELS + 235, 125, 80, 24, "Depth (in)", str(bot.outtake_length), update_olen)
-box_ospd = UITextbox(FIELD_PIXELS + 20, 173, 100, 24, "Eject Speed", str(sim.settings.get("outtake_velocity", 30.0)), update_ospd)
-btn_out_shift_in = UIButton(FIELD_PIXELS + 20, 225, 35, 24, "<", action_callback=shift_out_in)
-btn_out_shift_out = UIButton(FIELD_PIXELS + 60, 225, 35, 24, ">", action_callback=shift_out_out)
-
-# Intake
-btn_in_toggle = UIButton(FIELD_PIXELS + 20, 285, 110, 24, "Toggle", action_callback=toggle_intake)
-box_iwid = UITextbox(FIELD_PIXELS + 140, 285, 80, 24, "Width (in)", str(bot.intake_width), update_iwid)
-box_ilen = UITextbox(FIELD_PIXELS + 230, 285, 80, 24, "Depth (in)", str(bot.intake_length), update_ilen)
-box_ispd = UITextbox(FIELD_PIXELS + 20, 333, 100, 24, "Eject Speed", str(sim.settings.get("intake_rev_velocity", 30.0)), update_ispd)
-box_icap = UITextbox(FIELD_PIXELS + 20, 435, 60, 24, "Max Capacity", str(sim.settings.get("max_capacity", 3)), update_icap)
-btn_in_shift_in = UIButton(FIELD_PIXELS + 20, 385, 35, 24, "<", action_callback=shift_in_in)
-btn_in_shift_out = UIButton(FIELD_PIXELS + 60, 385, 35, 24, ">", action_callback=shift_in_out)
-
-# Delay
-btn_delay_toggle = UIButton(FIELD_PIXELS + 20, 495, 110, 24, "Toggle", action_callback=toggle_delay)
-box_tdelay = UITextbox(FIELD_PIXELS + 145, 495, 80, 24, "Delay (s)", str(bot.timer_delay), update_tdelay)
-
-# Rendering list to loop through in draw_everything()
-studio_2_outtake_ui = [btn_out_toggle, box_owid, box_olen, box_ospd, btn_out_shift_in, btn_out_shift_out]
-studio_2_intake_ui = [btn_in_toggle, box_iwid, box_ilen, box_ispd, box_icap, btn_in_shift_in, btn_in_shift_out]
-studio_2_delay_ui = [btn_delay_toggle, box_tdelay]
-
-#Old functions
-def draw_text(text, x, y, color=WHITE, font=FONT):
-    screen.blit(font.render(text, True, color), (x, y))
-
-def draw_small(text, x, y, color=WHITE):
-    screen.blit(SMALL_FONT.render(text, True, color), (x, y))
-
-def draw_textbox(rect, label, value, is_active):
-    pygame.draw.rect(screen, WHITE if is_active else LIGHT_GRAY, rect, border_radius=4)
-    pygame.draw.rect(screen, BLACK, rect, 1, border_radius=4)
-    draw_small(label, rect.x, rect.y - 16, LIGHT_GRAY)
-    screen.blit(SMALL_FONT.render(str(value), True, BLACK), (rect.x + 4, rect.y + 3))
-
-def draw_everything():
-    mx, my = pygame.mouse.get_pos()
-    m_fx = mx / SCALE if (0 <= mx < FIELD_PIXELS and 0 <= my < FIELD_PIXELS) else -1
-    m_fy = (FIELD_PIXELS - my) / SCALE if (0 <= mx < FIELD_PIXELS and 0 <= my < FIELD_PIXELS) else -1
-
-    #Background layer for Studio mode
-    if sim.current_mode == "studio":
-        # Render new "Studio" canvas
-        screen.fill((245, 245, 250), (0, 0, FIELD_PIXELS, FIELD_PIXELS))
-        # Draw blueprint grid lines
-        for x in range(0, FIELD_PIXELS, 40):
-            pygame.draw.line(screen, (225, 225, 235), (x, 0), (x, FIELD_PIXELS), 1)
-        for y in range(0, FIELD_PIXELS, 40):
-            pygame.draw.line(screen, (225, 225, 235), (0, y), (FIELD_PIXELS, y), 1)
-            
-        # Studio Mode Header
-        pygame.draw.rect(screen, (30, 30, 40), (10, 10, 395, 30), border_radius=4)
-        draw_small("WORKSHOP: ROBOT DESIGN STUDIO", 18, 18, ORANGE)
-   
-    # Background layer
-    if sim.settings["field_source"] == "image":
-        screen.blit(field_img, (0, 0))
-    else:
-        screen.fill((230, 230, 230), (0, 0, FIELD_PIXELS, FIELD_PIXELS))
-        for i in range(7):
-            pygame.draw.line(screen, GRID_DARK, (int(i * 24 * SCALE), 0), (int(i * 24 * SCALE), FIELD_PIXELS), 1)
-            pygame.draw.line(screen, GRID_DARK, (0, FIELD_PIXELS - int(i * 24 * SCALE)), (FIELD_PIXELS, FIELD_PIXELS - int(i * 24 * SCALE)), 1)
-    
-    pygame.draw.rect(screen, (50, 50, 60), (0, 0, FIELD_PIXELS, FIELD_PIXELS), 5) #Drawing a border around the field (5px)
-    
-    # Elements Layer
-    if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
-
-        #Render individual shapes - Due to rendering priority so that Passthrough is rendered before everything to go under everthing
-        def render_shape(i,s):
-            if s.get("stored", False):
-                return
-            
-            if s["type"] == "rect":
-                surf = pygame.Surface((s["w"] * SCALE, s["h"] * SCALE), pygame.SRCALPHA)
-            
-                current_phys = s.get("body_type", "static") #Defualting to static, can be changed
-                
-                surf.fill(s["color"])
-                rot = pygame.transform.rotate(surf, s["angle"])
-                rect = rot.get_rect(center=((s["x"] + s["w"]/2) * SCALE, FIELD_PIXELS - (s["y"] + s["h"]/2) * SCALE))
-                screen.blit(rot, rect)
-                if i == sim.selected_shape_idx: 
-                    pygame.draw.rect(screen, YELLOW, rect, 2)
-
-                if i == sim.selected_shape_idx:
-                    red_px_x = int(s["x"] * SCALE)
-                    red_px_y = int(FIELD_PIXELS - (s["y"] * SCALE))
-                    #Dot represent XY cord
-                    pygame.draw.circle(screen, RED, (red_px_x, red_px_y), 5)
-                    pygame.draw.circle(screen, BLACK, (red_px_x, red_px_y), 5, 1)
-                    #Resizing dot
-                    white_px_x = int((s["x"] + s["w"]) * SCALE)
-                    white_px_y = int(FIELD_PIXELS - ((s["y"] + s["h"]) * SCALE))
-                    pygame.draw.circle(screen, WHITE, (white_px_x, white_px_y), 5)
-                    pygame.draw.circle(screen, BLACK, (white_px_x, white_px_y), 5, 1)
-
-            elif s["type"] == "circ":
-                cx, cy = int(s["x"] * SCALE), int(FIELD_PIXELS - s["y"] * SCALE)
-                radius_pixels = int(s["radius"] * SCALE)
-
-                pygame.draw.circle(screen, s["color"], (cx, cy), radius_pixels)
-
-                angle_rad = math.radians(s.get("angle", 0.0))
-                line_end_x = cx + radius_pixels * math.cos(angle_rad)
-                line_end_y = cy - radius_pixels * math.sin(angle_rad) #Subtract because Pygame +y is down
-                
-                pygame.draw.line(screen, WHITE, (cx, cy), (line_end_x, line_end_y), 2)
-                
-                if i == sim.selected_shape_idx: 
-                    pygame.draw.circle(screen, YELLOW, (cx, cy), radius_pixels + 2, 2)
-
-                    red_px_x = int(s["x"] * SCALE)
-                    red_px_y = int(FIELD_PIXELS - (s["y"] * SCALE))
-                    #Dot representing XY cord
-                    pygame.draw.circle(screen, RED, (red_px_x, red_px_y), 5)
-                    pygame.draw.circle(screen, BLACK, (red_px_x, red_px_y), 5, 1)
-                    #Resizing dot
-                    white_px_x = int((s["x"] + s["radius"]) * SCALE)
-                    white_px_y = red_px_y
-                    pygame.draw.circle(screen, WHITE, (white_px_x, white_px_y), 5)
-                    pygame.draw.circle(screen, BLACK, (white_px_x, white_px_y), 5, 1)
-
-        #Loop through the first time and draw Passthrough object
-        for i, s in enumerate(sim.shapes):
-            if s.get("body_type") == "passthrough":
-                render_shape(i, s)
-
-        #Loop through the second time and draw the rest
-        for i, s in enumerate(sim.shapes):
-            if s.get("body_type", "static") in ("static", "dynamic"):
-                render_shape(i, s)
-
-    # Robot Layer
-    if sim.current_mode != "studio":
-        stick_out_in = max(0.0, bot.intake_length - bot.intake_offset) if bot.has_intake else 0.0
-        stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
-
-        total_w_px = (bot.length + stick_out_in + stick_out_out) * SCALE
-        max_subsystem_w = max(bot.track_width, bot.intake_width if bot.has_intake else 0.0, bot.outtake_width if bot.has_outtake else 0.0)
-        total_h_px = max_subsystem_w * SCALE
-        
-        robot_surf = pygame.Surface((total_w_px, total_h_px), pygame.SRCALPHA)
-        
-        chassis_x = stick_out_out * SCALE
-        chassis_y = (total_h_px - (bot.track_width * SCALE)) / 2
-        chassis_rect = pygame.Rect(chassis_x, chassis_y, bot.length * SCALE, bot.track_width * SCALE)
-
-        # Draw main chassis body
-        pygame.draw.rect(robot_surf, CYAN if sim.current_mode == "drive" else ORANGE, chassis_rect)
-        pygame.draw.line(robot_surf, WHITE, (chassis_rect.right - 2, chassis_rect.top), (chassis_rect.right - 2, chassis_rect.bottom), 4)
-        
-        # Draw intake subsystem (Front / Right)
-        if bot.has_intake:
-            intake_w_px = bot.intake_width * SCALE
-            intake_l_px = bot.intake_length * SCALE
-            offset_px = bot.intake_offset * SCALE
-            intake_x = chassis_rect.right - offset_px
-            intake_y = (total_h_px / 2) - (intake_w_px / 2)
-            
-            intake_surf = pygame.Surface((intake_l_px, intake_w_px), pygame.SRCALPHA)
-            intake_surf.fill((0, 200, 255, 160))
-            pygame.draw.rect(intake_surf, WHITE, (0, 0, intake_l_px, intake_w_px), 2)
-            robot_surf.blit(intake_surf, (intake_x, intake_y))
-
-        # Draw outtake subsystem (Rear / Left)
-        if bot.has_outtake:
-            outtake_w_px = bot.outtake_width * SCALE
-            outtake_l_px = bot.outtake_length * SCALE
-            out_offset_px = bot.outtake_offset * SCALE
-            outtake_x = chassis_rect.left - outtake_l_px + out_offset_px
-            outtake_y = (total_h_px / 2) - (outtake_w_px / 2)
-            
-            outtake_surf = pygame.Surface((outtake_l_px, outtake_w_px), pygame.SRCALPHA)
-            outtake_surf.fill((200, 80, 220, 200))  # Purple translucent surface
-            pygame.draw.rect(outtake_surf, (140, 120, 250), (0, 0, outtake_l_px, outtake_w_px), 2)
-            robot_surf.blit(outtake_surf, (outtake_x, outtake_y))
-
-        rot_bot = pygame.transform.rotate(robot_surf, bot.angle)
-        
-        # Calculate rotation pivot offset so the robot spins around its true center
-        center_dx = ((stick_out_in - stick_out_out) * SCALE / 2) * math.cos(math.radians(bot.angle))
-        center_dy = ((stick_out_in - stick_out_out) * SCALE / 2) * math.sin(math.radians(bot.angle))
-        bot_center_x = (bot.x * SCALE) + center_dx
-        bot_center_y = (FIELD_PIXELS - (bot.y * SCALE)) - center_dy
-        
-        bot_rect = rot_bot.get_rect(center=(bot_center_x, bot_center_y))
-        screen.blit(rot_bot, bot_rect)
-        if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
-
-        blocker.draw(screen, SCALE, FIELD_PIXELS)
-
-        if blocker.enabled and sim.current_mode == "drive":
-            # Debug-only readout for the new DDA stat tracking -- confirms
-            # the numbers look sane before blocking_bot.py is wired to read
-            # them. Safe to remove once that hookup is done and trusted.
-            stat_color = GREEN if bot.has_enough_stats else LIGHT_GRAY
-            draw_small(f"Player avg speed: {bot.avg_speed:.1f} in/s", 18, 110, stat_color)
-            draw_small(f"Player avg turn rate: {bot.avg_turn_rate:.1f} deg/s", 18, 128, stat_color)
-            if not bot.has_enough_stats:
-                draw_small("(warming up -- not enough data yet)", 18, 146, LIGHT_GRAY)
-
-    if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
-        for i, s in enumerate(sim.shapes):
-            if s.get("body_type") == "passthrough" and s.get("is_overpass", False):
-                render_shape(i, s)
-
-
-    # Tracks and indicates if user is in Driver vs Edit Mode
-    mode_label = f"SYSTEM STATUS: {sim.current_mode.upper()} MODE"
-    if sim.current_mode == "edit":
-        status_color = ORANGE  
-    else:
-        status_color = CYAN
-    
-    # If autonomous scripting routine loop execution layer is active
-    if sim.auton_running:
-        mode_label = "SYSTEM STATUS: RUNNING AUTONOMOUS ROUTINE"
-        status_color = GREEN
-
-    # Draws a clean dark background strip for text readability over bright field assets
-    pygame.draw.rect(screen, (20, 20, 25), (10, 10, 395, 30), border_radius=4)
-    draw_small(mode_label, 18, 18, status_color)
-    
-    # Control Side UI Column Render Processing
-    pygame.draw.rect(screen, (25, 25, 25), (FIELD_PIXELS, 0, UI_WIDTH, WINDOW_HEIGHT))
-    draw_text("Mode", FIELD_PIXELS + 20, 0, YELLOW)
-    btn_mode_drive.default_color = GREEN if sim.current_mode == "drive" else LIGHT_GRAY
-    btn_mode_edit.default_color = GREEN if sim.current_mode == "edit" else LIGHT_GRAY
-    btn_mode_drive.draw(screen)
-    btn_mode_edit.draw(screen)
-
-    #Studio mode sidebar (Different set of buttons for Robot CAD)
-    if sim.current_mode == "studio":
-        studio_center_x = FIELD_PIXELS / 2
-        studio_center_y = FIELD_PIXELS / 2
-        
-        # Draw robot chassis box
-        cad_w = bot.length * SCALE
-        cad_h = bot.track_width * SCALE
-        cad_rect = pygame.Rect(studio_center_x - cad_w/2, studio_center_y - cad_h/2, cad_w, cad_h)
-        pygame.draw.rect(screen, CYAN, cad_rect) 
-        #Center origin crosshair
-        pygame.draw.line(screen, WHITE, (studio_center_x - 15, studio_center_y), (studio_center_x + 15, studio_center_y), 1)
-        pygame.draw.line(screen, WHITE, (studio_center_x, studio_center_y - 15), (studio_center_x, studio_center_y + 15), 1)
-        # Render intake subsystem on CAD model
-        if bot.has_intake:
-            # Convert intake dimensions to pixel scale
-            intake_w_px = bot.intake_width * SCALE
-            intake_l_px = bot.intake_length * SCALE
-            offset_px = bot.intake_offset * SCALE
-            # Position at the front (right side) of the blueprint chassis
-            intake_x = cad_rect.right - offset_px
-            intake_y = studio_center_y - (intake_w_px / 2)
-            intake_rect = pygame.Rect(intake_x, intake_y, intake_l_px, intake_w_px)
-            # Draw intake roller structure
-            pygame.draw.rect(screen, (30, 100, 160), intake_rect)  # Darker blue fill
-            pygame.draw.rect(screen, CYAN, intake_rect, 2)         # Outline
+        if not self.enabled:
+            return
+
+        if not hasattr(self, '_prev_player_x'):
+            self._prev_player_x = player_bot.x
+            self._prev_player_y = player_bot.y
+
+        # Calculate real inches moved per sec based on physical changes
+        if dt > 0:
+            true_vx = (player_bot.x - self._prev_player_x) / dt
+            true_vy = (player_bot.y - self._prev_player_y) / dt
         else:
-            # Front direction indicator line
-            pygame.draw.line(screen, WHITE, (cad_rect.right - 2, cad_rect.top), (cad_rect.right - 2, cad_rect.bottom), 4)
-        # Render outtake subsystem on CAD model
-        if bot.has_outtake:
-            outtake_w_px = bot.outtake_width * SCALE
-            outtake_l_px = bot.outtake_length * SCALE
-            outtake_offset_px = bot.outtake_offset * SCALE
-            # Position at the left side of the blueprint chassis
-            outtake_x = cad_rect.left - outtake_l_px + outtake_offset_px
-            outtake_y = studio_center_y - (outtake_w_px / 2)
-            outtake_rect = pygame.Rect(outtake_x, outtake_y, outtake_l_px, outtake_w_px)
-            # Draw outtake structure 
-            pygame.draw.rect(screen, (120, 40, 140), outtake_rect)   
-            pygame.draw.rect(screen, (200, 80, 220), outtake_rect, 2) 
+            true_vx, true_vy = 0.0, 0.0
 
-        # Dimension labels on CAD canvas
-        draw_small(f"L (Chasis): {bot.length:.1f}\"", cad_rect.centerx - 60, cad_rect.bottom + 8, DARK)
-        draw_small(f"W (Chasis): {bot.track_width:.1f}\"", cad_rect.right + 15, cad_rect.centery - 6, DARK)
+        true_speed = math.hypot(true_vx, true_vy)
 
-        if sim.current_page == "studio 1":
-            # Header indicator
-            draw_text("Robot Configuration", FIELD_PIXELS + 20, 65, ORANGE)
-            pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
-            
-            draw_small("Drivetrain gear ratio:", FIELD_PIXELS + 20, 190, LIGHT_GRAY)
-            draw_small("Motor Gear Cartridge:", FIELD_PIXELS + 20, 310, LIGHT_GRAY)
+        # Save current position to use in the next tick
+        self._prev_player_x = player_bot.x
+        self._prev_player_y = player_bot.y
 
-            # Draw all the components
-            for element in studio_1_ui:
-                element.draw(screen)
+        self._track_player_speed(player_bot, true_speed)
 
-        elif sim.current_page == "studio 2":
-        # Header indicator
-            draw_text("Intake/Outtake Configuration", FIELD_PIXELS + 20, 65, ORANGE)
-            pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, 90), (WINDOW_WIDTH - 20, 90), 2)
-            
-            # --- Outtake System ---
-            draw_small("Outtake system:", FIELD_PIXELS+20, btn_out_toggle.screen_rect.y - 20, LIGHT_GRAY)
-            btn_out_toggle.text = "ENABLED" if bot.has_outtake else "DISABLED"
-            btn_out_toggle.default_color = GREEN if bot.has_outtake else LIGHT_GRAY
-            for element in studio_2_outtake_ui:
-                # Only draw the extra settings if it is enabled!
-                if element == btn_out_toggle or bot.has_outtake:
-                    element.draw(screen)
-            
-            if bot.has_outtake:
-                draw_small("Outtake offset:", FIELD_PIXELS + 20, btn_out_shift_in.screen_rect.y - 20, LIGHT_GRAY)
-            
-            # --- Intake System ---
-            draw_small("Intake system:", FIELD_PIXELS+20, btn_in_toggle.screen_rect.y - 20, LIGHT_GRAY)
-            btn_in_toggle.text = "ENABLED" if bot.has_intake else "DISABLED"
-            btn_in_toggle.default_color = GREEN if bot.has_intake else LIGHT_GRAY
-            for element in studio_2_intake_ui:
-                if element == btn_in_toggle or bot.has_intake:
-                    element.draw(screen)
+        # Predict based entirely on actual physical (in-field) values
+        self.lead_x = player_bot.x + (true_vx * self.lead_time)
+        self.lead_y = player_bot.y + (true_vy * self.lead_time)
 
-            if bot.has_intake:
-                draw_small("Intake offset:", FIELD_PIXELS + 20, btn_in_shift_in.screen_rect.y - 20, LIGHT_GRAY)
-                # Max length warning
-                stick_out_in = max(0.0, bot.intake_length - bot.intake_offset)
-                stick_out_out = max(0.0, bot.outtake_length - bot.outtake_offset) if bot.has_outtake else 0.0
-                total_L = bot.length + stick_out_in + stick_out_out
-                draw_small(f"Total L: {total_L:.1f}\"", FIELD_PIXELS + 110, btn_in_shift_in.screen_rect.y + 5, RED if total_L > bot.max_size else GREEN)
+        # ------------------------------------------------------------------
+        # Rays & LiDAR section
+        # ------------------------------------------------------------------
+        num_rays = 7 # number of rays casted
 
-            # --- Delay System ---
-            draw_small("Scoring delay:", FIELD_PIXELS+20, btn_delay_toggle.screen_rect.y - 20, LIGHT_GRAY)
-            btn_delay_toggle.text = "ENABLED" if bot.delay_flag else "DISABLED"
-            btn_delay_toggle.default_color = GREEN if bot.delay_flag else LIGHT_GRAY
-            for element in studio_2_delay_ui:
-                if element == btn_delay_toggle or bot.delay_flag:
-                    element.draw(screen)
-                
-        if sim.current_mode in ("studio", "edit"):
-            btn_page_switch.text = "Back" if sim.current_page in ("studio 2", "edit 2") else "Next"
-            btn_page_switch.draw(screen)
+        spread_deg = 15.0 # degrees between each laser
+        look_dist = 24.0 * self.scale
 
-        studio_display_y = 700
-        #Calculated performance section
-        draw_small("Calculated Specs:", FIELD_PIXELS + 20, studio_display_y, LIGHT_GRAY)
-        # Display calculated RPM
-        active_cart = sim.settings.get("motor_cartridge", "green")
-        motor_rpm = {"red": 100, "green": 200, "blue": 600}.get(active_cart, 200)
-        bot.calculate_max_speed(active_cart)
-        draw_small(f"Motor Speed: {motor_rpm} RPM", FIELD_PIXELS + 25, studio_display_y+25, YELLOW)
-        draw_small(f"Output Speed: {bot.output_rpm:.1f} RPM ({bot.gear_in}t:{bot.gear_out}t)", FIELD_PIXELS + 25, studio_display_y+45, CYAN)
-        # Display calculated top speed
-        top_ips = bot.base_max_speed #inches per second
-        top_fps = top_ips / 12.0 #feet per second
-        draw_small(f"Top Speed: {top_ips:.1f} in/s ({top_fps:.1f} ft/s)", FIELD_PIXELS + 25, studio_display_y+65, GREEN)
-    #Standart field sidebar (Only show buttons in Drive/Edit mode)
-    else:
-        # Dynamic settings selectors indicators map
-        if sim.current_mode == "drive":
-            btn_drive_tank.default_color = GREEN if sim.settings["drive_mode"] == "tank" else LIGHT_GRAY
-            btn_drive_arcade.default_color = GREEN if sim.settings["drive_mode"] == "arcade" else LIGHT_GRAY
-            btn_drive_custom.default_color = GREEN if sim.settings["drive_mode"] == "custom" else LIGHT_GRAY
-            
-            btn_input_key.default_color = YELLOW if sim.settings["input_mode"] == "keyboard" else LIGHT_GRAY
-            btn_input_ctrl.default_color = YELLOW if sim.settings["input_mode"] == "controller" else LIGHT_GRAY
-            
-            btn_auton.default_color = GREEN if not sim.auton_running else LIGHT_GRAY
-            btn_auton.text = "Run Autonomous" if not sim.auton_running else "Running..."
-
-            speed_slider.draw(screen)
-            turn_slider.draw(screen)
+        # Calculate the starting angle offset so the rays are centered
+        start_offset = -((num_rays - 1) / 2) * spread_deg 
         
-            for element in drive_ui:
-                element.draw(screen)
-
-            # Drive mode inventory HUD
-            inv_y = 180
-            draw_text("Bot Storage", FIELD_PIXELS + 20, inv_y+500, YELLOW)
-            draw_small(f"Capacity: {len(bot.inventory)}/{bot.max_capacity}", FIELD_PIXELS + 160, inv_y + 504, LIGHT_GRAY)
-
-            # Storage slot boxes
-            for i in range(bot.max_capacity):
-                slot_rect = pygame.Rect(FIELD_PIXELS + 20 + (i * 45), inv_y + 525, 38, 38)
-                pygame.draw.rect(screen, (40, 40, 50), slot_rect, border_radius=6)
-                pygame.draw.rect(screen, LIGHT_GRAY, slot_rect, 1, border_radius=6)
-                
-                #Draw stored item if present
-                if i < len(bot.inventory):
-                    s = bot.inventory[i]
-                    box_cx, box_cy = slot_rect.center
-
-                    if s["type"] == "circ":
-                    # Cap visual radius so it fits comfortably inside slot box
-                        visual_r = min(14, int(s["radius"] * 2.0))
-                        pygame.draw.circle(screen, s["color"], (box_cx, box_cy), visual_r)
-                    
-                    elif s["type"] == "rect":
-                        # Calculate aspect ratio scale to fit inside 28x28 max inner box
-                        max_dim = max(s["w"], s["h"])
-                        scale_factor = 26.0 / max_dim if max_dim > 0 else 1.0
-                        
-                        disp_w = int(s["w"] * scale_factor)
-                        disp_h = int(s["h"] * scale_factor)
-                        
-                        icon_rect = pygame.Rect(0, 0, disp_w, disp_h)
-                        icon_rect.center = (box_cx, box_cy)
-                        pygame.draw.rect(screen, s["color"], icon_rect, border_radius=3)
-
-                    timer_val = s.get("travel_timer", 0.0)
-                    if timer_val > 0.0:
-                        #Semi-transparent dark overlay over slot
-                        timer_surf = pygame.Surface((38, 38), pygame.SRCALPHA)
-                        timer_surf.fill((0, 0, 0, 160))
-                        screen.blit(timer_surf, (slot_rect.x, slot_rect.y))
-                        #Countdown text in slot
-                        draw_small(f"{timer_val:.1f}s", slot_rect.x + 4, slot_rect.y + 11, YELLOW)
-                    else:
-                        #Indicator with color when finished
-                        pygame.draw.rect(screen, s.get("color"), slot_rect, 2, border_radius=6)
-
-            # HUD Intake/Outtake
-            hud_y = inv_y + 140
-            draw_text("Subsystems", FIELD_PIXELS + 20, hud_y, YELLOW)
-            # Intake 
+        vision_array = []
+        clearance_array = []  # per-ray "how much room" (0=touching, 1=clear to look_dist) --
+                              # kept even for blocked rays (prototype - not consumed yet)
+        self.ray_lines = [] # Save the lines/bring up the scope
+        
+        for i in range(num_rays):
+            # Calculate the specific angle for current ray
+            offset_rad = math.radians(start_offset + (i * spread_deg))
+            ray_angle = math.radians(self.angle) + offset_rad
             
-            if bot.intake_state == "in":
-                intake_str, intake_color = "Intaking", GREEN
-            elif bot.intake_state == "out":
-                intake_str, intake_color = "Outtaking", GREEN
+            direction = pymunk.Vec2d(math.cos(ray_angle), math.sin(ray_angle))
+            
+            # Start right at the robot's own rectangular edge for THIS ray's
+            # angle, not one fixed circle radius for every ray. The old
+            # version used the diagonal-to-corner distance for every ray,
+            # which is correct for the angled rays but leaves a real gap
+            # (~2.76in for this chassis) in front of the straight-ahead ray,
+            # since it's not actually a corner - a thin obstacle sitting in
+            # that gap would never get seen, since a ray can't detect
+            # anything behind where it starts.
+            half_length = self.length / 2
+            half_width = self.track_width / 2
+            cos_a = abs(math.cos(offset_rad))
+            sin_a = abs(math.sin(offset_rad))
+            edge_candidates = []
+            if cos_a > 1e-9:
+                edge_candidates.append(half_length / cos_a)
+            if sin_a > 1e-9:
+                edge_candidates.append(half_width / sin_a)
+            box_edge_dist = min(edge_candidates) if edge_candidates else half_length
+            bumper_offset = (box_edge_dist + 0.5) * self.scale
+            
+            start_pt = self.body.position + (direction * bumper_offset)
+            end_pt = start_pt + (direction * look_dist)
+            hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
+            
+            hit_status = 0   # Default to 0 (0 - clear path; 1 - obstructed path)
+            clearance = 1.0  # 1.0 = fully clear to look_dist, same default as "no hit"
+            
+            if hit_info:
+                hit_shape = hit_info.shape
+                # Ignore the driving bodies (blocker + user)
+                if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
+                    hit_status = 1 # (Obstacle detected)
+                    clearance = hit_info.alpha  # 0 (touching) to 1 (hit right at look_dist)
+            
+            vision_array.append(hit_status)
+            clearance_array.append(clearance)
+            self.ray_lines.append((start_pt, end_pt, hit_status)) # Save for drawing
+            
+        #print(vision_array) 
+
+        center_ray_index = num_rays // 2 #Floor division so always int
+        middle_hits = vision_array[center_ray_index-1] + vision_array[center_ray_index] + vision_array[center_ray_index+1]
+
+        # Slowing the blocker down to 30% speed when the front rays detect an obstacle
+        if middle_hits == 3:
+            obstacle_brake = 0.3    # Down 70%
+        elif middle_hits == 2:
+            obstacle_brake = 0.55   # Down 45%
+        elif middle_hits == 1:
+            obstacle_brake = 0.80   # Down 20%
+        else:
+            obstacle_brake = 1.0    
+
+        # math.hypot and not sqrt(dx**2 + dy**2): same returned distance, but more
+        # numerically stable at very small values (plus cleaner format)
+        dx = self.lead_x - self.x
+        dy = self.lead_y - self.y
+        dist = math.hypot(dx, dy)
+
+        # Normalizing (from 0 to 1 - meaning 1 is max speed and 0 is none)
+        if dist > 0: 
+            dx /= dist
+            dy /= dist
+
+        user_angle = math.degrees(math.atan2(dy, dx)) # Return -180 to 180
+        relative_player_angle = (user_angle - self.angle + 180) % 360 - 180
+
+        # Only trust relative_player_angle's sign enough to switch sides once
+        # it's decisively past the deadzone. Otherwise keep the side we last
+        # committed to - without this, a near-symmetric clear-ray pattern
+        # (pole/corner ahead, open on both sides) lets relative_player_angle
+        # flip sign on noise smaller than a degree, which flipped the escape
+        # direction every frame instead of committing to one side and going
+        # around (found while testing commit #2's reverse-driving fix).
+        if abs(relative_player_angle) > self.ESCAPE_BIAS_DEADZONE_DEG:
+            self._escape_side_bias = 1 if relative_player_angle > 0 else -1
+
+        safe_dx = 0.0
+        safe_dy = 0.0
+        clear_paths = 0
+
+        # Loop through the array and add up the directions of all the safe "0" rays
+        for i, status in enumerate(vision_array):
+            if status == 0:  
+                ray_offset_deg = start_offset + (i * spread_deg)
+                ray_angle = math.radians(self.angle + ray_offset_deg)
+
+                weight = 1.0
+                # If the ray is on the committed side, increase weight to 1.5
+                # Priorities turning toward the side of user
+                if (ray_offset_deg > 0 and self._escape_side_bias > 0) or (ray_offset_deg < 0 and self._escape_side_bias < 0):
+                    weight = 1.5
+
+                safe_dx += math.cos(ray_angle) * weight
+                safe_dy += math.sin(ray_angle) * weight
+                clear_paths += 1
+
+        if 1 in vision_array and clear_paths > 0:
+            escape_mag = math.hypot(safe_dx, safe_dy)
+            # Normalizing (0-to-1 scale)
+
+            safe_dx /= escape_mag
+            safe_dy /= escape_mag
+
+            final_dx = (dx * 0.3) + (safe_dx * 0.7)
+            final_dy = (dy * 0.3) + (safe_dy * 0.7)
+
+        elif clear_paths == 0:
+            # Every ray reads "blocked" within look_dist - but "blocked"
+            # isn't the same as "equally blocked." Uses the clearance data
+            # from the ray loop above to head toward whichever ray has the
+            # most room, instead of always reversing.
+            best_idx = clearance_array.index(max(clearance_array))
+            best_clearance = clearance_array[best_idx]
+
+            if best_clearance < self.BOXED_IN_CLEARANCE_THRESHOLD:
+                # Even the best direction is basically point-blank (every
+                # way is genuinely boxed in) - true last resort: reverse.
+                # Reversing exactly 180deg from self.angle is numerically
+                # unstable (floating-point noise in the cos/sin/atan2
+                # round-trip can land at just-under +180 one frame and
+                # just-under -180 the next, flipping the turn direction
+                # every tick and never actually completing it - this was
+                # the "won't turn around" bug). A small, ALWAYS-the-same-
+                # direction bias breaks that tie deterministically instead
+                # of leaving it to floating-point chance.
+                escape_angle = math.radians(self.angle + 180 + self.STUCK_ESCAPE_BIAS_DEG)
             else:
-                intake_str, intake_color = "None", LIGHT_GRAY
-            draw_small(f"Intake:  {intake_str}", FIELD_PIXELS + 20, hud_y + 24, intake_color)
-            # Outtake 
-            if bot.outtake_state == "out":
-                outtake_str, outtake_color = "Scoring", GREEN
-            else:
-                outtake_str, outtake_color = "None", LIGHT_GRAY
-            draw_small(f"Outtake: {outtake_str}", FIELD_PIXELS + 20, hud_y + 44, outtake_color)
+                best_offset_deg = start_offset + (best_idx * spread_deg)
+                escape_angle = math.radians(self.angle + best_offset_deg)
 
-            # Real-time speedometer
-            speed_y = WINDOW_HEIGHT - 135
-            draw_text("Telemetry", FIELD_PIXELS + 20, speed_y, YELLOW)
-            curr_ips = abs(bot.current_speed)
-            curr_fps = curr_ips / 12.0
-            draw_small(f"Speed: {curr_ips:.1f} in/s ({curr_fps:.1f} ft/s)", FIELD_PIXELS + 20, speed_y + 22, GREEN)
-            pygame.draw.line(screen, DARK, (FIELD_PIXELS + 20, speed_y + 40), (WINDOW_WIDTH - 20, speed_y + 40), 1)
+            final_dx = math.cos(escape_angle)
+            final_dy = math.sin(escape_angle)
+
+        else:
+            final_dx = dx
+            final_dy = dy
             
-        elif sim.current_mode == "edit":
-            draw_small("X -->", FIELD_PIXELS - 50, FIELD_PIXELS - 22, BLACK)
-            draw_small("^ Y", 8, 50, BLACK)
-            draw_small("|", 8, 57, BLACK)
+        # Convert the final blended vector back into an angle for the steering wheel
+        target_angle = math.degrees(math.atan2(final_dy, final_dx))
 
-            for inch in range(12, 133, 12):
-                px_val = int(inch * SCALE)
+        # Shortest signed angle difference in [-180, 180]
+        # displacement = target_angle - self.angle: the heading the blocker
+        # WANT minus the heading it currently HAS (angles, not positions)
+        # "Wrapping" it into [-180, 180] stops the bot from ever turning the "wrong way"
+        angle_diff = (target_angle - self.angle + 180) % 360 - 180
+        # Proportional steering: turn hard when misaligned, drive straight when lined up
+        omega = max(-180.0, min(180.0, angle_diff * self.turn_gain))
 
-                line_color = (120, 120, 120)
-                if inch % 24 == 0:
-                    line_color = BLACK
+        # Slow down while turning sharply (mirrors how a real tank drive behaves),
+        # and stop closing distance once basically on top of the player so it
+        # "blocks" instead of just ramming through.
+        alignment = max(0.0, 1.0 - abs(angle_diff) / 90.0)
+        # Measure from bumper to bumper (not .x and .y that is in the bot or blocker)
+        bumper_dist = max(0.0, dist - (player_bot.length / 2 + self.length / 2) - self.stop_distance)
+        distance_factor = min(1.0, bumper_dist / 12.0) 
 
-                # X Axis (Bottom)
-                pygame.draw.line(screen, line_color, (px_val, FIELD_PIXELS - 14), (px_val, FIELD_PIXELS - 6), 2)
-                draw_small(f"{inch}\"", px_val - 10, FIELD_PIXELS - 28, line_color)
+        forward_speed = self.max_speed * alignment * distance_factor * obstacle_brake
 
-                # Y Axis (Left)
-                line_y = FIELD_PIXELS - px_val #Flip the Y cords instead of pygame top left
-                pygame.draw.line(screen, line_color, (6, line_y), (14, line_y), 2)
-                draw_small(f"{inch}\"", 16, line_y - 6, line_color)
+        if abs(angle_diff) > self.SEVERE_MISALIGNMENT_DEG:
+            # Basically facing the wrong way - alignment above would force
+            # forward_speed near 0 here, which just means standing still and
+            # rotating in place until aligned enough to creep forward. Back
+            # up instead, while still turning - same idea as a real driver
+            # reversing partway through a K-turn to get moving right away
+            # instead of waiting for the turn to finish first.
+            # Still being worked on: this doesn't check for anything behind
+            # the blocker - rays only look forward, so this can't tell if
+            # it's about to back into something.
+            forward_speed = -self.max_speed * self.REVERSE_SPEED_FACTOR
 
-                if sim.current_mode in ("studio", "edit"):
-                    btn_page_switch.text = "Back" if sim.current_page in ("studio 2", "edit 2") else "Next"
-                    btn_page_switch.draw(screen)
+        self.body.angular_velocity = math.radians(omega)
+        heading = math.radians(self.angle)
+        self.body.velocity = (
+            forward_speed * math.cos(heading) * self.scale,
+            forward_speed * math.sin(heading) * self.scale,
+        )
 
-            if sim.current_page == "edit 1":
-                draw_small("Field Display Option:", btn_field_img.screen_rect.x, btn_field_img.screen_rect.y - 20, YELLOW)
-                btn_field_img.default_color = GREEN if sim.settings["field_source"] == "image" else LIGHT_GRAY
-                btn_field_cust.default_color = GREEN if sim.settings["field_source"] == "custom" else LIGHT_GRAY
-                
-                draw_small("Game Elements Customization:", btn_add_shape.screen_rect.x, btn_add_shape.screen_rect.y - 20, YELLOW)
-                
-                for element in edit_buttons_ui:
-                    element.draw(screen)
-                
-                shape_dropdown.draw(screen) 
-            
-                # Inspector Panel selection layout loop context mapping logic
-                if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
-                    s = sim.shapes[sim.selected_shape_idx]
-                    current_phys = s.get("body_type", "static")
-                    
-                    if s["type"] == "rect":
-                        if not box_sx.is_active: box_sx.value = f"{s['x']:.1f}"
-                        if not box_sy.is_active: box_sy.value = f"{s['y']:.1f}"
-                        if not box_sw.is_active: box_sw.value = f"{s['w']:.1f}"
-                        if not box_sh.is_active: box_sh.value = f"{s['h']:.1f}"
-                        if not box_sa.is_active: box_sa.value = f"{s['angle']:.1f}"
-                        for box in [box_sx, box_sy, box_sw, box_sh, box_sa]: box.draw(screen)
-                        
-                    elif s["type"] == "circ":
-                        if not box_sx.is_active: box_sx.value = f"{s['x']:.1f}"
-                        if not box_sy.is_active: box_sy.value = f"{s['y']:.1f}"
-                        if not box_sr.is_active: box_sr.value = f"{s['radius']:.1f}"
-                        for box in [box_sx, box_sy, box_sr]: box.draw(screen)
-                        
-                    if current_phys == "dynamic":
-                        if not box_sm.is_active: box_sm.value = f"{s.get('mass', 1.0):.1f}"
-                        box_sm.draw(screen)
+        # Note: self.x/self.y/self.angle are NOT updated here. Call
+        # sync_from_physics() AFTER space.step() runs (same ordering
+        # main.py already uses for the player robot), otherwise this
+        # bot's steering next frame would be based on stale position.
 
-                    if current_phys == "passthrough":
-                        if not box_sf.is_active: box_sf.value = f"{s.get('friction', 0.5):.2f}"
-                        if not box_se.is_active: box_se.value = f"{s.get('elasticity', 0.0):.2f}"
-                        box_sf.draw(screen)
-                        box_se.draw(screen)
+    def sync_from_physics(self):
+        """Call once per frame, right after space.step(), mirroring how
+        main.py pulls bot.x/bot.y/bot.angle back from bot.body."""
+        if not self.enabled:
+            return
+        self.x = self.body.position.x / self.scale
+        self.y = self.body.position.y / self.scale
+        self.angle = math.degrees(self.body.angle)
 
-                    if current_phys == "static":
-                        btn_phys_toggle.default_color = RED
-                        btn_phys_toggle.text = "STATIC (WALL)"
-                    elif current_phys == "passthrough":
-                        btn_phys_toggle.default_color = CYAN
-                        btn_phys_toggle.text = "PASSTHROUGH"
-                        
-                        # Only update and draw the layer toggle if it's passthrough
-                        is_over = s.get("is_overpass", False)
-                        btn_layer_toggle.default_color = (139,108,92) if is_over else (106,74,58)
-                        btn_layer_toggle.text = "HIGH (OVER)" if is_over else "LOW (GROUND)"
-                        draw_small("Layer Height", btn_layer_toggle.screen_rect.x, btn_layer_toggle.screen_rect.y - 16, LIGHT_GRAY)
-                        btn_layer_toggle.draw(screen)
-                        
-                    elif current_phys == "dynamic":
-                        btn_phys_toggle.default_color = GREEN
-                        btn_phys_toggle.text = "DYNAMIC (BALL)"
+    def _track_player_speed(self, player_bot, true_speed):
+        now = self._elapsed()
 
-                    draw_small("Physics Mode", btn_phys_toggle.screen_rect.x, btn_phys_toggle.screen_rect.y - 16, LIGHT_GRAY)
-                    btn_phys_toggle.draw(screen)
+        #Log physical speed (not inputed) in inches/sec
+        self._recent_speed_history.append((now, true_speed))
 
-                    draw_small("Color Palette", color_button_rects[0].x, color_button_rects[0].y - 20, YELLOW)
-                    for i, rect in enumerate(color_button_rects):
-                        pygame.draw.rect(screen, COLOR_PALETTE[i], rect, border_radius=4)
-                        if s["color"] == COLOR_PALETTE[i]:
-                            pygame.draw.rect(screen, WHITE, rect, 2, border_radius=4)
+        # Trim anything older than the rolling window. Without it, 
+        # the list would grow every tick for the whole session. Keeping only
+        # the last 0.5s of (time, speed) pairs keeps it small and fast
+        # to scan for the "significant speed change" check below
+        cutoff = now - self._speed_history_window
+        self._recent_speed_history = [(t, s) for (t, s) in self._recent_speed_history if t >= cutoff]
 
-                else:
-                    draw_small("No shape selected", FIELD_PIXELS + 20, shape_panel_y + 25, LIGHT_GRAY)
-
-                # Global teleop diagnostics metrics dashboard tracking
-                draw_small("Robot's Starting Pose:", box_rx.screen_rect.x, box_rx.screen_rect.y - 35, YELLOW)
-                rx, ry, ra = bot.start_pose
-                # Update Robot values dynamically
-                if not box_rx.is_active: box_rx.value = f"{rx:.1f}"
-                if not box_ry.is_active: box_ry.value = f"{ry:.1f}"
-                if not box_ra.is_active: box_ra.value = f"{ra:.1f}"
-                if not box_rlen.is_active: box_rlen.value = f"{bot.length:.1f}"
-                if not box_rwid.is_active: box_rwid.value = f"{bot.track_width:.1f}"
-                for element in edit_robot_ui:
-                    element.draw(screen)       
-
-        # Pose/ Odom footer
-        info_y = WINDOW_HEIGHT - 90
-        draw_text("Pose (Field)", FIELD_PIXELS + 20, info_y, LIGHT_GRAY)
-        draw_small(f"x={bot.x:.1f} in", FIELD_PIXELS + 20, info_y + 20, LIGHT_GRAY)
-        draw_small(f"y={bot.y:.1f} in", FIELD_PIXELS + 20, info_y + 40, LIGHT_GRAY)
-        draw_small(f"θ={bot.angle%360:.1f}°", FIELD_PIXELS + 20, info_y + 60, LIGHT_GRAY)
+        # "Mistake" definition: speed was decent, then collapsed hard within
+        # the rolling window, and there was a logged impact in that window.
+        # This is intentionally simple, it's meant to flag review-worthy
+        # moments for the driver, not to be a precise physics judgement
+        if len(self._recent_speed_history) < 2:
+            return
+        peak_speed = max(s for (_, s) in self._recent_speed_history)
+        if peak_speed < 5.0:
+            return
         
-        ox, oy = bot.get_odom_pose()
-        draw_text("Pose (Odom)", FIELD_PIXELS + 160, info_y, LIGHT_GRAY)
-        draw_small(f"x={ox:.1f}", FIELD_PIXELS + 160, info_y + 20, LIGHT_GRAY)
-        draw_small(f"y={oy:.1f}", FIELD_PIXELS + 160, info_y + 40, LIGHT_GRAY)
-    
-        if m_fx != -1:
-            mxo, myo = m_fx - bot.odom_origin_x, m_fy - bot.odom_origin_y
-            draw_small(f"Cursor Odom: {mxo:.1f}, {myo:.1f}", FIELD_PIXELS + 160, info_y + 60, LIGHT_GRAY)
+        if true_speed < peak_speed * 0.3:
+            recent_impact = any(now - imp["t"] < self._speed_history_window for imp in self.impacts)
+            if recent_impact and not self._already_logged_recently(now):
+                self.mistakes.append({
+                    "t": round(now, 2),
+                    "x": round(player_bot.x, 2),
+                    "y": round(player_bot.y, 2),
+                    "speed_before": round(peak_speed, 2),
+                    "speed_after": round(true_speed, 2),
+                })
 
-    #Semi-transparent overlay when Paused (pressed "Esc")
-    if sim.paused:
-        #Spanning across the entire screen
-        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) #Each pixel's opacity acts independently, rather than everything having the same opacity
-        #Overlay over the whole screen rather than replacing it (visual effect)
-        overlay.fill((128, 128, 128, 150)) # Can be changed. (R, G, B, Opacity) 255 being maxed, 0 being completely see-through.
-        screen.blit(overlay, (0, 0))
+    def _already_logged_recently(self, now, window=1.0):
+        # any() returns True the moment ONE mistake in the list is recent
+        # enough. Stopping the same collision from getting logged as a
+        # separate "mistake" on every tick for 60 ticks/sec while the
+        # player is still slowed down from it.
+        return any(now - m["t"] < window for m in self.mistakes)
 
-        #Main pause box (Modal)
-        if sim.paused_sub_menu == "main":
-            pygame.draw.rect(screen, (35, 35, 45), pause_modal_rect, border_radius=12)
-            pygame.draw.rect(screen, YELLOW, pause_modal_rect, 2, border_radius=12) 
-            draw_text("GAME PAUSED", pause_modal_rect.x + 85, pause_modal_rect.y + 20, YELLOW)
+    # ------------------------------------------------------------------
+    # Feedback / reporting
+    # ------------------------------------------------------------------
+    def get_summary(self):
+        n_impacts = len(self.impacts)
+        n_mistakes = len(self.mistakes)
+        elapsed = self._elapsed()
+        avg_gap = None
+        if n_impacts >= 2:
+            times = [imp["t"] for imp in self.impacts]
+            # Pairwise trick: zip(times, times[1:]) lines up each impact
+            # time with the one right after it -[(6,17),(17,25),(25,31)]-
+            # so the gap between consecutive hits is one subtraction each,
+            # no manual indexing (aka for loops).
+            gaps = [t2 - t1 for t1, t2 in zip(times, times[1:])]#?
+            avg_gap = sum(gaps) / len(gaps)
+        return {
+            "elapsed_seconds": round(elapsed, 1),
+            "impacts": n_impacts,
+            "mistakes": n_mistakes,
+            "avg_seconds_between_impacts": round(avg_gap, 2) if avg_gap else None,
+            "dda_baseline_speed": round(getattr(self, "dda_baseline_speed", 0.0), 1),
+            "dda_offset": round(getattr(self, "dda_offset", 1.0), 2),
+            "max_speed": round(self.max_speed, 1),
+        }
 
-            #Update display for different screens
-            if sim.current_mode == "drive" or sim.current_mode == "edit":
-                btn_pause_studio.text = "Robot Design Studio"
-            elif sim.current_mode == "studio":
-                btn_pause_studio.text = "Return to Drive mode"
+    def save_report(self, path):
+        report = {
+            "difficulty": self.difficulty,
+            "summary": self.get_summary(),
+            "impacts": self.impacts,
+            "mistakes": self.mistakes,
+        }
+        with open(path, "w") as f:
+            json.dump(report, f, indent=2)#?
+        return report
 
-            #Loop through and render everything
-            for element in pause_ui:
-                element.draw(screen)   
+    # ------------------------------------------------------------------
+    # Drawing
+    # ------------------------------------------------------------------
+    def draw(self, screen, scale, field_pixels):
+        if not self.enabled:
+            return
+        import pygame
 
-        elif sim.paused_sub_menu == "settings":
-            k_in = pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
-            k_out = pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
-            k_score = pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
+        w_px = self.length * scale
+        h_px = self.track_width * scale
+        surf = pygame.Surface((w_px, h_px), pygame.SRCALPHA)
+        surf.fill((255, 60, 60, 200))
+        pygame.draw.rect(surf, (120, 0, 0), (0, 0, w_px, h_px), 2)
+
+        rot = pygame.transform.rotate(surf, self.angle)
+        center_x = self.x * scale
+        center_y = field_pixels - (self.y * scale)
+        rect = rot.get_rect(center=(center_x, center_y))
+        screen.blit(rot, rect)
+
+        if hasattr(self, 'lead_x') and hasattr(self, 'lead_y'):
+            start_pos = (center_x, center_y)
+            target_px_x = self.lead_x * scale
+            target_px_y = field_pixels - (self.lead_y * scale)
+            end_pos = (target_px_x, target_px_y)
             
-            btn_in.text = "Press Any Key..." if sim.remapping_key == "intake_in" else f"Intake In Key: {k_in}"
-            btn_out.text = "Press Any Key..." if sim.remapping_key == "intake_out" else f"Intake Out Key: {k_out}"
-            btn_score.text = "Press Any Key..." if sim.remapping_key == "outtake_score" else f"Outtake Score: {k_score}"
-            btn_mode.text = f"Intake Mode: {sim.settings['intake_control_mode'].upper()}"
+            # Red Line of Sight and Blue Target Circle
+            pygame.draw.line(screen, (255, 100, 100), start_pos, end_pos, 2)
+            pygame.draw.circle(screen, (100, 200, 255), end_pos, 8, 2)
 
-            settings_scrollview.draw(screen)
-    
-    pygame.display.flip()
-# =====================================================================
-# 6. ACTION INTERACTION ROUTINES (UI Click & Inputs Handler)
-# =====================================================================
-def handle_ui_click(mx, my):
-    if sim.current_mode == "edit":
-        if sim.current_page == "edit 1":
-            # Drop textboxes selection processing checks blocks
-            if sim.selected_shape_idx is not None:
-                s = sim.shapes[sim.selected_shape_idx]               
-                for i, rect in enumerate(color_button_rects):
-                    if rect.collidepoint(mx, my): s["color"] = COLOR_PALETTE[i]; save_field_data(); return
-
-
-# =====================================================================
-# 7. AUTONOMOUS COMMAND EXECUTORS (Hardcoded Sequential Layer)
-# =====================================================================
-def drive_inches(length, velo):
-    speed = (velo / 100.0) * bot.base_max_speed
-    target, moved, direction = abs(length), 0.0, (1 if length > 0 else -1)
-    while moved < target:
-        dt = clock.tick(60) / 1000.0
-        step = min(speed * dt, target - moved)
-        moved += step
-        rad = math.radians(bot.angle)
-        bot.x += direction * step * math.cos(rad)
-        bot.y += direction * step * math.sin(rad)
-        bot.x = max(bot.length / 2, min(FIELD_INCHES - bot.length / 2, bot.x))
-        bot.y = max(bot.track_width / 2, min(FIELD_INCHES - bot.track_width / 2, bot.y))
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); raise SystemExit
-        draw_everything()
-
-def turn_degrees(side, deg, velo):
-    max_speed = (velo / 100.0) * bot.base_max_speed
-    direction, target, turned = (1 if side == 'l' else -1), abs(deg), 0.0
-    while turned < target:
-        dt = clock.tick(60) / 1000.0
-        omega = (direction * max_speed - (-direction * max_speed)) / bot.track_width
-        delta_deg = math.degrees(omega * dt)
-        if turned + abs(delta_deg) > target: delta_deg = math.copysign(target - turned, delta_deg)
-        bot.angle += delta_deg
-        turned += abs(delta_deg)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); raise SystemExit
-        draw_everything()
-
-def autonomous():
-    for _ in range(4):
-        drive_inches(24, 40) #Drive 24 inches at 40% speed
-        turn_degrees('r', 90, 40) #Turn right 90 degrees at 40% speed
-        
-    turn_degrees('l',720,50) #Celebration spin!
-
-# =====================================================================
-# 8. MAIN RUNTIME LOOP
-# =====================================================================
-joystick = None
-if pygame.joystick.get_count() > 0:
-    joystick = pygame.joystick.Joystick(0); joystick.init()
-    
-create_field_boundaries() #Create physical boundaries around fields using PyMunk
-sync_custom_obstacles_to_physics()
-
-running = True
-while running:
-    dt = clock.tick(60) / 1000.0
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT: running = False
-
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = event.pos
-            #Handling clicks when the game is paused
-            if sim.paused:
-                if sim.paused_sub_menu == "main":
-                    #Letting the objects (ui.py) handle their own clicks
-                    for element in pause_ui:
-                        if element.handle_event(event, mx, my):
-                            break
-
-                elif sim.paused_sub_menu == "settings":
-                    settings_scrollview.handle_event(event, mx, my)
-            #Handling clicks when the game is NOT paused
-            elif mx >= FIELD_PIXELS: 
-                handled = False
-
-                for element in global_nav_ui: #CHeck gobal variables first 
-                    if element.handle_event(event, mx, my):
-                        handled = True
-
-                if sim.current_mode == "drive":
-                    handled = speed_slider.handle_event(event, mx, my) or turn_slider.handle_event(event, mx, my)
-
-                    if not handled:
-                        for element in drive_ui:
-                            if element.handle_event(event, mx, my):
-                                handled = True
-
-                elif sim.current_mode == "edit" and sim.current_page == "edit 1":
-                    handled = shape_dropdown.handle_event(event, mx, my)
-
-                    if not handled:
-                        for element in edit_buttons_ui + edit_inspector_ui + edit_shape_txt + edit_robot_ui:
-                            if element.handle_event(event, mx, my):
-                                handled = True
-
-                elif sim.current_mode == "studio" and sim.current_page == "studio 1":
-                    for element in studio_1_ui:
-                        if element.handle_event(event, mx, my):
-                            handled = True
-
-                elif sim.current_mode == "studio" and sim.current_page == "studio 2":
-                    elements = studio_2_outtake_ui + studio_2_intake_ui + studio_2_delay_ui
-                    for element in elements:
-                        if element.handle_event(event, mx, my):
-                            handled = True
-
-                if not handled: #Run old function if not detected
-                    handle_ui_click(mx, my)
-
-            elif sim.current_mode == "edit":
-                if sim.current_page == "edit 1":
-                    fake_click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(-100, -100), button=1)
-                    for element in edit_shape_txt + edit_robot_ui:
-                        element.handle_event(fake_click, -100, -100)
-                # Check robot drag focus
-                dx, dy = mx - bot.x * SCALE, my - (FIELD_PIXELS - bot.y * SCALE)
-                r_radius = max(bot.length, bot.track_width) * SCALE / 2 + 10
-                if dx*dx + dy*dy <= r_radius*r_radius:
-                    sim.dragging_robot = True
-                    sim.robot_drag_offset_x = (mx / SCALE) - bot.x
-                    sim.robot_drag_offset_y = ((FIELD_PIXELS - my) / SCALE) - bot.y
-                else:
-                    m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
-                    if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
-                        sel_s = sim.shapes[sim.selected_shape_idx]
-                        #getting cords for the white dot/ resizing dot on top right of rectangle or right side of circle
-                        if sel_s["type"] == "rect":
-                            w_px_x = (sel_s["x"] + sel_s["w"]) * SCALE
-                            w_px_y = FIELD_PIXELS - ((sel_s["y"] + sel_s["h"]) * SCALE)
-                        else:
-                            w_px_x = (sel_s["x"] + sel_s["radius"]) * SCALE
-                            w_px_y = FIELD_PIXELS - (sel_s["y"] * SCALE)
-
-                        dis_sq = (mx - w_px_x)**2 + (my - w_px_y)**2 #Squared dist of click from white dot
-                        if dis_sq <= 10**2: #If within a 10px range
-                            sim.resizing_shape = True
-                            continue
-
-                    sim.selected_shape_idx = None
-                    for i in reversed(range(len(sim.shapes))):
-                        s = sim.shapes[i]
-                        if s["type"] == "rect" and s["x"] <= m_fx <= s["x"] + s["w"] and s["y"] <= m_fy <= s["y"] + s["h"]:
-                            sim.selected_shape_idx = i; break
-                        elif s["type"] == "circ" and (m_fx - s["x"])**2 + (m_fy - s["y"])**2 <= s["radius"]**2:
-                            sim.selected_shape_idx = i; break
-                    if sim.selected_shape_idx is not None:
-                        s = sim.shapes[sim.selected_shape_idx]
-                        sim.drag_offset_x = m_fx - (s["x"] + s["w"]/2 if s["type"]=="rect" else s["x"])
-                        sim.drag_offset_y = m_fy - (s["y"] + s["h"]/2 if s["type"]=="rect" else s["y"])
-                        sim.dragging_shape = True
-
-        elif event.type == pygame.MOUSEWHEEL:
-            if sim.paused and sim.paused_sub_menu == "settings":
-                mx, my = pygame.mouse.get_pos()
-                settings_scrollview.handle_event(event, mx, my)
-
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            mx, my = event.pos
-            if sim.current_mode == "edit":
-                if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
-                elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
-                elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
-            elif sim.current_mode == "drive":
-                speed_slider.handle_event(event, mx, my)
-                turn_slider.handle_event(event, mx, my)
+        if hasattr(self, 'ray_lines'):
+            for start_pt, end_pt, hit_status in self.ray_lines:
+                # Convert PyMunk coordinates to Pygame pixels (and flip the Y-axis)
+                sx = start_pt.x
+                sy = field_pixels - start_pt.y
+                ex = end_pt.x
+                ey = field_pixels - end_pt.y
                 
-        elif event.type == pygame.MOUSEMOTION:
-            mx, my = event.pos
-            if sim.current_mode == "drive":
-                speed_slider.handle_event(event, mx, my)
-                turn_slider.handle_event(event, mx, my)
-
-            elif sim.current_mode == "edit":
-                m_fx, m_fy = mx / SCALE, (FIELD_PIXELS - my) / SCALE
-
-                if sim.resizing_shape and sim.selected_shape_idx is not None:
-                    s = sim.shapes[sim.selected_shape_idx]
-                    if s["type"] == "rect":
-                        new_w = m_fx - s["x"]
-                        new_h = m_fy - s["y"]
-                        s["w"] = max(1.0, new_w)
-                        s["h"] = max(1.0, new_h)
-                    elif s["type"] == "circ":
-                        new_r = m_fx - s["x"]
-                        s["radius"] = max(1.0, new_r)
-
-                elif sim.dragging_robot:
-                    bot.x = m_fx - sim.robot_drag_offset_x
-                    bot.y = m_fy - sim.robot_drag_offset_y
-                    #Bring the physics (backend) body while dragging
-                    bot.body.position = (bot.x * SCALE, bot.y * SCALE)
-                elif sim.dragging_shape and sim.selected_shape_idx is not None:
-                    s = sim.shapes[sim.selected_shape_idx]
-                    if s["type"] == "rect":
-                        s["x"] = (m_fx - sim.drag_offset_x) - s["w"]/2
-                        s["y"] = (m_fy - sim.drag_offset_y) - s["h"]/2
-                    else:
-                        s["x"] = m_fx - sim.drag_offset_x
-                        s["y"] = m_fy - sim.drag_offset_y
-
-        elif event.type == pygame.KEYDOWN:
-            mx, my = pygame.mouse.get_pos()
-
-            if sim.current_mode == "studio" and sim.current_page == "studio 1":
-                for element in studio_1_ui:
-                    element.handle_event(event, mx, my)
-            elif sim.current_mode == "studio" and sim.current_page == "studio 2":
-                elements = studio_2_outtake_ui + studio_2_intake_ui + studio_2_delay_ui
-                for element in elements:
-                    element.handle_event(event, mx, my)
-            elif sim.current_mode == "edit" and sim.current_page == "edit 1":
-                for element in edit_shape_txt + edit_robot_ui:
-                    element.handle_event(event, mx, my)
-
-            # Global Pause Toggle (ESC Key)
-            if event.key == pygame.K_ESCAPE:
-                sim.active_textbox = None
-                if sim.paused and sim.paused_sub_menu == "settings":
-                    sim.paused_sub_menu = "main"
-                else:
-                    sim.paused = not sim.paused
-                    sim.paused_sub_menu = "main"
-            elif sim.remapping_key is not None:
-                    sim.settings["keybinds"][sim.remapping_key] = event.key
-                    sim.remapping_key = None
-                    save_settings()
-            elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
-                is_typing = False
-                if sim.current_page == "edit 1":
-                    for box in edit_shape_txt + edit_robot_ui:
-                        if getattr(box, "is_active", False):
-                            is_typing = True
-                            break
-                            
-                if not is_typing:
-                    removed_s = sim.shapes.pop(sim.selected_shape_idx)
-                    if "body" in removed_s and removed_s["body"] in space.bodies:
-                        space.remove(removed_s["body"])
-                    if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
-                        space.remove(removed_s["pymunk_shape"])
-                    sim.selected_shape_idx = None
-                    save_field_data()
-                    sync_custom_obstacles_to_physics()
-
-            # Toggle mode intake switching
-            elif sim.current_mode == "drive" and not sim.paused and sim.settings["intake_control_mode"] == "toggle":
-                if event.key == sim.settings["keybinds"]["intake_in"]:
-                    bot.intake_state = "off" if bot.intake_state == "in" else "in"
-                elif event.key == sim.settings["keybinds"]["intake_out"]:
-                    bot.intake_state = "off" if bot.intake_state == "out" else "out"
-                elif event.key == sim.settings["keybinds"]["outtake_score"]:
-                    bot.outtake_state = "off" if bot.outtake_state == "out" else "out"
-        elif event.type == pygame.JOYDEVICEADDED and joystick is None:
-            joystick = pygame.joystick.Joystick(event.device_index); joystick.init()
-        elif event.type == pygame.JOYDEVICEREMOVED and joystick is not None and event.instance_id == joystick.get_instance_id():
-            joystick = None
-
-    # Teleop update context loop checks
-    if sim.current_mode == "drive" and not sim.paused:
-        if sim.auton_mode and not sim.auton_running:
-            sim.auton_running = True; sim.auton_mode = False
-            autonomous()
-            sim.auton_running = False
-        if not sim.auton_running:
-            l_speed, r_speed = get_inputs(dt)
-            update_physics(l_speed, r_speed, dt)
-
-    draw_everything()
-
-pygame.quit()
-
-print(blocker.get_summary())
+                # Draw Red if it hit something (1), Yellow if clear (0)
+                color = (255, 60, 60) if hit_status == 1 else (255, 255, 0)
+                pygame.draw.line(screen, color, (sx, sy), (ex, ey), 2)
