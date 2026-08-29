@@ -83,6 +83,11 @@ class BlockingBot:
                                         # least this many inches over the
                                         # window to NOT count as stuck
 
+    #===Wall-following (used while is_stuck is True)===
+    WALL_FOLLOW_TARGET_CLEARANCE = 0.35  # desired "cushion" from the wall,
+                                          # as a fraction of look_dist (~8.4in)
+    WALL_FOLLOW_TURN_GAIN = 60.0  # how hard to correct back toward that cushion
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -427,7 +432,26 @@ class BlockingBot:
                 safe_dy += math.sin(ray_angle) * weight
                 clear_paths += 1
 
-        if 1 in vision_array and clear_paths > 0:
+        if self.is_stuck:
+            # Override the normal target entirely - aiming at the player is
+            # exactly what got us stuck (yesterday's corner-trap screenshot:
+            # the direction was stable, just wrong the whole time). Instead,
+            # follow the wall on the committed side at a rough constant
+            # distance. The outermost ray on that side doubles as a wall
+            # sensor; its offset (+/-45deg) IS the tangent direction once
+            # rotated to be "along the wall" instead of "at the wall," so no
+            # extra geometry is needed beyond what the ray-fan already senses.
+            bias = self._escape_side_bias
+            follow_ray_index = 0 if bias > 0 else (len(clearance_array) - 1)
+            follow_clearance = clearance_array[follow_ray_index]
+            clearance_error = follow_clearance - self.WALL_FOLLOW_TARGET_CLEARANCE
+            wall_follow_offset_deg = bias * (45.0 - clearance_error * self.WALL_FOLLOW_TURN_GAIN)
+            wall_follow_offset_deg = max(-90.0, min(90.0, wall_follow_offset_deg))
+            escape_angle = math.radians(self.angle + wall_follow_offset_deg)
+            final_dx = math.cos(escape_angle)
+            final_dy = math.sin(escape_angle)
+
+        elif 1 in vision_array and clear_paths > 0:
             escape_mag = math.hypot(safe_dx, safe_dy)
             # Normalizing (0-to-1 scale)
 
