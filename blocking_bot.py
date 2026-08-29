@@ -47,7 +47,7 @@ class BlockingBot:
         "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.50, "stop_distance": -3.0},
     }
 
-    # --- DDA (Dynamic Difficulty Adjustment) constants ---
+    # === DDA (Dynamic Difficulty Adjustment) constants ===
     # Roguelike-style variance, re-rolled each blocker "life": instead of a
     # fixed max_speed, scale off the PLAYER's own measured average speed
     # (main.py's Robot.update_performance_stats) so the blocker feels like
@@ -59,12 +59,18 @@ class BlockingBot:
                                    # blocker if the player's own sampled avg_speed
                                    # happened to be very low (e.g. mostly idle)
 
-    # --- "Fully boxed in" escape constants ---
+    # === "Fully boxed in" escape constants ===
     BOXED_IN_CLEARANCE_THRESHOLD = 0.15  # below this even the "best" ray is
-                                          # basically point-blank (~3.6in at a
-                                          # 24in look_dist)
+                                         # basically point-blank (~3.6in at a 24in look_dist)
     STUCK_ESCAPE_BIAS_DEG = 15.0  # fixed, always-the-same-direction nudge off
                                   # dead-180 for a true last-resort reverse
+
+    # === Reverse-driving constants (prototype - not wired into behavior yet) ===
+    REVERSE_SPEED_FACTOR = 0.5  # fraction of max_speed used when actively
+                                 # backing away, instead of standing still
+    SEVERE_MISALIGNMENT_DEG = 90.0  # angle_diff beyond this means "basically
+                                     # facing the wrong way" - candidate for
+                                     # backing up instead of just rotating in place
 
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
@@ -97,7 +103,7 @@ class BlockingBot:
         # Bot starts OUT of the space until enabled
         self._added_to_space = False
 
-        # --- data collection state ---
+        # === data collection state ===
         self.impacts = []          # [{t, x, y, impulse}, ...]
         self.mistakes = []         # [{t, x, y, speed_before, speed_after}, ...]
         self._match_start_time = None
@@ -231,7 +237,9 @@ class BlockingBot:
         self.lead_x = player_bot.x + (true_vx * self.lead_time)
         self.lead_y = player_bot.y + (true_vy * self.lead_time)
 
-        #=========================Rays & LiDAR section=================================
+        # ------------------------------------------------------------------
+        # Rays & LiDAR section
+        # ------------------------------------------------------------------
         num_rays = 7 # number of rays casted
 
         spread_deg = 15.0 # degrees between each laser
@@ -242,7 +250,7 @@ class BlockingBot:
         
         vision_array = []
         clearance_array = []  # per-ray "how much room" (0=touching, 1=clear to look_dist) --
-                               # kept even for blocked rays (prototype - not consumed yet)
+                              # kept even for blocked rays (prototype - not consumed yet)
         self.ray_lines = [] # Save the lines/bring up the scope
         
         for i in range(num_rays):
@@ -267,7 +275,7 @@ class BlockingBot:
             edge_candidates = []
             if cos_a > 1e-9:
                 edge_candidates.append(half_length / cos_a)
-            if sin_a > 1e-9: #Make sure not divide by 0
+            if sin_a > 1e-9:
                 edge_candidates.append(half_width / sin_a)
             box_edge_dist = min(edge_candidates) if edge_candidates else half_length
             bumper_offset = (box_edge_dist + 0.5) * self.scale
@@ -276,7 +284,7 @@ class BlockingBot:
             end_pt = start_pt + (direction * look_dist)
             hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
             
-            hit_status = 0 # Default to 0 (0 - clear path; 1 - obstructed path)
+            hit_status = 0   # Default to 0 (0 - clear path; 1 - obstructed path)
             clearance = 1.0  # 1.0 = fully clear to look_dist, same default as "no hit"
             
             if hit_info:
@@ -350,7 +358,7 @@ class BlockingBot:
             final_dy = (dy * 0.3) + (safe_dy * 0.7)
 
         elif clear_paths == 0:
-            # Every ray reads "blocked" within look_dist -- but "blocked"
+            # Every ray reads "blocked" within look_dist - but "blocked"
             # isn't the same as "equally blocked." Uses the clearance data
             # from the ray loop above to head toward whichever ray has the
             # most room, instead of always reversing.
@@ -359,12 +367,12 @@ class BlockingBot:
 
             if best_clearance < self.BOXED_IN_CLEARANCE_THRESHOLD:
                 # Even the best direction is basically point-blank (every
-                # way is genuinely boxed in) -- true last resort: reverse.
+                # way is genuinely boxed in) - true last resort: reverse.
                 # Reversing exactly 180deg from self.angle is numerically
                 # unstable (floating-point noise in the cos/sin/atan2
                 # round-trip can land at just-under +180 one frame and
                 # just-under -180 the next, flipping the turn direction
-                # every tick and never actually completing it -- this was
+                # every tick and never actually completing it - this was
                 # the "won't turn around" bug). A small, ALWAYS-the-same-
                 # direction bias breaks that tie deterministically instead
                 # of leaving it to floating-point chance.
@@ -457,7 +465,7 @@ class BlockingBot:
                 })
 
     def _already_logged_recently(self, now, window=1.0):
-        # any(...) returns True the moment ONE mistake in the list is recent
+        # any() returns True the moment ONE mistake in the list is recent
         # enough. Stopping the same collision from getting logged as a
         # separate "mistake" on every tick for 60 ticks/sec while the
         # player is still slowed down from it.
