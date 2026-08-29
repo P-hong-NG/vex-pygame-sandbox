@@ -77,6 +77,12 @@ class BlockingBot:
                                      # this far off dead-ahead before we trust
                                      # its sign enough to switch sides
 
+    #===Stuck detection (for wall-following, still being worked on)===
+    STUCK_CHECK_WINDOW_SECONDS = 2.0   # how far back to look for real progress
+    STUCK_PROGRESS_THRESHOLD_IN = 6.0  # must close the gap to the player by at
+                                        # least this many inches over the
+                                        # window to NOT count as stuck
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -113,6 +119,12 @@ class BlockingBot:
         # overwritten the first time relative_player_angle is decisive.
         self._escape_side_bias = 1
 
+        # Rolling (time, blocker's-own-contribution-to-closing-the-gap)
+        # history for stuck detection - see _update_stuck_detection().
+        # is_stuck isn't read by steering yet.
+        self._progress_history = []
+        self.is_stuck = False
+
         # === data collection state ===
         self.impacts = []          # [{t, x, y, impulse}, ...]
         self.mistakes = []         # [{t, x, y, speed_before, speed_after}, ...]
@@ -141,6 +153,11 @@ class BlockingBot:
         self.mistakes.clear()
         self._recent_speed_history.clear()
         self._escape_side_bias = 1
+        self._progress_history = []
+        self.is_stuck = False
+        if hasattr(self, '_prev_stuck_bx'):
+            del self._prev_stuck_bx, self._prev_stuck_by
+            del self._prev_stuck_player_x, self._prev_stuck_player_y
         self._roll_dda_stats(player_bot)
 
     def _roll_dda_stats(self, player_bot):
@@ -218,6 +235,46 @@ class BlockingBot:
     # ------------------------------------------------------------------
     # Per-frame update
     # ------------------------------------------------------------------
+    def _update_stuck_detection(self, player_bot):
+        """
+        Tracks whether the BLOCKER's own movement is closing the distance
+        to the player, not just whether the raw distance happens to be
+        shrinking - those are different. If the player drives toward a
+        genuinely stuck blocker, raw distance shrinks even though the
+        blocker isn't doing anything useful, which would completely hide
+        the corner-trap problem this is meant to catch.
+
+        Isolates the blocker's own contribution by holding the player's
+        position FROZEN at last tick, and asking "how much closer did the
+        blocker's own motion get, ignoring wherever the player went."
+        """
+        now = self._elapsed()
+
+        if hasattr(self, '_prev_stuck_bx'):
+            dist_before = math.hypot(self._prev_stuck_player_x - self._prev_stuck_bx,
+                                      self._prev_stuck_player_y - self._prev_stuck_by)
+            dist_if_only_blocker_moved = math.hypot(self._prev_stuck_player_x - self.x,
+                                                     self._prev_stuck_player_y - self.y)
+            blocker_contribution = dist_before - dist_if_only_blocker_moved
+        else:
+            blocker_contribution = 0.0
+
+        self._prev_stuck_bx, self._prev_stuck_by = self.x, self.y
+        self._prev_stuck_player_x, self._prev_stuck_player_y = player_bot.x, player_bot.y
+
+        self._progress_history.append((now, blocker_contribution))
+        cutoff = now - self.STUCK_CHECK_WINDOW_SECONDS
+        self._progress_history = [(t, p) for (t, p) in self._progress_history if t >= cutoff]
+
+        if not self._progress_history or self._progress_history[0][0] > cutoff + 0.1:
+            # Not enough history yet to judge (just started, or just reset
+            # after a life change) - don't flag stuck on a partial window
+            self.is_stuck = False
+            return
+
+        total_progress = sum(p for (_, p) in self._progress_history)
+        self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
+
     def update(self, player_bot, dt):
         # player_bot: the existing Robot instance from main.py (needs
         # .x, .y, .angle (degrees), .current_speed, .body.velocity)
@@ -243,6 +300,7 @@ class BlockingBot:
         self._prev_player_y = player_bot.y
 
         self._track_player_speed(player_bot, true_speed)
+        self._update_stuck_detection(player_bot)
 
         # Predict based entirely on actual physical (in-field) values
         self.lead_x = player_bot.x + (true_vx * self.lead_time)
@@ -582,4 +640,4 @@ class BlockingBot:
                 
                 # Draw Red if it hit something (1), Yellow if clear (0)
                 color = (255, 60, 60) if hit_status == 1 else (255, 255, 0)
-                pygame.draw.line(screen, color, (sx, sy), (ex, ey), 2)  
+                pygame.draw.line(screen, color, (sx, sy), (ex, ey), 2)
