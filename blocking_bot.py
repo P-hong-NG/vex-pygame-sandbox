@@ -261,7 +261,8 @@ class BlockingBot:
         
         vision_array = []
         clearance_array = []  # per-ray "how much room" (0=touching, 1=clear to look_dist) --
-                              # kept even for blocked rays (prototype - not consumed yet)
+                              # used by the fully-boxed-in escape logic below to pick
+                              # whichever ray has the most room
         self.ray_lines = [] # Save the lines/bring up the scope
         
         for i in range(num_rays):
@@ -518,7 +519,7 @@ class BlockingBot:
             # time with the one right after it -[(6,17),(17,25),(25,31)]-
             # so the gap between consecutive hits is one subtraction each,
             # no manual indexing (aka for loops).
-            gaps = [t2 - t1 for t1, t2 in zip(times, times[1:])]#?
+            gaps = [t2 - t1 for t1, t2 in zip(times, times[1:])]
             avg_gap = sum(gaps) / len(gaps)
         return {
             "elapsed_seconds": round(elapsed, 1),
@@ -538,7 +539,7 @@ class BlockingBot:
             "mistakes": self.mistakes,
         }
         with open(path, "w") as f:
-            json.dump(report, f, indent=2)#?
+            json.dump(report, f, indent=2)
         return report
 
     # ------------------------------------------------------------------
@@ -581,4 +582,4 @@ class BlockingBot:
                 
                 # Draw Red if it hit something (1), Yellow if clear (0)
                 color = (255, 60, 60) if hit_status == 1 else (255, 255, 0)
-                pygame.draw.line(screen, color, (sx, sy), (ex, ey), 2)
+                pygame.draw.line(screen, color, (sx, sy), (ex, ey), 2)  
