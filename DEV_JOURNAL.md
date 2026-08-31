@@ -203,4 +203,9 @@ Disclaimer: These are images that I have taken on various dates, so I can't give
 
 The robot has gone crazy!!
 
-![The robot has gone out of control](images/infiniteee.png)
+<img src="images/infiniteee.png" alt="The robot has gone out of control" width="300">
+
+I think it detected something
+
+<img src="images/detectedddd.png" alt="The simulator printing hundreds of Detected obstacles" width="300">
+
