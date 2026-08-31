@@ -66,17 +66,17 @@ _Approach B: Active keybind/ User controlled intake
 Sidenote: I just discovered how to add emojis, and I will try and start using them; I just thought that I might be able to give more "life" to this longgg documentation
 Studio mode now displays the outtake (left side) on the CAD along with the intake (right side), and the user can configure its attributes on the sidebar. Additionally, studio mode and edit mode now have 2 sidebars, which I will sometimes call sidebar 1/2 or ___ mode page 1/2, meaning the limited space problem on July 31st has been fixed and the UI are much cleaner now
 
-![Studio mode CAD model with both intake and outtake](images/studioPageTwo.png)
+<img src="images/studioPageTwo.png" alt="Studio mode CAD model with both intake and outtake"> 
 
 Not just the outtake appearing in Studio mode CAD/display model; it works in Drive mode too!! 🥳
 
-![Robot being able to score and reverse intake in Drive mode](images/intakeOuttakePreview.png)
+<img src="images/intakeOuttakePreview.png" alt="Robot being able to score and reverse intake in Drive mode"> 
 
 [Unknown date, after Aug 2nd] - Fix the simulator according to M's suggestion (I gotchu bro🙂)
 
 One of my early testers, who is also my teammate, had questioned why I have the paused menu for Drive and Edit mode but not Studio mode. Before that, the user would have to click back on "Drive" or "Edit" at the top of the sidebar to exit Edit mode, and it would be naturally logical that the user used the pause menu to get to Edit mode, so they also use the pause menu to get out of it. So I fixed that, with some custom text saying "Return to drive mode" in Studio to make sure they know :)
 
-![Paused menu in Studio mode](images/pausedStudio.png)
+<img src="images/pausedStudio.png" alt="Paused menu in Studio mode"> 
 
 [August 3rd, 2026] - Gamifying the simulator through UI works
 
@@ -84,7 +84,7 @@ As I said before, I wanted to make this simulator feel less of a "sim" and more 
 
 In the game (I would like to call it now, rather than simulator), the inventory display in Drive mode would now have a countdown over each object:
 
-![Inventory display in Drive mode having a countdown over each object](images/inventoryCountdown.png)
+<img src="images/inventoryCountdown.png" alt="Inventory display in Drive mode having a countdown over each object"> 
 (Also, if you noticed, the display would now show a smaller version of the Dynamic object that got taken in! Like the circles, the rectangles along with their color - so that brings out the feeling of the game too!!!🎮)
 
 [August 8th, 2026] - A rework in the game's UI system
@@ -111,9 +111,9 @@ Overall, after replacing the new code, I have shortened the simulator code by ~1
 
 Visual demonstration of the effectiveness and look of the old and new versions.
 
-Before: <img src="images/oldStudio1.png" alt="Old studio mode sidebar 1" width="150"> After: <img src="images/newStudio1.png" alt="New studio mode sidebar 1" width="150">
+Before: <img src="images/oldStudio1.png" alt="Old studio mode sidebar 1" width="225"> After: <img src="images/newStudio1.png" alt="New studio mode sidebar 1" width="225">
 
-Before: <img src="images/oldStudio2.png" alt="Old studio mode sidebar 2" width="300"> After: <img src="images/newStudio2.png" alt="New studio mode sidebar 2" width="300">
+Before: <img src="images/oldStudio2.png" alt="Old studio mode sidebar 2" width="225"> After: <img src="images/newStudio2.png" alt="New studio mode sidebar 2" width="225">
 
 [August 15th, 2026] - A disadvantage of the virtual simulator, and brainstorming how to fix it
 
