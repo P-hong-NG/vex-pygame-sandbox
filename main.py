@@ -95,6 +95,17 @@ class Robot:
                                         # BlockingBot should fall back to preset defaults
                                         # until this flips True (the "cold start" problem)
 
+        # Breadcrumb trail - a rolling record of places THIS robot has
+        # actually been. Used by the blocker to route toward a proven
+        # destination instead of guessing a direction from ray geometry.
+        self.breadcrumbs = []  # [(t, x, y), ...]
+        self.BREADCRUMB_SAMPLE_INTERVAL = 0.4  # seconds between recorded points -
+                                                # every tick would be way more
+                                                # points than needed and just
+                                                # bloats the list with near-duplicates
+        self.BREADCRUMB_WINDOW_SECONDS = 12.0  # how far back to keep points
+        self._last_breadcrumb_time = -999.0  # forces the very first sample immediately
+
         #Moment of inertia for solid rectangle box 
         moment = pymunk.moment_for_box(self.total_mass, (self.length * SCALE, self.track_width * SCALE))
         
@@ -144,6 +155,19 @@ class Robot:
         # match would scale itself off almost no data. Half the window is
         # a reasonable, easy-to-explain threshold; tune if it feels off.
         self.has_enough_stats = self.sim_elapsed >= (self.stat_window_seconds / 2)
+
+    def update_breadcrumb_trail(self):
+        """
+        Call once per tick, alongside update_performance_stats(). Records
+        this robot's own position every BREADCRUMB_SAMPLE_INTERVAL seconds,
+        keeping only the last BREADCRUMB_WINDOW_SECONDS worth of points.
+        """
+        if self.sim_elapsed - self._last_breadcrumb_time >= self.BREADCRUMB_SAMPLE_INTERVAL:
+            self.breadcrumbs.append((self.sim_elapsed, self.x, self.y))
+            self._last_breadcrumb_time = self.sim_elapsed
+
+        cutoff = self.sim_elapsed - self.BREADCRUMB_WINDOW_SECONDS
+        self.breadcrumbs = [(t, x, y) for (t, x, y) in self.breadcrumbs if t >= cutoff]
 
     def reset_to_start(self):
         self.x, self.y, self.angle = self.start_pose
@@ -527,6 +551,7 @@ def update_physics(left_speed, right_speed, dt):
     bot.y = bot.body.position.y / SCALE
     bot.angle = math.degrees(bot.body.angle)
     bot.update_performance_stats(dt)
+    bot.update_breadcrumb_trail()
 
     blocker.sync_from_physics() #Syncing the blocker's cords
 
