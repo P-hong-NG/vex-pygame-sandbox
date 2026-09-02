@@ -197,6 +197,16 @@ I implemented multiple rays (currently 7), which need to be odd to accommodate m
 - For the second problem: I plan to use a grid system that would progressively grow branches from the Blocker until it reaches the user similar to 
 a version of Dijkstra's algorithm used in Maps and GPSs to pick the best route to go from one point to another. More in the next documentation
 
+[August 26th, 2026] - Update on Blocker (blocking_bot.py) and images of its tracking system
+
+I implemented most of the ray drawings (visible rays on the field for debugging; red when an obstacle is detected, yellow otherwise) and the math (slowing down; each ray holds a value for steering; biased turning), and got the Blocker LiDAR system functioning.
+
+<img src="images/aug26-LiDAR rays.png" alt="Preview of the Blocker on field with visible LiDAR rays" width="300">
+
+Functions of the Blocker: A PyMunk physics object that can interact with the field elements and the user; LiDAR rays for navigation; log collisions with the user to give a summary of the match at the end (when and where the user makes the most mistakes)
+
+However, there are still some bugs to fix, like tight turns where Blocker can't slow down (translating linear velocity into angular velocity) while the user can, not knowing which biased direction to turn to if the user is in front of them but on the other side of a wall; Blocker always drives forward, leading to often getting stuck in a corner and can't drive backward, not being able to drive strategically and follow behind the user blindly, etc. 
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can't give you the exact date, sorry!
