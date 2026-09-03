@@ -280,6 +280,36 @@ class BlockingBot:
         total_progress = sum(p for (_, p) in self._progress_history)
         self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
 
+    def _find_closest_visible_breadcrumb(self, player_bot):
+        """
+        Returns (x, y) of the closest breadcrumb in player_bot.breadcrumbs
+        with a clear line of sight from the blocker's current position, or
+        None if nothing qualifies - e.g. early in a life before much trail
+        exists, or the trail just hasn't been near wherever the blocker is.
+        Sorts by distance first so the FIRST clear one found is guaranteed
+        closest, instead of raycasting every breadcrumb every frame.
+        """
+        if not player_bot.breadcrumbs:
+            return None
+
+        candidates = sorted(
+            player_bot.breadcrumbs,
+            key=lambda pt: math.hypot(pt[1] - self.x, pt[2] - self.y)
+        )
+
+        for (_, bx, by) in candidates:
+            end_pt = pymunk.Vec2d(bx * self.scale, by * self.scale)
+            hit_info = self.space.segment_query_first(self.body.position, end_pt, 1.0, pymunk.ShapeFilter())
+            if hit_info is None:
+                return (bx, by)
+            hit_shape = hit_info.shape
+            # Same ignore-list as the ray-fan - our own shape and the
+            # player's own shape don't count as "something in the way"
+            if hit_shape == self.shape or hit_shape.collision_type == self.COLLISION_TYPE_PLAYER:
+                return (bx, by)
+
+        return None
+
     def update(self, player_bot, dt):
         # player_bot: the existing Robot instance from main.py (needs
         # .x, .y, .angle (degrees), .current_speed, .body.velocity)
@@ -433,23 +463,41 @@ class BlockingBot:
                 clear_paths += 1
 
         if self.is_stuck:
-            # Override the normal target entirely - aiming at the player is
-            # exactly what got us stuck (yesterday's corner-trap screenshot:
-            # the direction was stable, just wrong the whole time). Instead,
-            # follow the wall on the committed side at a rough constant
-            # distance. The outermost ray on that side doubles as a wall
-            # sensor; its offset (+/-45deg) IS the tangent direction once
-            # rotated to be "along the wall" instead of "at the wall," so no
-            # extra geometry is needed beyond what the ray-fan already senses.
-            bias = self._escape_side_bias
-            follow_ray_index = 0 if bias > 0 else (len(clearance_array) - 1)
-            follow_clearance = clearance_array[follow_ray_index]
-            clearance_error = follow_clearance - self.WALL_FOLLOW_TARGET_CLEARANCE
-            wall_follow_offset_deg = bias * (45.0 - clearance_error * self.WALL_FOLLOW_TURN_GAIN)
-            wall_follow_offset_deg = max(-90.0, min(90.0, wall_follow_offset_deg))
-            escape_angle = math.radians(self.angle + wall_follow_offset_deg)
-            final_dx = math.cos(escape_angle)
-            final_dy = math.sin(escape_angle)
+            breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
+
+            if breadcrumb_target is not None:
+                # A real, proven destination beats a guessed tangent
+                # direction - the player already got from wherever this
+                # point is to here, so a clear line to it IS a route around
+                # whatever's currently in the way.
+                bx, by = breadcrumb_target
+                bc_dx, bc_dy = bx - self.x, by - self.y
+                bc_dist = math.hypot(bc_dx, bc_dy)
+                if bc_dist > 0:
+                    final_dx, final_dy = bc_dx / bc_dist, bc_dy / bc_dist
+                else:
+                    final_dx, final_dy = dx, dy
+            else:
+                # No breadcrumb visible yet (early in a life, or the trail
+                # just hasn't been near here) - fall back to hugging the
+                # wall on the committed side at a rough constant distance.
+                # Override the normal target entirely - aiming at the player is
+                # exactly what got us stuck (yesterday's corner-trap screenshot:
+                # the direction was stable, just wrong the whole time). Instead,
+                # follow the wall on the committed side at a rough constant
+                # distance. The outermost ray on that side doubles as a wall
+                # sensor; its offset (+/-45deg) IS the tangent direction once
+                # rotated to be "along the wall" instead of "at the wall," so no
+                # extra geometry is needed beyond what the ray-fan already senses.
+                bias = self._escape_side_bias
+                follow_ray_index = 0 if bias > 0 else (len(clearance_array) - 1)
+                follow_clearance = clearance_array[follow_ray_index]
+                clearance_error = follow_clearance - self.WALL_FOLLOW_TARGET_CLEARANCE
+                wall_follow_offset_deg = bias * (45.0 - clearance_error * self.WALL_FOLLOW_TURN_GAIN)
+                wall_follow_offset_deg = max(-90.0, min(90.0, wall_follow_offset_deg))
+                escape_angle = math.radians(self.angle + wall_follow_offset_deg)
+                final_dx = math.cos(escape_angle)
+                final_dy = math.sin(escape_angle)
 
         elif 1 in vision_array and clear_paths > 0:
             escape_mag = math.hypot(safe_dx, safe_dy)
