@@ -529,12 +529,27 @@ class BlockingBot:
                 # direction bias breaks that tie deterministically instead
                 # of leaving it to floating-point chance.
                 escape_angle = math.radians(self.angle + 180 + self.STUCK_ESCAPE_BIAS_DEG)
+                final_dx = math.cos(escape_angle)
+                final_dy = math.sin(escape_angle)
             else:
-                best_offset_deg = start_offset + (best_idx * spread_deg)
-                escape_angle = math.radians(self.angle + best_offset_deg)
-
-            final_dx = math.cos(escape_angle)
-            final_dy = math.sin(escape_angle)
+                # A slide is actually possible (not a true dead-end) - try a
+                # breadcrumb first, same reasoning as the is_stuck case: a
+                # proven point beats a guessed ray direction. Only fall back
+                # to the best-clearance ray if nothing's visible yet.
+                breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
+                if breadcrumb_target is not None:
+                    bx, by = breadcrumb_target
+                    bc_dx, bc_dy = bx - self.x, by - self.y
+                    bc_dist = math.hypot(bc_dx, bc_dy)
+                    if bc_dist > 0:
+                        final_dx, final_dy = bc_dx / bc_dist, bc_dy / bc_dist
+                    else:
+                        final_dx, final_dy = dx, dy
+                else:
+                    best_offset_deg = start_offset + (best_idx * spread_deg)
+                    escape_angle = math.radians(self.angle + best_offset_deg)
+                    final_dx = math.cos(escape_angle)
+                    final_dy = math.sin(escape_angle)
 
         else:
             final_dx = dx
