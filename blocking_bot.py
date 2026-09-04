@@ -129,6 +129,9 @@ class BlockingBot:
         # is_stuck isn't read by steering yet.
         self._progress_history = []
         self.is_stuck = False
+        # Whichever breadcrumb (if any) update() is currently steering
+        # toward - stored purely for draw() to show, no effect on behavior
+        self.active_breadcrumb_target = None
 
         # === data collection state ===
         self.impacts = []          # [{t, x, y, impulse}, ...]
@@ -317,6 +320,12 @@ class BlockingBot:
         if not self.enabled:
             return
 
+        # Reset here, not scattered across every branch below - only the
+        # branches that actually try a breadcrumb this frame will set it
+        # back to a real value. Otherwise draw() would show a stale target
+        # from the last time is_stuck/boxed-in was true.
+        self.active_breadcrumb_target = None
+
         if not hasattr(self, '_prev_player_x'):
             self._prev_player_x = player_bot.x
             self._prev_player_y = player_bot.y
@@ -464,6 +473,7 @@ class BlockingBot:
 
         if self.is_stuck:
             breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
+            self.active_breadcrumb_target = breadcrumb_target
 
             if breadcrumb_target is not None:
                 # A real, proven destination beats a guessed tangent
@@ -537,6 +547,7 @@ class BlockingBot:
                 # proven point beats a guessed ray direction. Only fall back
                 # to the best-clearance ray if nothing's visible yet.
                 breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
+                self.active_breadcrumb_target = breadcrumb_target
                 if breadcrumb_target is not None:
                     bx, by = breadcrumb_target
                     bc_dx, bc_dy = bx - self.x, by - self.y
@@ -716,6 +727,15 @@ class BlockingBot:
             # Red Line of Sight and Blue Target Circle
             pygame.draw.line(screen, (255, 100, 100), start_pos, end_pos, 2)
             pygame.draw.circle(screen, (100, 200, 255), end_pos, 8, 2)
+
+        if self.active_breadcrumb_target is not None:
+            bx, by = self.active_breadcrumb_target
+            bc_px_x = bx * scale
+            bc_px_y = field_pixels - (by * scale)
+            # Green line + circle, distinct from the red/blue lead-point
+            # visual above - this is a proven breadcrumb, not a raw prediction
+            pygame.draw.line(screen, (60, 220, 60), (center_x, center_y), (bc_px_x, bc_px_y), 2)
+            pygame.draw.circle(screen, (60, 220, 60), (bc_px_x, bc_px_y), 10, 3)
 
         if hasattr(self, 'ray_lines'):
             for start_pt, end_pt, hit_status in self.ray_lines:
