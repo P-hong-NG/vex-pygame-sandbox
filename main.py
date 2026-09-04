@@ -1212,6 +1212,16 @@ def draw_everything():
         blocker.draw(screen, SCALE, FIELD_PIXELS)
 
         if blocker.enabled and sim.current_mode == "drive":
+            # Debug-only markers for the breadcrumb trail (#1/#2) - one small
+            # dot per recorded point, so it's actually visible while testing
+            # instead of just trusting the list exists. Same coordinate flip
+            # used everywhere else (field_pixels - y*scale).
+            for (_, cx, cy) in bot.breadcrumbs:
+                px = int(cx * SCALE)
+                py = int(FIELD_PIXELS - cy * SCALE)
+                pygame.draw.circle(screen, ORANGE, (px, py), 3)
+
+        if blocker.enabled and sim.current_mode == "drive":
             # Debug-only readout for the new DDA stat tracking -- confirms
             # the numbers look sane before blocking_bot.py is wired to read
             # them. Safe to remove once that hookup is done and trusted.
