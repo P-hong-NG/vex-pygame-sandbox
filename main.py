@@ -99,10 +99,14 @@ class Robot:
         # actually been. Used by the blocker to route toward a proven
         # destination instead of guessing a direction from ray geometry.
         self.breadcrumbs = []  # [(t, x, y), ...]
-        self.BREADCRUMB_SAMPLE_INTERVAL = 0.4  # seconds between recorded points -
-                                                # every tick would be way more
-                                                # points than needed and just
-                                                # bloats the list with near-duplicates
+        self.BREADCRUMB_SAMPLE_INTERVAL = 0.15  # seconds between recorded points -
+                                                 # was 0.4, felt too sparse in testing
+                                                 # (looked like "only 1 on the field").
+                                                 # Note: this only advances while actively
+                                                 # driving (drive mode, unpaused, not auton) -
+                                                 # same gating as update_physics() itself, so
+                                                 # pausing/switching modes mid-test will look
+                                                 # like the trail froze, which is expected.
         self.BREADCRUMB_WINDOW_SECONDS = 12.0  # how far back to keep points
         self._last_breadcrumb_time = -999.0  # forces the very first sample immediately
 
