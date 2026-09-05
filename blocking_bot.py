@@ -88,6 +88,12 @@ class BlockingBot:
                                           # as a fraction of look_dist (~8.4in)
     WALL_FOLLOW_TURN_GAIN = 60.0  # how hard to correct back toward that cushion
 
+    #===Breadcrumb targeting===
+    BREADCRUMB_ARRIVAL_RADIUS_IN = 8.0  # closer than this, a breadcrumb no
+                                         # longer counts as a real target -
+                                         # normalizing a direction over a
+                                         # near-zero distance is unstable
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -291,6 +297,13 @@ class BlockingBot:
         exists, or the trail just hasn't been near wherever the blocker is.
         Sorts by distance first so the FIRST clear one found is guaranteed
         closest, instead of raycasting every breadcrumb every frame.
+
+        Skips anything within BREADCRUMB_ARRIVAL_RADIUS_IN of the blocker's
+        current position - normalizing a direction over a near-zero
+        distance is numerically unstable (verified: ~0.2in of realistic
+        position noise swung the resulting angle by 100+deg frame to
+        frame), which is what caused spinning in place once the blocker
+        got close to a target it had already effectively reached.
         """
         if not player_bot.breadcrumbs:
             return None
@@ -301,6 +314,8 @@ class BlockingBot:
         )
 
         for (_, bx, by) in candidates:
+            if math.hypot(bx - self.x, by - self.y) < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
+                continue
             end_pt = pymunk.Vec2d(bx * self.scale, by * self.scale)
             hit_info = self.space.segment_query_first(self.body.position, end_pt, 1.0, pymunk.ShapeFilter())
             if hit_info is None:
