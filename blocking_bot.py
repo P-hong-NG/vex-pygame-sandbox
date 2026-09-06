@@ -94,6 +94,11 @@ class BlockingBot:
                                          # normalizing a direction over a
                                          # near-zero distance is unstable
 
+    #===Fast reactive unstuck (single-frame, doesn't wait for is_stuck's 2s window)===
+    FAST_REACT_BLOCKED_FRACTION = 0.8  # this fraction of ALL rays blocked...
+    FAST_REACT_CLEARANCE_THRESHOLD = 0.25  # ...AND this close on average (~6in) ->
+                                            # back away immediately, same frame
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -486,7 +491,25 @@ class BlockingBot:
                 safe_dy += math.sin(ray_angle) * weight
                 clear_paths += 1
 
-        if self.is_stuck:
+        # Fast reactive unstuck - checked BEFORE is_stuck, since the whole
+        # point is not waiting for its 2s progress window. Pure single-frame
+        # geometry: most of the fan blocked, AND close, means back away NOW.
+        blocked_count = sum(vision_array)
+        blocked_fraction = blocked_count / num_rays
+        blocked_clearances = [c for c, v in zip(clearance_array, vision_array) if v == 1]
+        avg_blocked_clearance = sum(blocked_clearances) / len(blocked_clearances) if blocked_clearances else 1.0
+        fast_react_triggered = (blocked_fraction >= self.FAST_REACT_BLOCKED_FRACTION
+                                 and avg_blocked_clearance < self.FAST_REACT_CLEARANCE_THRESHOLD)
+
+        if fast_react_triggered:
+            # Same reverse-with-bias math as the boxed-in last-resort case -
+            # reusing STUCK_ESCAPE_BIAS_DEG so this doesn't introduce a
+            # second antipodal-jitter risk with its own untested constant.
+            escape_angle = math.radians(self.angle + 180 + self.STUCK_ESCAPE_BIAS_DEG)
+            final_dx = math.cos(escape_angle)
+            final_dy = math.sin(escape_angle)
+
+        elif self.is_stuck:
             breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
             self.active_breadcrumb_target = breadcrumb_target
 
