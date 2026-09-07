@@ -79,9 +79,9 @@ class BlockingBot:
 
     #===Stuck detection (for wall-following, still being worked on)===
     STUCK_CHECK_WINDOW_SECONDS = 2.0   # how far back to look for real progress
-    STUCK_PROGRESS_THRESHOLD_IN = 6.0  # must close the gap to the player by at
-                                        # least this many inches over the
-                                        # window to NOT count as stuck
+    STUCK_PROGRESS_THRESHOLD_IN = 6.0  # ENTER stuck if progress is under this
+    STUCK_EXIT_PROGRESS_THRESHOLD_IN = 12.0  # EXIT stuck only once progress
+                                              # clearly beats this HIGHER bar
 
     #===Wall-following (used while is_stuck is True)===
     WALL_FOLLOW_TARGET_CLEARANCE = 0.35  # desired "cushion" from the wall,
@@ -300,7 +300,10 @@ class BlockingBot:
             return
 
         total_progress = sum(p for (_, p) in self._progress_history)
-        self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
+        if self.is_stuck:
+            self.is_stuck = total_progress < self.STUCK_EXIT_PROGRESS_THRESHOLD_IN
+        else:
+            self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
 
     def _find_closest_visible_breadcrumb(self, player_bot):
         """
