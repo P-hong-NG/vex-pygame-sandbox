@@ -135,6 +135,13 @@ class BlockingBot:
         # overwritten the first time relative_player_angle is decisive.
         self._escape_side_bias = 1
 
+        # Same idea as _escape_side_bias, but for breadcrumb targeting -
+        # see _find_closest_visible_breadcrumb(). Keeps the SAME breadcrumb
+        # committed across frames instead of re-picking "closest" from
+        # scratch every time, which was causing fast back-and-forth
+        # flip-flopping between two nearby breadcrumbs.
+        self._committed_breadcrumb_full = None
+
         # Rolling (time, blocker's-own-contribution-to-closing-the-gap)
         # history for stuck detection - see _update_stuck_detection().
         # is_stuck isn't read by steering yet.
@@ -172,6 +179,7 @@ class BlockingBot:
         self.mistakes.clear()
         self._recent_speed_history.clear()
         self._escape_side_bias = 1
+        self._committed_breadcrumb_full = None
         self._progress_history = []
         self.is_stuck = False
         if hasattr(self, '_prev_stuck_bx'):
@@ -309,8 +317,26 @@ class BlockingBot:
         position noise swung the resulting angle by 100+deg frame to
         frame), which is what caused spinning in place once the blocker
         got close to a target it had already effectively reached.
+        Adds commitment: once a breadcrumb is picked, keeps using that SAME
+        one every frame as long as it's still valid (hasn't aged out of
+        player_bot.breadcrumbs, hasn't been arrived at, still has clear
+        line of sight) - without this, two breadcrumbs close together in
+        distance can cause the target to flip back and forth every frame,
+        same root problem as the ray-fan's side-bias flip-flop from before.
         """
+        # Try to keep using whatever was committed last frame first
+        if self._committed_breadcrumb_full is not None and self._committed_breadcrumb_full in player_bot.breadcrumbs:
+            _, cbx, cby = self._committed_breadcrumb_full
+            if math.hypot(cbx - self.x, cby - self.y) >= self.BREADCRUMB_ARRIVAL_RADIUS_IN:
+                end_pt = pymunk.Vec2d(cbx * self.scale, cby * self.scale)
+                hit_info = self.space.segment_query_first(self.body.position, end_pt, 1.0, pymunk.ShapeFilter())
+                if hit_info is None or hit_info.shape == self.shape or hit_info.shape.collision_type == self.COLLISION_TYPE_PLAYER:
+                    return (cbx, cby)
+
+        # Committed target is gone (aged out, arrived, or now blocked) -
+        # search fresh, and commit to whatever this search picks
         if not player_bot.breadcrumbs:
+            self._committed_breadcrumb_full = None
             return None
 
         candidates = sorted(
@@ -318,19 +344,23 @@ class BlockingBot:
             key=lambda pt: math.hypot(pt[1] - self.x, pt[2] - self.y)
         )
 
-        for (_, bx, by) in candidates:
+        for entry in candidates:
+            _, bx, by = entry
             if math.hypot(bx - self.x, by - self.y) < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
                 continue
             end_pt = pymunk.Vec2d(bx * self.scale, by * self.scale)
             hit_info = self.space.segment_query_first(self.body.position, end_pt, 1.0, pymunk.ShapeFilter())
             if hit_info is None:
+                self._committed_breadcrumb_full = entry
                 return (bx, by)
             hit_shape = hit_info.shape
             # Same ignore-list as the ray-fan - our own shape and the
             # player's own shape don't count as "something in the way"
             if hit_shape == self.shape or hit_shape.collision_type == self.COLLISION_TYPE_PLAYER:
+                self._committed_breadcrumb_full = entry
                 return (bx, by)
 
+        self._committed_breadcrumb_full = None
         return None
 
     def update(self, player_bot, dt):
