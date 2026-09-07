@@ -305,6 +305,36 @@ class BlockingBot:
         else:
             self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
 
+    def _edge_offset_toward(self, target_x, target_y):
+        """
+        Point just outside the blocker's own body, in the direction of
+        (target_x, target_y). Same box-edge idea the ray-fan already uses
+        (see the ray loop's box_edge_dist) - a raycast starting INSIDE the
+        blocker's own shape is exactly what the ray-fan was built to avoid,
+        the breadcrumb line-of-sight check just never got the same fix.
+        """
+        dx = target_x - self.x
+        dy = target_y - self.y
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            return self.body.position
+
+        angle_to_target = math.atan2(dy, dx)
+        offset_from_heading = angle_to_target - math.radians(self.angle)
+        half_length = self.length / 2
+        half_width = self.track_width / 2
+        cos_a = abs(math.cos(offset_from_heading))
+        sin_a = abs(math.sin(offset_from_heading))
+        edge_candidates = []
+        if cos_a > 1e-9:
+            edge_candidates.append(half_length / cos_a)
+        if sin_a > 1e-9:
+            edge_candidates.append(half_width / sin_a)
+        box_edge_dist = min(edge_candidates) if edge_candidates else half_length
+
+        direction = pymunk.Vec2d(math.cos(angle_to_target), math.sin(angle_to_target))
+        return self.body.position + direction * ((box_edge_dist + 0.5) * self.scale)
+
     def _find_closest_visible_breadcrumb(self, player_bot):
         """
         Returns (x, y) of the closest breadcrumb in player_bot.breadcrumbs
@@ -332,7 +362,8 @@ class BlockingBot:
             _, cbx, cby = self._committed_breadcrumb_full
             if math.hypot(cbx - self.x, cby - self.y) >= self.BREADCRUMB_ARRIVAL_RADIUS_IN:
                 end_pt = pymunk.Vec2d(cbx * self.scale, cby * self.scale)
-                hit_info = self.space.segment_query_first(self.body.position, end_pt, 1.0, pymunk.ShapeFilter())
+                start_pt = self._edge_offset_toward(cbx, cby)
+                hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
                 if hit_info is None or hit_info.shape == self.shape or hit_info.shape.collision_type == self.COLLISION_TYPE_PLAYER:
                     return (cbx, cby)
 
@@ -352,7 +383,8 @@ class BlockingBot:
             if math.hypot(bx - self.x, by - self.y) < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
                 continue
             end_pt = pymunk.Vec2d(bx * self.scale, by * self.scale)
-            hit_info = self.space.segment_query_first(self.body.position, end_pt, 1.0, pymunk.ShapeFilter())
+            start_pt = self._edge_offset_toward(bx, by)
+            hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
             if hit_info is None:
                 self._committed_breadcrumb_full = entry
                 return (bx, by)
