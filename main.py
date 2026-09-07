@@ -108,6 +108,12 @@ class Robot:
                                                  # pausing/switching modes mid-test will look
                                                  # like the trail froze, which is expected.
         self.BREADCRUMB_WINDOW_SECONDS = 12.0  # how far back to keep points
+        self.BREADCRUMB_MIN_SPACING_IN = 6.0  # skip recording if the player
+                                               # hasn't moved at least this far
+                                               # since the last point - stops
+                                               # sitting still/pacing in place
+                                               # from packing the trail with
+                                               # near-duplicate points
         self._last_breadcrumb_time = -999.0  # forces the very first sample immediately
 
         #Moment of inertia for solid rectangle box 
@@ -167,7 +173,13 @@ class Robot:
         keeping only the last BREADCRUMB_WINDOW_SECONDS worth of points.
         """
         if self.sim_elapsed - self._last_breadcrumb_time >= self.BREADCRUMB_SAMPLE_INTERVAL:
-            self.breadcrumbs.append((self.sim_elapsed, self.x, self.y))
+            if not self.breadcrumbs:
+                should_record = True
+            else:
+                _, last_x, last_y = self.breadcrumbs[-1]
+                should_record = math.hypot(self.x - last_x, self.y - last_y) >= self.BREADCRUMB_MIN_SPACING_IN
+            if should_record:
+                self.breadcrumbs.append((self.sim_elapsed, self.x, self.y))
             self._last_breadcrumb_time = self.sim_elapsed
 
         cutoff = self.sim_elapsed - self.BREADCRUMB_WINDOW_SECONDS
