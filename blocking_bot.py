@@ -613,14 +613,38 @@ class BlockingBot:
                 final_dy = math.sin(escape_angle)
 
         elif 1 in vision_array and clear_paths > 0:
-            escape_mag = math.hypot(safe_dx, safe_dy)
-            # Normalizing (0-to-1 scale)
+            if middle_hits == 3:
+                # Wall covers the whole center, only the far edges are open.
+                # Blending those edge-ray vectors still points close to
+                # dead-ahead (checked weeks ago: only ~8deg off, straight
+                # into the wall) - both edges lean forward the same amount,
+                # so their sideways components partly cancel while their
+                # forward components add. Commit to the single clearest
+                # ray instead, same idea as the boxed-in branch, with a
+                # tiny bias toward the committed side on a near-tie.
+                best_idx = None
+                best_score = -1.0
+                for i, status in enumerate(vision_array):
+                    if status == 0:
+                        ray_offset_deg = start_offset + (i * spread_deg)
+                        on_committed_side = (ray_offset_deg > 0 and self._escape_side_bias > 0) or (ray_offset_deg < 0 and self._escape_side_bias < 0)
+                        score = clearance_array[i] + (0.01 if on_committed_side else 0.0)
+                        if score > best_score:
+                            best_score = score
+                            best_idx = i
+                best_offset_deg = start_offset + (best_idx * spread_deg)
+                escape_angle = math.radians(self.angle + best_offset_deg)
+                final_dx = math.cos(escape_angle)
+                final_dy = math.sin(escape_angle)
+            else:
+                escape_mag = math.hypot(safe_dx, safe_dy)
+                # Normalizing (0-to-1 scale)
 
-            safe_dx /= escape_mag
-            safe_dy /= escape_mag
+                safe_dx /= escape_mag
+                safe_dy /= escape_mag
 
-            final_dx = (dx * 0.3) + (safe_dx * 0.7)
-            final_dy = (dy * 0.3) + (safe_dy * 0.7)
+                final_dx = (dx * 0.3) + (safe_dx * 0.7)
+                final_dy = (dy * 0.3) + (safe_dy * 0.7)
 
         elif clear_paths == 0:
             # Every ray reads "blocked" within look_dist - but "blocked"
