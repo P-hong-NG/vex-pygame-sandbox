@@ -607,11 +607,16 @@ def create_field_boundaries():
 def sync_custom_obstacles_to_physics():
     #Not allowing for stack-ups
     for body in list(space.bodies):
-        if body != bot.body and body != space.static_body:
+        # blocker.body/shape need the same protection bot.body/shape already
+        # get - without this, they get silently removed here on every mode
+        # switch, but blocker._added_to_space never finds out, so the
+        # blocker thinks it's still properly in the physics world when it's
+        # actually detached (the "ghost object" bug)
+        if body != bot.body and body != space.static_body and not (blocker._added_to_space and body == blocker.body):
             space.remove(body)
 
     for shape in list(space.shapes):
-        if shape != bot.shape:
+        if shape != bot.shape and not (blocker._added_to_space and shape == blocker.shape):
             # Keep field boundary segments safe
             if isinstance(shape, pymunk.Segment): continue
             space.remove(shape)
