@@ -360,7 +360,15 @@ class BlockingBot:
         # Try to keep using whatever was committed last frame first
         if self._committed_breadcrumb_full is not None and self._committed_breadcrumb_full in player_bot.breadcrumbs:
             _, cbx, cby = self._committed_breadcrumb_full
-            if math.hypot(cbx - self.x, cby - self.y) >= self.BREADCRUMB_ARRIVAL_RADIUS_IN:
+            if math.hypot(cbx - self.x, cby - self.y) < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
+                # Actually reached it - remove it for good, not just skip it
+                # while nearby. Without this, if the trail loops back near
+                # here later, this same old point is still sitting in the
+                # list and can get re-picked, which was part of why two
+                # crumbs close together kept flip-flopping.
+                player_bot.breadcrumbs.remove(self._committed_breadcrumb_full)
+                self._committed_breadcrumb_full = None
+            else:
                 end_pt = pymunk.Vec2d(cbx * self.scale, cby * self.scale)
                 start_pt = self._edge_offset_toward(cbx, cby)
                 hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
