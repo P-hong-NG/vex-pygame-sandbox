@@ -259,6 +259,9 @@ class SimulatorState:
         self.dragging_robot = False
         self.robot_drag_offset_x = 0.0
         self.robot_drag_offset_y = 0.0
+        self.dragging_blocker = False
+        self.blocker_drag_offset_x = 0.0
+        self.blocker_drag_offset_y = 0.0
         self.active_textbox = None  
         self.textbox_value = ""
         self.add_shape_dropdown_open = False
@@ -1230,7 +1233,7 @@ def draw_everything():
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
-        blocker.draw(screen, SCALE, FIELD_PIXELS)
+        blocker.draw(screen, SCALE, FIELD_PIXELS, show_rays=(sim.current_mode == "drive"))
 
         if blocker.enabled and sim.current_mode == "drive":
             # Debug-only markers for the breadcrumb trail (#1/#2) - one small
@@ -1776,6 +1779,18 @@ while running:
                     fake_click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(-100, -100), button=1)
                     for element in edit_shape_txt + edit_robot_ui:
                         element.handle_event(fake_click, -100, -100)
+                # Check blocker drag focus first - only draggable while
+                # actually placed on the field (matches bot's own pattern,
+                # just gated on blocker.enabled too since an off-field
+                # blocker has nothing sensible to click on)
+                bdx, bdy = mx - blocker.x * SCALE, my - (FIELD_PIXELS - blocker.y * SCALE)
+                b_radius = max(blocker.length, blocker.track_width) * SCALE / 2 + 10
+                if blocker.enabled and bdx*bdx + bdy*bdy <= b_radius*b_radius:
+                    sim.dragging_blocker = True
+                    sim.blocker_drag_offset_x = (mx / SCALE) - blocker.x
+                    sim.blocker_drag_offset_y = ((FIELD_PIXELS - my) / SCALE) - blocker.y
+                    continue
+
                 # Check robot drag focus
                 dx, dy = mx - bot.x * SCALE, my - (FIELD_PIXELS - bot.y * SCALE)
                 r_radius = max(bot.length, bot.track_width) * SCALE / 2 + 10
@@ -1822,6 +1837,7 @@ while running:
             mx, my = event.pos
             if sim.current_mode == "edit":
                 if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
+                elif sim.dragging_blocker: sim.dragging_blocker = False
                 elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
                 elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
             elif sim.current_mode == "drive":
@@ -1848,6 +1864,12 @@ while running:
                         new_r = m_fx - s["x"]
                         s["radius"] = max(1.0, new_r)
 
+                elif sim.dragging_blocker:
+                    blocker.x = m_fx - sim.blocker_drag_offset_x
+                    blocker.y = m_fy - sim.blocker_drag_offset_y
+                    #Bring the physics (backend) body while dragging - same
+                    #pattern as bot's own drag right below
+                    blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
                 elif sim.dragging_robot:
                     bot.x = m_fx - sim.robot_drag_offset_x
                     bot.y = m_fy - sim.robot_drag_offset_y
