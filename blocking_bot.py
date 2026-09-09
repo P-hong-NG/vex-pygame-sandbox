@@ -836,7 +836,7 @@ class BlockingBot:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
-    def draw(self, screen, scale, field_pixels):
+    def draw(self, screen, scale, field_pixels, show_rays=True):
         if not self.enabled:
             return
         import pygame
@@ -872,7 +872,7 @@ class BlockingBot:
             pygame.draw.line(screen, (60, 220, 60), (center_x, center_y), (bc_px_x, bc_px_y), 2)
             pygame.draw.circle(screen, (60, 220, 60), (bc_px_x, bc_px_y), 10, 3)
 
-        if hasattr(self, 'ray_lines'):
+        if show_rays and hasattr(self, 'ray_lines'):
             for start_pt, end_pt, hit_status in self.ray_lines:
                 # Convert PyMunk coordinates to Pygame pixels (and flip the Y-axis)
                 sx = start_pt.x
