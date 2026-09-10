@@ -114,8 +114,14 @@ class BlockingBot:
 
         # Blocker will spawn in the left bottom quarter of the 144in by 144in field (36in out and 36in up from bottom left)
         # Can be changed to simulate where the opponent would be at the start of match (changing every year)
-        self.x = field_inches * 0.25
-        self.y = field_inches * 0.25
+        # start_x/start_y are what get saved/loaded from the field file
+        # (see main.py's load_all_data()/save_field_data()) - self.x/self.y
+        # get set from these at load time, then drift away from them as
+        # the blocker actually moves during Drive mode
+        self.start_x = field_inches * 0.25
+        self.start_y = field_inches * 0.25
+        self.x = self.start_x
+        self.y = self.start_y
         self.angle = 0.0
 
         moment = pymunk.moment_for_box(self.mass, (length * scale, track_width * scale))
