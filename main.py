@@ -350,6 +350,15 @@ def load_all_data():
                     _, x, y, ang = parts
                     bot.start_pose = (float(x), float(y), float(ang))
                     bot.x, bot.y, bot.angle = bot.start_pose
+                elif tag == "BLOCKER_START" and len(parts) == 3:
+                    _, x, y = parts
+                    blocker.start_x, blocker.start_y = float(x), float(y)
+                    blocker.x, blocker.y = blocker.start_x, blocker.start_y
+                    # Blocker's body already exists at this point (unlike
+                    # bot's own load branch, which relies on a later reset
+                    # call) - sync it directly, same as blocker's own drag
+                    # handler already does
+                    blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
 
 def save_field_data():
     with open(FIELD_FILE, "w") as f:
@@ -364,6 +373,7 @@ def save_field_data():
             elif s["type"] == "circ":
                 f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
+        f.write(f"BLOCKER_START {blocker.start_x} {blocker.start_y}\n")
 
 def save_settings():
     try:
@@ -1233,7 +1243,7 @@ def draw_everything():
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
-        blocker.draw(screen, SCALE, FIELD_PIXELS, show_rays=(sim.current_mode == "drive"))
+        blocker.draw(screen, SCALE, FIELD_PIXELS, show_rays=(sim.current_mode == "drive"), player_bot=bot)
 
         if blocker.enabled and sim.current_mode == "drive":
             # Debug-only markers for the breadcrumb trail (#1/#2) - one small
@@ -1837,7 +1847,10 @@ while running:
             mx, my = event.pos
             if sim.current_mode == "edit":
                 if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
-                elif sim.dragging_blocker: sim.dragging_blocker = False
+                elif sim.dragging_blocker:
+                    sim.dragging_blocker = False
+                    blocker.start_x, blocker.start_y = blocker.x, blocker.y
+                    save_field_data()
                 elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
                 elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
             elif sim.current_mode == "drive":
