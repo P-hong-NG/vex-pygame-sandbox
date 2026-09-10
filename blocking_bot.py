@@ -262,6 +262,22 @@ class BlockingBot:
     # ------------------------------------------------------------------
     # Per-frame update
     # ------------------------------------------------------------------
+    def _has_clear_line_to(self, target_x, target_y):
+        """
+        True if a straight line from the blocker's own edge to
+        (target_x, target_y) hits nothing real in between (ignoring the
+        blocker's own shape and the player's shape). Same edge-offset
+        start point as the breadcrumb check. Used both for the yellow/red
+        debug line and to let a genuinely clear direct view immediately
+        override breadcrumb-seeking, instead of waiting on is_stuck's
+        slower progress-based hysteresis.
+        """
+        start_pt = self._edge_offset_toward(target_x, target_y)
+        end_pt = pymunk.Vec2d(target_x * self.scale, target_y * self.scale)
+        hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
+        return (hit_info is None or hit_info.shape == self.shape
+                or hit_info.shape.collision_type == self.COLLISION_TYPE_PLAYER)
+
     def _update_stuck_detection(self, player_bot):
         """
         Tracks whether the BLOCKER's own movement is closing the distance
@@ -304,6 +320,12 @@ class BlockingBot:
             self.is_stuck = total_progress < self.STUCK_EXIT_PROGRESS_THRESHOLD_IN
         else:
             self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
+
+        if self.is_stuck and self._has_clear_line_to(player_bot.x, player_bot.y):
+            # A demonstrably clear direct view beats waiting on the
+            # progress window - no reason to keep chasing a breadcrumb if
+            # a straight line to the player is provably open right now.
+            self.is_stuck = False
 
     def _edge_offset_toward(self, target_x, target_y):
         """
@@ -836,7 +858,12 @@ class BlockingBot:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
-    def draw(self, screen, scale, field_pixels, show_rays=True):
+    def draw(self, screen, scale, field_pixels, show_rays=True, player_bot=None):
+        # show_rays also gates the lead-point line and breadcrumb-target
+        # marker below, not just the ray fan - all three are stale/cached
+        # from update() outside Drive mode, same reasoning applies to all.
+        # Name's a little narrow for what it now covers, kept it as-is
+        # instead of renaming already-shipped code.
         if not self.enabled:
             return
         import pygame
@@ -853,7 +880,7 @@ class BlockingBot:
         rect = rot.get_rect(center=(center_x, center_y))
         screen.blit(rot, rect)
 
-        if hasattr(self, 'lead_x') and hasattr(self, 'lead_y'):
+        if show_rays and hasattr(self, 'lead_x') and hasattr(self, 'lead_y'):
             start_pos = (center_x, center_y)
             target_px_x = self.lead_x * scale
             target_px_y = field_pixels - (self.lead_y * scale)
@@ -863,7 +890,21 @@ class BlockingBot:
             pygame.draw.line(screen, (255, 100, 100), start_pos, end_pos, 2)
             pygame.draw.circle(screen, (100, 200, 255), end_pos, 8, 2)
 
-        if self.active_breadcrumb_target is not None:
+        if player_bot is not None:
+            # Computed fresh every single draw call, not cached from
+            # update() - so this stays correct even in Edit mode while
+            # dragging, unlike the lead-point line above. Yellow/red same
+            # as the ray-fan: lets you drag the blocker around and see
+            # exactly where it would lose sight of the player. Drawn AFTER
+            # the lead-point line on purpose - was getting covered by it
+            # in Drive mode when both were active at once.
+            target_x, target_y = player_bot.x, player_bot.y
+            has_clear_view = self._has_clear_line_to(target_x, target_y)
+            line_color = (255, 220, 40) if has_clear_view else (220, 40, 40)
+            target_px = (target_x * scale, field_pixels - target_y * scale)
+            pygame.draw.line(screen, line_color, (center_x, center_y), target_px, 2)
+
+        if show_rays and self.active_breadcrumb_target is not None:
             bx, by = self.active_breadcrumb_target
             bc_px_x = bx * scale
             bc_px_y = field_pixels - (by * scale)
