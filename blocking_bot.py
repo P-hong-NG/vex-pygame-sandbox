@@ -153,6 +153,9 @@ class BlockingBot:
         # is_stuck isn't read by steering yet.
         self._progress_history = []
         self.is_stuck = False
+        # What KIND of blocked pattern the ray-fan currently sees - see
+        # _classify_stuck_pattern(). Not read by steering yet either.
+        self.stuck_kind = "clear"
         # Whichever breadcrumb (if any) update() is currently steering
         # toward - stored purely for draw() to show, no effect on behavior
         self.active_breadcrumb_target = None
@@ -188,6 +191,7 @@ class BlockingBot:
         self._committed_breadcrumb_full = None
         self._progress_history = []
         self.is_stuck = False
+        self.stuck_kind = "clear"
         if hasattr(self, '_prev_stuck_bx'):
             del self._prev_stuck_bx, self._prev_stuck_by
             del self._prev_stuck_player_x, self._prev_stuck_player_y
@@ -283,6 +287,68 @@ class BlockingBot:
         hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
         return (hit_info is None or hit_info.shape == self.shape
                 or hit_info.shape.collision_type == self.COLLISION_TYPE_PLAYER)
+
+    def _classify_stuck_pattern(self, vision_array):
+        """
+        Looks at the ray-fan's blocked/clear pattern and names what KIND
+        of situation it is, instead of just "some rays are blocked."
+        Groundwork for handling different stuck situations differently
+        later - not wired into any steering decision yet, just computed
+        and stored (self.stuck_kind) so it can be watched/tested first.
+        """
+        n = len(vision_array)
+        blocked_count = sum(vision_array)
+
+        if blocked_count == 0:
+            return "clear"
+        if blocked_count == n:
+            return "boxed_in"
+
+        edges_clear = (vision_array[0] == 0 and vision_array[-1] == 0)
+
+        # Find contiguous blocked runs
+        blocked_runs = []
+        run_start = None
+        for i, v in enumerate(vision_array):
+            if v == 1 and run_start is None:
+                run_start = i
+            elif v == 0 and run_start is not None:
+                blocked_runs.append((run_start, i - 1))
+                run_start = None
+        if run_start is not None:
+            blocked_runs.append((run_start, n - 1))
+
+        if len(blocked_runs) == 1:
+            run_start, run_end = blocked_runs[0]
+            run_len = run_end - run_start + 1
+            touches_left = (run_start == 0)
+            touches_right = (run_end == n - 1)
+
+            if edges_clear and run_len > n / 2:
+                return "wall_gap_both_sides"  # the old flat-wall bug shape
+            if touches_left != touches_right:
+                return "corner_one_side"  # blocked on exactly one side
+
+        # A small clear gap not touching either edge - threadable, but easy
+        # to miss when only looking at "blocked vs clear" as one big count
+        clear_runs = []
+        run_start = None
+        for i, v in enumerate(vision_array):
+            if v == 0 and run_start is None:
+                run_start = i
+            elif v == 1 and run_start is not None:
+                clear_runs.append((run_start, i - 1))
+                run_start = None
+        if run_start is not None:
+            clear_runs.append((run_start, n - 1))
+
+        for (cs, ce) in clear_runs:
+            gap_len = ce - cs + 1
+            touches_edge = (cs == 0 or ce == n - 1)
+            if not touches_edge and gap_len <= 2:
+                return "narrow_gap"
+
+        return "mixed"
 
     def _update_stuck_detection(self, player_bot):
         """
@@ -540,6 +606,8 @@ class BlockingBot:
             self.ray_lines.append((start_pt, end_pt, hit_status)) # Save for drawing
             
         #print(vision_array) 
+
+        self.stuck_kind = self._classify_stuck_pattern(vision_array)
 
         center_ray_index = num_rays // 2 #Floor division so always int
         middle_hits = vision_array[center_ray_index-1] + vision_array[center_ray_index] + vision_array[center_ray_index+1]
