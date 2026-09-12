@@ -474,9 +474,15 @@ class BlockingBot:
         # ------------------------------------------------------------------
         # Rays & LiDAR section
         # ------------------------------------------------------------------
-        num_rays = 7 # number of rays casted
+        num_rays = 9 # number of rays casted - was 7, more rays = finer
+                     # resolution for telling different "kinds" of stuck
+                     # apart, not just one big blocked/clear pattern
 
-        spread_deg = 15.0 # degrees between each laser
+        spread_deg = 11.25 # degrees between each laser - recalculated from
+                           # 15.0 so the total fan width stays the same
+                           # 90deg (8 gaps * 11.25 = 90, same as
+                           # 6 gaps * 15 before) - more rays packed into
+                           # the same coverage, not wider coverage
         look_dist = 24.0 * self.scale
 
         # Calculate the starting angle offset so the rays are centered
