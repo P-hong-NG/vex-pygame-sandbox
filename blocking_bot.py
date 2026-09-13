@@ -99,6 +99,14 @@ class BlockingBot:
     FAST_REACT_CLEARANCE_THRESHOLD = 0.25  # ...AND this close on average (~6in) ->
                                             # back away immediately, same frame
 
+    #===Physically pinned detection (separate from is_stuck - see _update_pinned_detection)===
+    PINNED_CHECK_WINDOW_SECONDS = 1.0  # shorter than is_stuck's 2s window -
+                                       # being wedged in place is a more
+                                       # acute problem, worth reacting faster
+    PINNED_DISPLACEMENT_THRESHOLD_IN = 2.0  # moved less than this over the
+                                             # whole window = genuinely
+                                             # hasn't gone anywhere
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -156,6 +164,10 @@ class BlockingBot:
         # What KIND of blocked pattern the ray-fan currently sees - see
         # _classify_stuck_pattern(). Not read by steering yet either.
         self.stuck_kind = "clear"
+        # Separate rolling window for pinned-detection - see
+        # _update_pinned_detection(). Not the same history as is_stuck's.
+        self._pinned_history = []
+        self.is_pinned = False
         # Whichever breadcrumb (if any) update() is currently steering
         # toward - stored purely for draw() to show, no effect on behavior
         self.active_breadcrumb_target = None
@@ -192,6 +204,8 @@ class BlockingBot:
         self._progress_history = []
         self.is_stuck = False
         self.stuck_kind = "clear"
+        self._pinned_history = []
+        self.is_pinned = False
         if hasattr(self, '_prev_stuck_bx'):
             del self._prev_stuck_bx, self._prev_stuck_by
             del self._prev_stuck_player_x, self._prev_stuck_player_y
@@ -349,6 +363,31 @@ class BlockingBot:
                 return "narrow_gap"
 
         return "mixed"
+
+    def _update_pinned_detection(self):
+        """
+        Separate concern from is_stuck, which measures progress TOWARD THE
+        PLAYER specifically - this measures whether the blocker has moved
+        AT ALL, regardless of direction or purpose. A blocker wedged
+        against a small obstacle can jitter/slide just enough that
+        is_stuck's progress-toward-player metric reads as marginal
+        progress and never triggers, even though it's genuinely not going
+        anywhere. This catches "hasn't moved in over a second" directly,
+        with a shorter window than is_stuck since being physically pinned
+        is a more acute problem than slow progress.
+        """
+        now = self._elapsed()
+        self._pinned_history.append((now, self.x, self.y))
+        cutoff = now - self.PINNED_CHECK_WINDOW_SECONDS
+        self._pinned_history = [(t, x, y) for (t, x, y) in self._pinned_history if t >= cutoff]
+
+        if not self._pinned_history or self._pinned_history[0][0] > cutoff + 0.1:
+            self.is_pinned = False
+            return
+
+        oldest_x, oldest_y = self._pinned_history[0][1], self._pinned_history[0][2]
+        displacement = math.hypot(self.x - oldest_x, self.y - oldest_y)
+        self.is_pinned = displacement < self.PINNED_DISPLACEMENT_THRESHOLD_IN
 
     def _update_stuck_detection(self, player_bot):
         """
@@ -532,6 +571,7 @@ class BlockingBot:
 
         self._track_player_speed(player_bot, true_speed)
         self._update_stuck_detection(player_bot)
+        self._update_pinned_detection()
 
         # Predict based entirely on actual physical (in-field) values
         self.lead_x = player_bot.x + (true_vx * self.lead_time)
@@ -676,7 +716,17 @@ class BlockingBot:
         fast_react_triggered = (blocked_fraction >= self.FAST_REACT_BLOCKED_FRACTION
                                  and avg_blocked_clearance < self.FAST_REACT_CLEARANCE_THRESHOLD)
 
-        if fast_react_triggered:
+        if self.is_pinned:
+            # Hasn't physically moved in over a second, regardless of what
+            # the ray pattern or is_stuck's progress-toward-player metric
+            # say - this is the most direct, most certain signal of the
+            # three top-priority checks, so it goes first. Same reverse
+            # math as the other last-resort cases.
+            escape_angle = math.radians(self.angle + 180 + self.STUCK_ESCAPE_BIAS_DEG)
+            final_dx = math.cos(escape_angle)
+            final_dy = math.sin(escape_angle)
+
+        elif fast_react_triggered:
             # Same reverse-with-bias math as the boxed-in last-resort case -
             # reusing STUCK_ESCAPE_BIAS_DEG so this doesn't introduce a
             # second antipodal-jitter risk with its own untested constant.
