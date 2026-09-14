@@ -188,14 +188,14 @@ I implemented multiple rays (currently 7), which need to be odd to accommodate m
 
 ===The Problem==== However, this new system I created results in some problems/flaws when I test drive. It would work most of the time but there are certain situations where the Blocker would begin breaking down
 
- - The weighted system works well assuming the user is either on the left or right of the Blocker's driving direction - but when the user is directly in front of the Blocker, and there's an obstacle between them, no "side" would be "biased"; thus, they keep canceling each other and result in no change in direction/ steering.
- - The blocker has no memory of the surroundings; thus, the moment it gets stuck in the wall, it can't back up and retrace where it was to try another direction. This is not realistic, as in a VEX V5 match, the driver has a whole map view (meaning they know what is behind the so-called "obstacle" that the simulator's Blocker is seeing) and can pick the best route without needing to get stuck and recalculate their new direction like the Blocker
+ - The weighted system works well assuming the user is either on the left or right of the Blocker’s driving direction, but when the user is directly in front of the Blocker, and there’s an obstacle between them, no "side” would be "biased"; thus, they keep canceling each other and result in no change in direction/ steering.
+ - The blocker has no memory of the surroundings; thus, the moment it gets stuck in the wall, it can’t back up and retrace where it was to try another direction. This is not realistic, as in a VEX V5 match, the driver has a whole map view (meaning they know what is behind the so-called “obstacle” that the simulator’s Blocker is seeing) and can pick the best route without needing to get stuck and recalculate their new direction like the Blocker
 
 ===The Proposed Solution==== I currently have in mind of what to do to fix the problems mentioned 
 
-- For the first problem: Instead of purely based on the "biased" rays to pick a direction to turn, I plan to add another variable (or list) that tracks the user's previous routes/locations, and the Blocker would take that side as another "biased" side to turn to . However, it would be difficult to determine the correct locations the bot was in to use - Im currently looking into how to fix it
+- For the first problem: Instead of purely based on the "biased" rays to pick a direction to turn, I plan to add another variable (or list) that tracks the user's previous routes/locations, and the Blocker would take that side as another “biased” side to turn to. However, it would be difficult to determine the correct locations the bot was in to use - Im currently looking into how to fix it
 - For the second problem: I plan to use a grid system that would progressively grow branches from the Blocker until it reaches the user similar to 
-a version of Dijkstra's algorithm used in Maps and GPSs to pick the best route to go from one point to another. More in the next documentation
+a version of Dijkstra’s algorithm used in Maps and GPSs to pick the best route to go from one point to another. More in the next documentation
 
 [August 26th, 2026] - Update on Blocker (blocking_bot.py) and images of its tracking system
 
@@ -205,11 +205,21 @@ I implemented most of the ray drawings (visible rays on the field for debugging;
 
 Functions of the Blocker: A PyMunk physics object that can interact with the field elements and the user; LiDAR rays for navigation; log collisions with the user to give a summary of the match at the end (when and where the user makes the most mistakes)
 
-However, there are still some bugs to fix, like tight turns where Blocker can't slow down (translating linear velocity into angular velocity) while the user can, not knowing which biased direction to turn to if the user is in front of them but on the other side of a wall; Blocker always drives forward, leading to often getting stuck in a corner and can't drive backward, not being able to drive strategically and follow behind the user blindly, etc. 
+However, there are still some bugs to fix, like tight turns where Blocker can’t slow down (translating linear velocity into angular velocity) while the user can, not knowing which biased direction to turn to if the user is in front of them but on the other side of a wall; Blocker always drives forward, leading to often getting stuck in a corner and can’t drive backward, not being able to drive strategically and follow behind the user blindly, etc. 
+
+[August 27th, 2026] - Giving the Blocker a way to actually see obstacles
+
+Up until now, the Blocker just drove straight at the player with no idea what was in front of it - if a wall happened to be in the way, it would just plow right into it. Real robots don’t have this problem because they have sensors, so I figured the Blocker needed something similar.
+
+I built a simple version of what’s basically LiDAR: instead of one line looking forward, I cast several rays out in a fan shape from the front of the Blocker, each one a few degrees apart. Every ray checks if it hits something within a set distance. If it does, I mark that ray as a 1 and draw it red. If the path is clear, it’s a 0, and I draw it yellow.
+
+The reason I used multiple rays instead of just one straight line: one ray can only tell you "something is directly ahead," not which way is actually open. With a spread of rays, the Blocker can start to tell the difference between "wall on my left" and "wall on my right," which is the whole point: reacting instead of crashing.
+
+This is just the sensing part for now - the rays exist, and they correctly show red or yellow, but the Blocker doesn’t actually change how it drives based on what it sees yet. That’s the next step.
 
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
-Disclaimer: These are images that I have taken on various dates, so I can't give you the exact date, sorry!
+Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
 
 The robot has gone crazy!!
 
