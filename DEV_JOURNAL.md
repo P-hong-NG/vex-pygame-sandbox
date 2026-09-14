@@ -201,7 +201,7 @@ a version of Dijkstra’s algorithm used in Maps and GPSs to pick the best route
 
 I implemented most of the ray drawings (visible rays on the field for debugging; red when an obstacle is detected, yellow otherwise) and the math (slowing down; each ray holds a value for steering; biased turning), and got the Blocker LiDAR system functioning.
 
-<img src="images/aug26-LiDAR rays.png" alt="Preview of the Blocker on field with visible LiDAR rays" width="300">
+<img src="images/aug26-LiDAR rays.png" alt="Preview of the Blocker on field with visible LiDAR rays" width="400">
 
 Functions of the Blocker: A PyMunk physics object that can interact with the field elements and the user; LiDAR rays for navigation; log collisions with the user to give a summary of the match at the end (when and where the user makes the most mistakes)
 
@@ -222,6 +222,8 @@ This is just the sensing part for now - the rays exist, and they correctly show 
 ===Problem==== While testing yesterday’s ray system, I ran into a bug: the Blocker sometimes drove straight into something even though the rays were supposedly watching that direction the whole time.
 
 ===Reason=== Every ray starts a little bit away from the Blocker’s own body, so the ray doesn’t immediately detect the Blocker itself as an obstacle. The distance I used to push the ray’s starting point out was based on the CORNER of the Blocker’s box shape, which makes sense for rays pointed diagonally, since they really do need to clear the corner. But for the ray pointed straight ahead, that same corner distance is way more than it needs, since the front of the robot isn’t a corner; it’s a flat edge much closer to the center.
+
+<img src="images/aug27-before.png" alt="Blocker’s rays being slightly in front of itself, leading to obstacles fitting between them" width="400">
 
 That gap between where the front ray actually starts and where the real front bumper is turned into a blind spot. Anything thin enough to fit in that gap - sitting directly in front of the Blocker - would never get picked up, because the ray physically starts on the other side of it.
 
