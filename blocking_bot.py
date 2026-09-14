@@ -773,7 +773,46 @@ class BlockingBot:
                 final_dy = math.sin(escape_angle)
 
         elif 1 in vision_array and clear_paths > 0:
-            if middle_hits == 3:
+            if self.stuck_kind == "narrow_gap":
+                # A small clear opening exists, not at either edge - aim
+                # squarely at its center instead of letting the wider
+                # vector-blend below potentially get pulled toward a
+                # different open ray elsewhere in the fan and miss
+                # threading this specific gap.
+                clear_runs = []
+                run_start = None
+                for i, status in enumerate(vision_array):
+                    if status == 0 and run_start is None:
+                        run_start = i
+                    elif status == 1 and run_start is not None:
+                        clear_runs.append((run_start, i - 1))
+                        run_start = None
+                if run_start is not None:
+                    clear_runs.append((run_start, len(vision_array) - 1))
+
+                gap_center_idx = None
+                for (cs, ce) in clear_runs:
+                    gap_len = ce - cs + 1
+                    touches_edge = (cs == 0 or ce == len(vision_array) - 1)
+                    if not touches_edge and gap_len <= 2:
+                        gap_center_idx = (cs + ce) // 2
+                        break
+
+                if gap_center_idx is not None:
+                    gap_offset_deg = start_offset + (gap_center_idx * spread_deg)
+                    escape_angle = math.radians(self.angle + gap_offset_deg)
+                    final_dx = math.cos(escape_angle)
+                    final_dy = math.sin(escape_angle)
+                else:
+                    # Shouldn't normally happen if stuck_kind said
+                    # narrow_gap, but fall back to the normal blend
+                    escape_mag = math.hypot(safe_dx, safe_dy)
+                    safe_dx /= escape_mag
+                    safe_dy /= escape_mag
+                    final_dx = (dx * 0.3) + (safe_dx * 0.7)
+                    final_dy = (dy * 0.3) + (safe_dy * 0.7)
+
+            elif middle_hits == 3:
                 # Wall covers the whole center, only the far edges are open.
                 # Blending those edge-ray vectors still points close to
                 # dead-ahead (checked weeks ago: only ~8deg off, straight
