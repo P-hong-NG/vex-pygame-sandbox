@@ -1008,6 +1008,14 @@ box_rwid = UITextbox(FIELD_PIXELS + 20, robot_start_y + 60, 80, 22, "Chassis W",
 btn_rsave = UIButton(FIELD_PIXELS + 20, robot_start_y + 95, 130, 26, "Save Start", action_callback=lambda: save_field_data())
 btn_rsave.default_color = GREEN
 
+# Blocker controls for Edit mode - separate widget objects from Drive
+# mode's (different fixed positions, would overlap the shape-inspector
+# panel otherwise), but pointing at the SAME callbacks, so toggling or
+# changing difficulty here stays in sync automatically - state lives in
+# blocker/sim.settings, not in the widgets themselves
+btn_blocker_edit = UIButton(FIELD_PIXELS + 20, robot_start_y + 150, 130, 28, "Toggle Blocker", action_callback=toggle_blocker)
+blocker_diff_dropdown_edit = UIDropdown(FIELD_PIXELS + 160, robot_start_y + 150, 130, 28, diff_list, diff_list.index(curr_diff), update_blocker_diff)
+
 # Rendering list to loop through in draw_everything()
 edit_shape_txt = [box_sx, box_sy, box_sw, box_sh, box_sr, box_sa, box_sm, box_sf, box_se]
 edit_robot_ui = [box_rx, box_ry, box_ra, box_rlen, box_rwid, btn_rsave]
@@ -1539,6 +1547,11 @@ def draw_everything():
                     element.draw(screen)
                 
                 shape_dropdown.draw(screen) 
+
+                draw_small("Blocker:", btn_blocker_edit.screen_rect.x, btn_blocker_edit.screen_rect.y - 20, YELLOW)
+                btn_blocker_edit.default_color = GREEN if blocker.enabled else LIGHT_GRAY
+                btn_blocker_edit.draw(screen)
+                blocker_diff_dropdown_edit.draw(screen)
             
                 # Inspector Panel selection layout loop context mapping logic
                 if sim.selected_shape_idx is not None and 0 <= sim.selected_shape_idx < len(sim.shapes):
@@ -1763,10 +1776,10 @@ while running:
                                 handled = True
 
                 elif sim.current_mode == "edit" and sim.current_page == "edit 1":
-                    handled = shape_dropdown.handle_event(event, mx, my)
+                    handled = shape_dropdown.handle_event(event, mx, my) or blocker_diff_dropdown_edit.handle_event(event, mx, my)
 
                     if not handled:
-                        for element in edit_buttons_ui + edit_inspector_ui + edit_shape_txt + edit_robot_ui:
+                        for element in edit_buttons_ui + edit_inspector_ui + edit_shape_txt + edit_robot_ui + [btn_blocker_edit]:
                             if element.handle_event(event, mx, my):
                                 handled = True
 
