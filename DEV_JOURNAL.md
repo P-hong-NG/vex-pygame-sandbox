@@ -217,6 +217,16 @@ The reason I used multiple rays instead of just one straight line: one ray can o
 
 This is just the sensing part for now - the rays exist, and they correctly show red or yellow, but the Blocker doesn’t actually change how it drives based on what it sees yet. That’s the next step.
 
+[August 28th, 2026] - Found a blind spot right in front of the Blocker’s own rays
+
+===Problem==== While testing yesterday’s ray system, I ran into a bug: the Blocker sometimes drove straight into something even though the rays were supposedly watching that direction the whole time.
+
+===Reason=== Every ray starts a little bit away from the Blocker’s own body, so the ray doesn’t immediately detect the Blocker itself as an obstacle. The distance I used to push the ray’s starting point out was based on the CORNER of the Blocker’s box shape, which makes sense for rays pointed diagonally, since they really do need to clear the corner. But for the ray pointed straight ahead, that same corner distance is way more than it needs, since the front of the robot isn’t a corner; it’s a flat edge much closer to the center.
+
+That gap between where the front ray actually starts and where the real front bumper is turned into a blind spot. Anything thin enough to fit in that gap - sitting directly in front of the Blocker - would never get picked up, because the ray physically starts on the other side of it.
+
+Haven’t fixed this yet, just tracked down exactly where the problem is coming from. The fix will probably mean figuring out the starting distance separately for each ray’s angle, instead of using one fixed number for all of them.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
