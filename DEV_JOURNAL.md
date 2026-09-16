@@ -241,7 +241,17 @@ The fix was to stop treating every ray the same. Now each ray figures out its ow
 
 Simple example to explain why this matters: imagine standing with your back against a wall, arms stretched out to your sides. If you swept your arms in front of you to feel for something, you wouldn’t start feeling around from three feet in front of your chest - you’d start right at your fingertips. That’s basically what was wrong before, and what’s fixed now.
 
-[Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
+[September 6th, 2026] - Giving the Blocker a memory of where the player’s been
+
+I ran into a real limit with the ray system a while back: it only tells the Blocker what’s happening right in front of it, right now. If the player was hiding behind a wall the Blocker couldn’t see around, the rays were useless - the Blocker had no way to know there even WAS a way around, because it can’t see past what’s directly in its own view.
+
+But there’s information sitting right there that I wasn’t using at all: the player has to actually drive somewhere to get anywhere. If I just keep a running record of the player’s last several seconds of positions, that trail IS a proven path - the player already got from point A to point B somehow, so a straight line to one of those old points is basically a guaranteed way around whatever’s currently blocking the direct view.
+
+So now the Robot keeps a short list of its own past positions, saved every fraction of a second, dropping anything older than about 12 seconds so the list doesn’t just grow forever. I also added a way to see it on screen: small dots along the trail, and a green line showing which specific point the Blocker is currently aiming for.
+
+This doesn’t change how the Blocker drives yet - right now it’s just data being collected and a way to see it. The next step is having the Blocker actually use one of these points as a target when it can’t see the player directly.
+
+[Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
 
