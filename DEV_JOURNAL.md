@@ -225,9 +225,21 @@ This is just the sensing part for now - the rays exist, and they correctly show 
 
 <img src="images/aug27-before.png" alt="Blocker’s rays being slightly in front of itself, leading to obstacles fitting between them" width="400">
 
-That gap between where the front ray actually starts and where the real front bumper is turned into a blind spot. Anything thin enough to fit in that gap - sitting directly in front of the Blocker - would never get picked up, because the ray physically starts on the other side of it.
+That gap between where the front ray starts and where the real front bumper is becomes a blind spot. Anything thin enough to fit in that gap - sitting directly in front of the Blocker - would never get picked up, because the ray physically starts on the other side of it.
 
 Haven’t fixed this yet, just tracked down exactly where the problem is coming from. The fix will probably mean figuring out the starting distance separately for each ray’s angle, instead of using one fixed number for all of them.
+
+[August 30th, 2026] - Fixed the front blind spot on the Blocker’s rays
+
+Went back to the gap I found on the 28th - the front-facing ray was starting way further out than it needed to, leaving a blind spot where a thin obstacle right in front of the Blocker would never get seen.
+
+The old code used one fixed distance for every ray, based on how far it is from the center of the Blocker to a CORNER of its box shape. That distance makes sense for the rays pointed diagonally, since they need that extra room to clear the corner. But the front-facing ray isn’t pointed at a corner - it’s pointed straight at the flat front edge, which is a lot closer to the center than the corner is. For my Blocker’s actual size, the corner distance was about 10.9 inches, but the real front edge is only about 8.1 inches out. That difference, close to 3 inches, was the blind spot - big enough for plenty of real obstacles to hide in.
+
+The fix was to stop treating every ray the same. Now each ray figures out its own starting distance based on its own angle - the straight-ahead ray uses the short distance to the front edge; the angled rays still use the longer distance out to the corner. Same idea, just calculated separately instead of one number for all of them.
+
+<img src="images/aug27-after.png" alt="Blocker’s rays are now direct in front of itself, leaving no gaps" width="400">
+
+Simple example to explain why this matters: imagine standing with your back against a wall, arms stretched out to your sides. If you swept your arms in front of you to feel for something, you wouldn’t start feeling around from three feet in front of your chest - you’d start right at your fingertips. That’s basically what was wrong before, and what’s fixed now.
 
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!) so have some fun while going from now on
 
