@@ -3,7 +3,7 @@ For instructions on how to use and improve the simulator, go to "TUNING_GUIDE.md
 
 Engineering Log: Architectural Design Decisions
 
-[July 18, 2026] - Shifting to PyMunk Rigid-Body Physics (This is transferred from the "README.md" to clean up the README space)
+## [July 18, 2026] - Shifting to PyMunk Rigid-Body Physics (This is transferred from the "README.md" to clean up the README space)
 
 ===The Problem=== In the legacy version of the simulator, the robot chassis boundaries were locked using manual coordinate clamping (bot.x = max(...)). This created a major bug where the corners of the chassis would clip straight into the walls. When driving into a barrier at an angle, the corner would get stuck and slide upward instead of showing realistic physics behavior—like taking the impact force at that specific angle and swinging the robot around to face the wall flatly.
 
@@ -15,7 +15,7 @@ _ 2. Velocity-Controlled Two-Wheel Bridge (Chosen Strategy): Instead of raw forc
 _Natural Rotational Torque: When hitting a wall at a 45-degree angle, PyMunk's internal collision solver calculates an instant impulse force right on the hitting corner. Because this force acts away from the center of mass, it naturally counteracts the chassis' speed and pivots the robot flat against the wall, mimicking how a real VEX drivetrain would interact with the field's walls. 
 _No Drifting: It completely bypasses the drifting bug. The moment the driver releases the joysticks to zero, the velocity drops to zero, giving the robot snappy, realistic traction on the field tiles, rather than Option 1, where individual calculations try to adjust forces and create more room for error.
 
-[July 23, 2026] - Planning and sketching for the next steps of the simulator
+## [July 23, 2026] - Planning and sketching for the next steps of the simulator
 
 ===Personal Comments and an Unexpected Problem=== Now that the simulator has gotten the basic physics, like ball collisions, non-movable walls, realistic friction and energy loss upon impact, objects having mass and momentum (how hard to accelerate), it can be used as a practice simulator for driving and maneuvering around the current year's game layout. But a new problem came: this simulator would be great for last year's game when the idea for the simulator started -"Push-Back" requires a lot of defending and movement for de-scores, along with a "perfect" auton-run to ensure control - but this year (according to my personal judgment) requires a lot more tactics and robot percision which depends more on the actual robot design. The current simulator doesn't have many abilities to create a "mock" practice run, like picking and dropping pins, rolling bars, and having other bots compete for the middle spot; I realized that the simulator would need to be more customizable to match the yearly game changes. Thus, I brainstormed sketches for a better (more control and options) simulator that would feel like an actual game so that a new team, which doesn't have someone to understand the code, can still use the sim to its full potential.
 
@@ -35,7 +35,7 @@ Includes future plans and a working-in-progress function: The ability to add dif
 
 This is what I, for now, intend to work on over the next few days, and I will be following those sketches pretty closely (orrr not, just have to see :) )
 
-[July 27, 2026] - Designing and brainstorming process for Intake/Outake system in Drive mode
+## [July 27, 2026] - Designing and brainstorming process for Intake/Outake system in Drive mode
 
 ===The "problem"=== When designing the collection mechanics for the intake and outtake systems, I needed to determine how game elements (rings/triballs/blocks/ect.) interact with the front intake zone during Drive Mode. Two routes came up:
 
@@ -51,7 +51,7 @@ _Approach B: Active keybind/ User controlled intake
 
 ===Why approach "B" wins=== Although building custom keymapping and data persistence requires more setup initially, it aligns directly with the long-term roadmap I had. To maximize usability across both controller and keyboard players, I am implementing a customizable toggle setting in the Keybind config - users can choose to turn the intake on or off from one button or choose to hold the button to activate. Controller users prefer to hold the intake (mimicking the real VEX controller trigger that my team has), while keyboard users will benefit heavily from toggle intake.
 
-[July 31, 2026] - Limited space problem in Edit and Studio mode
+## [July 31, 2026] - Limited space problem in Edit and Studio mode
 
 ===The Problem=== When I began to work on the outtake system in Studio mode today, I ran into a problem where there is little to no sidebar space available for me to use, and the sidebar began to look crowded and confusing, just like Edit mode's sidebar. So I began looking for a solution to expand the available space while keeping it simple enough to reduce unnecessary power/lag (my laptop is small :(, so I have to optimize this simulator).
 
@@ -61,7 +61,7 @@ _Approach B: Active keybind/ User controlled intake
 ===Why it works=== Having this numbering and conditional logic system allows me to expand the space to my liking - going up to "studio 20" and such - then it will turn into a problem of keeping everything in order and engaging enough for the user
 ===However!?! + future plan=== This UI system would only work for the Edit and Studio mode sidebar, but not the settings modal, because most users would expect a scrollable page for settings like "keybinds," where a lot of customization and freedom need to happen. So eventually, I would have to find a way to make a scrollable page along with configurable buttons with persistence in that page. 
 
-[August 2, 2026] - Update on the simulator/ documentation (with pictures, who doesn't love em 🔥)
+## [August 2, 2026] - Update on the simulator/ documentation (with pictures, who doesn't love em 🔥)
 
 Sidenote: I just discovered how to add emojis, and I will try and start using them; I just thought that I might be able to give more "life" to this longgg documentation
 Studio mode now displays the outtake (left side) on the CAD along with the intake (right side), and the user can configure its attributes on the sidebar. Additionally, studio mode and edit mode now have 2 sidebars, which I will sometimes call sidebar 1/2 or ___ mode page 1/2, meaning the limited space problem on July 31st has been fixed and the UI are much cleaner now
@@ -72,13 +72,13 @@ Not just the outtake appearing in Studio mode CAD/display model; it works in Dri
 
 <img src="images/intakeOuttakePreview.png" alt="Robot being able to score and reverse intake in Drive mode"> 
 
-[Unknown date, after Aug 2nd] - Fix the simulator according to M's suggestion (I gotchu bro🙂)
+## [Unknown date, after Aug 2nd] - Fix the simulator according to M's suggestion (I gotchu bro🙂)
 
 One of my early testers, who is also my teammate, had questioned why I have the paused menu for Drive and Edit mode but not Studio mode. Before that, the user would have to click back on "Drive" or "Edit" at the top of the sidebar to exit Edit mode, and it would be naturally logical that the user used the pause menu to get to Edit mode, so they also use the pause menu to get out of it. So I fixed that, with some custom text saying "Return to drive mode" in Studio to make sure they know :)
 
 <img src="images/pausedStudio.png" alt="Paused menu in Studio mode"> 
 
-[August 3rd, 2026] - Gamifying the simulator through UI works
+## [August 3rd, 2026] - Gamifying the simulator through UI works
 
 As I said before, I wanted to make this simulator feel less of a "sim" and more of a "game" where everyone can enjoy, mess around, and test their robot on a semi-realistic practice program. That is why I added what most "gamers" would call a "cooldown" for the robot's outtake. Originally, I wanted to simulate the realistic feeling of the game element needing to traverse inside the robot after being taken in order to score out of the outtake - so I added a delay timer in Studio mode sidebar 2 where the object would be outtake after a certain period of time (s), of course, while their outtake is on.
 
@@ -87,7 +87,7 @@ In the game (I would like to call it now, rather than simulator), the inventory 
 <img src="images/inventoryCountdown.png" alt="Inventory display in Drive mode having a countdown over each object"> 
 (Also, if you noticed, the display would now show a smaller version of the Dynamic object that got taken in! Like the circles, the rectangles along with their color - so that brings out the feeling of the game too!!!🎮)
 
-[August 8th, 2026] - A rework in the game's UI system
+## [August 8th, 2026] - A rework in the game's UI system
 
 As the game keeps growing, I really realize the limitations of my old way of doing UI's and its backend functions (saving, loading, clicking, typing). Hardcoding exact X and Y coordinates for every single button and text boxes was fine at the start but now I'm getting to the part (where I previously mentioned) that I would need a scrollable list of keybinds to accommodate the new functions and my goal for the most customizable game
 
@@ -101,7 +101,7 @@ The ScrollView class: Where the scrolling happens. It acts as a parent container
 
 We built and tested the components with simple buttons first and then completely ripped out the old "Keybinds and Settings" modal draw_everything() and handle_ui_clicks(). Now adding a new button is as simple as "settings_scrollview.add_child()", no more 20+ hardcoded rectangles for textboxes and .collidepoint conditions in the main loop - Dev note: it feels like a real game now :) And expanding the game in the future with this new structure would be so much easier 🍋
 
-[August 10th, 2026] - A revamp in the Studio mode UI (using the new class objects from "ui.py")
+## [August 10th, 2026] - A revamp in the Studio mode UI (using the new class objects from "ui.py")
 
 Along with UIElement and UIScrollview mentioned on August 8th, I also created UIButton and UITextbox classes in "ui.py". So today I began replacing the old hardcoded UI rects with the new object-based structure, and I decided to start with Studio mode.
 
@@ -115,7 +115,7 @@ Before: <img src="images/oldStudio1.png" alt="Old studio mode sidebar 1" width="
 
 Before: <img src="images/oldStudio2.png" alt="Old studio mode sidebar 2" width="225"> After: <img src="images/newStudio2.png" alt="New studio mode sidebar 2" width="225">
 
-[August 15th, 2026] - A disadvantage of the virtual simulator, and brainstorming how to fix it
+## [August 15th, 2026] - A disadvantage of the virtual simulator, and brainstorming how to fix it
 
 One of the main reasons I built this simulator is the limitation of my school's robotics room: we only have one field to drive, practice, and test autonomous routines on. The simulator solves most of that - testing drivetrains and auton routes doesn't need the physical field. But I realized the physical field still has one advantage the sim doesn't: the opportunity to run scrimmages and practice matches against other teams. So I started thinking about how to fix that.
 
@@ -138,7 +138,7 @@ guess which one I picked - and it wasn't random.
 
 Started building this with my AI co-partner - I'm responsible for the design decisions above and the path to take, and they helped with implementation and complex ideas that I may not know about to make a more efficient version.
 
-[August 16th, 2026] - Understanding what I built
+## [August 16th, 2026] - Understanding what I built
 
 Got a working "blocking_bot.py" done with my AI co-partner yesterday. Today's work was about going through the whole file myself to make sure I actually understood it, not just that it ran.
 
@@ -168,36 +168,36 @@ After taking a look at game design and how they create the illusion of "difficul
   
 - Improvement 3: Finally, I mentioned enemies having new attacks (have to shout out my fav game genre) to up the difficulty and make the game more engaging/force the user to adapt. I plan to combine Improvement 2 with new mechanics of the blocker: the blocker is able to represent playing style (defensive, adaptive, offensive) by keeping their distance from the bot but new improvements like defend_one (blocker move side by side from afar), defend_two (blocker move toward scoring zone rather than bot to prevent scoring), offend_one (find nearest wall from user, goes to the opposite side and try to pin the user against wall), offend_two (keep pushing the user until hit something and back away to push again - preventing the 5-second limit pinning rule), adapt_one (drive between user and scoring zone if its the nearest path, else keep pushing the user around), adapt_two (keep driving forward real close at high speed and back away - to scare and induce collisions), etc. The blocker class would rotate randomly from the playing style list, each with its own tag (defend, offend, adapt) that would be based on the blocker difficulty and numbers mimicing real teams that I have observed to ensure that the user will have "new enemies" to drive against everytime they restart - no practice is the same, maximizing adaptation and tactical thinking to deal against different teams.
 
-[August 22nd, 2026] - Identifying (2) flaws in the Blocker prediction/driving
+## [August 22nd, 2026] - Identifying (2) flaws in the Blocker prediction/driving
 
-While playtesting (driving around with the new Blocker's visual prediction line) I found two issues with how it really works and predict where I'm going:
+While playtesting (driving around with the new Blocker's visual prediction line) I found two issues with how it really works and predicts where I'm going:
 
-- The Blocker predicts using my "input" or "commanded" speed, not my actual physics speed. So if I ram into a wall, the Blocker keeps predicting forward (into the wall) at full speed even though I'm not actually moving anymore because I was simply holding the drive forward button, which the Blocker counts as "driving"
+- The Blocker predicts using my “input” or “commanded” speed, not my actual physics speed. So if I ram into a wall, the Blocker keeps predicting forward (into the wall) at full speed even though I’m not actually moving anymore because I was simply holding the drive forward button, which the Blocker counts as “driving”
 
-- The Blocker has no awareness of what's between it and its target location. It just drives straight at the predicted point and get stuck if something's in the way - there's no rerouting, no backing off, simply stuck in place and keeps driving forward into the obstacle
+- The Blocker has no awareness of what’s between it and its target location. It just drives straight at the predicted point and gets stuck if something’s in the way - there’s no rerouting, no backing off; it's simply stuck in place and keeps driving forward into the obstacle
 
-===The Fix=== I plan to fix the speed source by using my actual velocity (from PyMunk) instead of input speed for the first problem. Then I'll give the blocker some obstacle awareness using raycasting (where a line is projected in front of the Blocker to detect obstacles) so the Blocker stops first. Finally, for the "big and time-consuming" fix would be to increase the amount of rays to cast a small spread around the Blocker's driving direction (to account for driving backward) and find with rays are not intercepted and "open" to drive toward - just a simple check every frame, similar to how I see game devs do (shoutout to Dani :) ) and robots, using sensor arrays to avoid obstacles
+===The Fix=== I plan to fix the speed source by using my actual velocity (from PyMunk) instead of input speed for the first problem. Then I'll give the blocker obstacle awareness using raycasting (projecting a line in front of the Blocker to detect obstacles) so the Blocker stops first. Finally, for the "big and time-consuming” fix would be to increase the number of rays cast in a small spread around the Blocker’s driving direction (to account for driving backward) and find which rays are not intercepted and are "open” to drive toward - just a simple check every frame, similar to how I see game devs do (shoutout to Dani :) ) and robots, using sensor arrays to avoid obstacles
 
-No implementation yet; this is just a "problem identification" and the direction I'm taking, but expect the next journal to include a working version!!
+No implementation yet; this is just a “problem identification” and the direction I’m taking, but expect the next journal to include a working version!!
 
-[August 24th, 2026] - Status update and identifying new problems for Blocker's "AI pathfinding"
+## [August 24th, 2026] - Status update and identifying new problems for Blocker's "AI pathfinding"
 
 I implemented multiple rays (currently 7), which need to be odd to accommodate my new weighted steering system. 
 
-===How it works==== Every tick, the Blocker would recalculate its angular velocity (degrees to turn) by adding every 0s (aka clear) ray's angle to a new desired angle variable - clear rays on the left would subtract, and on the right of the Blocker would add - except the middle front rays (reason for odd number of rays). This ensures that if there's nothing in front, the variable's value is 0, but if one side has more 0 rays, it's deemed a "safe" route to turn to. But for a situation where the obstacle is right in fronr of the Blocker, it would need to pick a side to steer to; hard-coding a side is possible, but I decided on a "weighted" or "bias" system where rays toward the direction of the user's bot would be weighted more (multiplied the added angle by 1.5) so Blocker would lean toward the user. Additionally, I have implemented a new braking system: the more front rays (the middle one and the two next to it) detect an obstacle, the more braking (1 ray -> 20% down; 2 rays -> 45% down; 3 rays -> 70% down)
+===How it works==== Every tick, the Blocker would recalculate its angular velocity (degrees to turn) by adding every 0s (aka clear) ray’s angle to a new desired angle variable - clear rays on the left would subtract, and on the right of the Blocker would add - except the middle front rays (reason for odd number of rays). This ensures that if there’s nothing in front, the variable’s value is 0, but if one side has more 0 rays, it’s deemed a “safe” route to turn to. But for a situation where the obstacle is right in front of the Blocker, it would need to pick a side to steer to; hard-coding a side is possible, but I decided on a “weighted” or “bias” system where rays toward the direction of the user’s bot would be weighted more (multiplied the added angle by 1.5) so Blocker would lean toward the user. Additionally, I have implemented a new braking system: the more front rays (the middle one and the two next to it) detect an obstacle, the more braking (1 ray -> 20% down; 2 rays -> 45% down; 3 rays -> 70% down)
 
 ===The Problem==== However, this new system I created results in some problems/flaws when I test drive. It would work most of the time but there are certain situations where the Blocker would begin breaking down
 
- - The weighted system works well assuming the user is either on the left or right of the Blocker’s driving direction, but when the user is directly in front of the Blocker, and there’s an obstacle between them, no "side” would be "biased"; thus, they keep canceling each other and result in no change in direction/ steering.
+ - The weighted system works well assuming the user is either on the left or right of the Blocker’s driving direction, but when the user is directly in front of the Blocker, and there’s an obstacle between them, no “side” would be “biased”; thus, they keep canceling each other and result in no change in direction/ steering.
  - The blocker has no memory of the surroundings; thus, the moment it gets stuck in the wall, it can’t back up and retrace where it was to try another direction. This is not realistic, as in a VEX V5 match, the driver has a whole map view (meaning they know what is behind the so-called “obstacle” that the simulator’s Blocker is seeing) and can pick the best route without needing to get stuck and recalculate their new direction like the Blocker
 
 ===The Proposed Solution==== I currently have in mind of what to do to fix the problems mentioned 
 
-- For the first problem: Instead of purely based on the "biased" rays to pick a direction to turn, I plan to add another variable (or list) that tracks the user's previous routes/locations, and the Blocker would take that side as another “biased” side to turn to. However, it would be difficult to determine the correct locations the bot was in to use - Im currently looking into how to fix it
-- For the second problem: I plan to use a grid system that would progressively grow branches from the Blocker until it reaches the user similar to 
-a version of Dijkstra’s algorithm used in Maps and GPSs to pick the best route to go from one point to another. More in the next documentation
+- For the first problem: Instead of purely based on the “biased” rays to pick a direction to turn, I plan to add another variable (or list) that tracks the user’s previous routes/locations, and the Blocker would take that side as another “biased” side to turn to. However, it would be difficult to determine the correct locations the bot was in to use - I'm currently looking into how to fix it
+- For the second problem: I plan to use a grid system that would progressively grow branches from the Blocker until it reaches the user, similar to 
+a version of Dijkstra’s algorithm used in Maps and GPS to pick the best route to go from one point to another. More in the next documentation
 
-[August 26th, 2026] - Update on Blocker (blocking_bot.py) and images of its tracking system
+## [August 26th, 2026] - Update on Blocker (blocking_bot.py) and images of its tracking system
 
 I implemented most of the ray drawings (visible rays on the field for debugging; red when an obstacle is detected, yellow otherwise) and the math (slowing down; each ray holds a value for steering; biased turning), and got the Blocker LiDAR system functioning.
 
@@ -207,7 +207,7 @@ Functions of the Blocker: A PyMunk physics object that can interact with the fie
 
 However, there are still some bugs to fix, like tight turns where Blocker can’t slow down (translating linear velocity into angular velocity) while the user can, not knowing which biased direction to turn to if the user is in front of them but on the other side of a wall; Blocker always drives forward, leading to often getting stuck in a corner and can’t drive backward, not being able to drive strategically and follow behind the user blindly, etc. 
 
-[August 27th, 2026] - Giving the Blocker a way to actually see obstacles
+## [August 27th, 2026] - Giving the Blocker a way to actually see obstacles
 
 Up until now, the Blocker just drove straight at the player with no idea what was in front of it - if a wall happened to be in the way, it would just plow right into it. Real robots don’t have this problem because they have sensors, so I figured the Blocker needed something similar.
 
@@ -217,11 +217,11 @@ The reason I used multiple rays instead of just one straight line: one ray can o
 
 This is just the sensing part for now - the rays exist, and they correctly show red or yellow, but the Blocker doesn’t actually change how it drives based on what it sees yet. That’s the next step.
 
-[August 28th, 2026] - Found a blind spot right in front of the Blocker’s own rays
+## [August 28th, 2026] - Found a blind spot right in front of the Blocker’s own rays
 
 ===Problem==== While testing yesterday’s ray system, I ran into a bug: the Blocker sometimes drove straight into something even though the rays were supposedly watching that direction the whole time.
 
-===Reason=== Every ray starts a little bit away from the Blocker’s own body, so the ray doesn’t immediately detect the Blocker itself as an obstacle. The distance I used to push the ray’s starting point out was based on the CORNER of the Blocker’s box shape, which makes sense for rays pointed diagonally, since they really do need to clear the corner. But for the ray pointed straight ahead, that same corner distance is way more than it needs, since the front of the robot isn’t a corner; it’s a flat edge much closer to the center.
+===Reason=== Every ray starts slightly away from the Blocker’s body, so it doesn’t immediately detect the Blocker itself as an obstacle. The distance I used to push the ray’s starting point out was based on the CORNER of the Blocker’s box shape, which makes sense for rays pointed diagonally, since they really do need to clear the corner. But for the ray pointed straight ahead, that same corner distance is way more than it needs, since the front of the robot isn’t a corner; it’s a flat edge much closer to the center.
 
 <img src="images/aug27-before.png" alt="Blocker’s rays being slightly in front of itself, leading to obstacles fitting between them" width="400">
 
@@ -229,7 +229,7 @@ That gap between where the front ray starts and where the real front bumper is b
 
 Haven’t fixed this yet, just tracked down exactly where the problem is coming from. The fix will probably mean figuring out the starting distance separately for each ray’s angle, instead of using one fixed number for all of them.
 
-[August 30th, 2026] - Fixed the front blind spot on the Blocker’s rays
+## [August 30th, 2026] - Fixed the front blind spot on the Blocker’s rays
 
 Went back to the gap I found on the 28th - the front-facing ray was starting way further out than it needed to, leaving a blind spot where a thin obstacle right in front of the Blocker would never get seen.
 
@@ -241,7 +241,7 @@ The fix was to stop treating every ray the same. Now each ray figures out its ow
 
 Simple example to explain why this matters: imagine standing with your back against a wall, arms stretched out to your sides. If you swept your arms in front of you to feel for something, you wouldn’t start feeling around from three feet in front of your chest - you’d start right at your fingertips. That’s basically what was wrong before, and what’s fixed now.
 
-[September 6th, 2026] - Giving the Blocker a memory of where the player’s been
+## [September 6th, 2026] - Giving the Blocker a memory of where the player’s been
 
 I ran into a real limit with the ray system a while back: it only tells the Blocker what’s happening right in front of it, right now. If the player was hiding behind a wall the Blocker couldn’t see around, the rays were useless - the Blocker had no way to know there even WAS a way around, because it can’t see past what’s directly in its own view.
 
@@ -251,7 +251,7 @@ So now the Robot keeps a short list of its own past positions, saved every fract
 
 This doesn’t change how the Blocker drives yet - right now it’s just data being collected and a way to see it. The next step is having the Blocker actually use one of these points as a target when it can’t see the player directly.
 
-[September 8th, 2026] - Breadcrumb targeting kept changing its mind
+## [September 8th, 2026] - Breadcrumb targeting kept changing its mind
 
 I ran into two separate problems while testing the breadcrumb system, and both came down to the same root issue: the Blocker was switching its decision too easily, instead of sticking with a choice long enough for it to work.
 
@@ -261,7 +261,7 @@ The second problem was with how the Blocker decides it’s “stuck” in the fi
 
 Both of these are really the same lesson: don’t let a decision flip back and forth on a technicality. Make it earn the right to change its mind.
 
-[September 9th, 2026] - Three small breadcrumb bugs found while retesting
+## [September 9th, 2026] - Three small breadcrumb bugs found while retesting
 
 After fixing the flip-flopping from the day before, I went back and properly tested the breadcrumb system, and found three more things wrong with it. None of these were huge on their own, but together they were making the whole system feel unreliable.
 
@@ -273,7 +273,7 @@ The third one: once the Blocker actually reached a breadcrumb, that point never 
 
 Small fixes individually, but this is the first time the code in blocking_bot.py has ever changed something that belongs to the player’s own data instead of just reading it - worth keeping an eye on if that ever needs to be shared with anything else down the road.
 
-[September 11th, 2026] - The wall bug (+ solution), and the Blocker turning into a ghost object
+## [September 11th, 2026] - The wall bug (+ solution), and the Blocker turning into a ghost object
 
 Two completely unrelated bugs today, both annoying in their own way.
 
@@ -283,11 +283,21 @@ The Blocker normally decides which way to steer by adding the direction of every
 
 ===The Fix=== When the middle rays are ALL blocked, stop averaging and just pick whichever single edge ray has the most room, then aim directly at that one. No blending, just commit to the actual opening.
 
-===The Ghost Object Bug=== Separately, I found that if the Blocker was turned on and I switched over to Edit mode, it would visually disappear but somehow still be sitting there in the game’s physics. It's definitely not supposed to happen.
+===The Ghost Object Bug=== Separately, I found that if the Blocker was turned on and I switched over to Edit mode, it would visually disappear but somehow still be sitting there in the game’s physics. It’s definitely not supposed to happen.
 
 I traced it to a function that clears out and rebuilds all the custom field obstacles whenever you switch modes. That function was told to leave the player’s robot alone while it cleared things out, but nobody told it to leave the Blocker alone too. So every time you switched modes, the Blocker’s own body was getting swept away along with everything else - except the game still thought the Blocker was properly placed and working, since nothing ever told IT that it had just been removed.
 
 Fixed it by protecting the Blocker’s body and shape the same way the player’s robot was already protected, so it doesn’t get wiped out every time you change modes.
+
+## [September 12th, 2026] - Letting myself actually move the Blocker around
+
+Up until now, the Blocker always spawned in the same fixed spot every single time. That’s fine for quick testing, but it meant I couldn’t easily set up different starting positions to see how the Blocker handles them - like where the real opposing robot would actually start on the field this year. So I added the ability to click and drag the Blocker around while in Edit mode (the exact same way I drag my own robot around).
+
+While testing that, I ran into a bug: the rays and the line showing where the Blocker is aiming froze the second I started dragging it. They stayed exactly where they were before I switched into Edit mode, floating in empty space and totally disconnected from wherever I’d actually dragged the Blocker to.
+
+===The Reason=== All of that debug drawing only gets recalculated inside the same function that handles the Blocker’s actual driving logic, and that function only runs while I’m in Drive mode. So the second I switch to Edit mode, that function stops running completely - which means the rays and the aim line just keep showing whatever they were last set to, frozen, like a photo instead of a live view. Made sense once I found it, but it looked really broken before I knew why 😢.
+
+For now I just made the rays stop drawing entirely while in Edit mode, since a frozen, wrong picture is worse than no picture at all. The Blocker can be dragged around cleanly now, but the rays only come back to life once I switch back to Drive mode and the Blocker starts actually "thinking" again.
 
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
