@@ -251,6 +251,16 @@ So now the Robot keeps a short list of its own past positions, saved every fract
 
 This doesn’t change how the Blocker drives yet - right now it’s just data being collected and a way to see it. The next step is having the Blocker actually use one of these points as a target when it can’t see the player directly.
 
+[September 8th, 2026] - Breadcrumb targeting kept changing its mind
+
+I ran into two separate problems while testing the breadcrumb system, and both came down to the same root issue: the Blocker was switching its decision too easily, instead of sticking with a choice long enough for it to work.
+
+The first one was with picking which breadcrumb to go to. Every frame, the Blocker recalculated “which breadcrumb is closest to me right now” from scratch, with no memory of what it picked the frame before. If two breadcrumbs happened to be close together, even a tiny wobble in the Blocker’s position could flip which one counted as “closest,” and the target would constantly swap back and forth. It’s a bit like standing between two stores that are almost exactly the same distance away and constantly turning around to walk toward the other one because you took one extra step closer to it. Nobody actually gets anywhere like that. The fix was to make the Blocker commit to one breadcrumb and keep going toward it, only picking a new one once the current one is actually reached, gone, or blocked - not just because something else became a hair closer.
+
+The second problem was with how the Blocker decides it’s “stuck” in the first place. That decision used a single number: if the Blocker made enough progress toward the player, it decided it wasn’t stuck anymore. But that same one number was used both for deciding it’s stuck and for deciding it’s NOT stuck anymore, which caused a weird loop: the Blocker would make just enough progress to be considered “not stuck,” go back to normal driving, immediately run into the same wall it hadn’t actually gotten around yet, and flip right back to “stuck” again a second later. So I split it into two different numbers - a low bar to decide it’s stuck, and a noticeably higher bar it has to clear before deciding it’s not stuck anymore. Now a small amount of progress doesn’t count as “solved,” which stops the back-and-forth.
+
+Both of these are really the same lesson: don’t let a decision flip back and forth on a technicality. Make it earn the right to change its mind.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
