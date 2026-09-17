@@ -273,6 +273,22 @@ The third one: once the Blocker actually reached a breadcrumb, that point never 
 
 Small fixes individually, but this is the first time the code in blocking_bot.py has ever changed something that belongs to the player’s own data instead of just reading it - worth keeping an eye on if that ever needs to be shared with anything else down the road.
 
+[September 11th, 2026] - The wall bug (+ solution), and the Blocker turning into a ghost object
+
+Two completely unrelated bugs today, both annoying in their own way.
+
+===The Wall Bug=== I noticed the Blocker would stand still whenever it ran into a wide, flat wall with only a little open space on the far left and far right. All the middle rays were blocked; only the two outer edge rays were clear.
+
+The Blocker normally decides which way to steer by adding the direction of every clear ray to get one average direction. That works fine most of the time, but it falls apart here: both clear edge rays point mostly forward, just slightly to each side. When you average "slightly left, mostly forward” with “slightly right, mostly forward,” the sideways parts basically cancel out, and you’re left with... mostly forward. Straight into the wall. The math wasn’t wrong; it was just answering a question that didn’t actually help here - it’s like trying to average “turn left” and “turn right” and expecting a useful answer instead of getting basically nothing.
+
+===The Fix=== When the middle rays are ALL blocked, stop averaging and just pick whichever single edge ray has the most room, then aim directly at that one. No blending, just commit to the actual opening.
+
+===The Ghost Object Bug=== Separately, I found that if the Blocker was turned on and I switched over to Edit mode, it would visually disappear but somehow still be sitting there in the game’s physics. It's definitely not supposed to happen.
+
+I traced it to a function that clears out and rebuilds all the custom field obstacles whenever you switch modes. That function was told to leave the player’s robot alone while it cleared things out, but nobody told it to leave the Blocker alone too. So every time you switched modes, the Blocker’s own body was getting swept away along with everything else - except the game still thought the Blocker was properly placed and working, since nothing ever told IT that it had just been removed.
+
+Fixed it by protecting the Blocker’s body and shape the same way the player’s robot was already protected, so it doesn’t get wiped out every time you change modes.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
