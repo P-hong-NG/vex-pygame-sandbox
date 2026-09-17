@@ -261,6 +261,18 @@ The second problem was with how the Blocker decides it’s “stuck” in the fi
 
 Both of these are really the same lesson: don’t let a decision flip back and forth on a technicality. Make it earn the right to change its mind.
 
+[September 9th, 2026] - Three small breadcrumb bugs found while retesting
+
+After fixing the flip-flopping from the day before, I went back and properly tested the breadcrumb system, and found three more things wrong with it. None of these were huge on their own, but together they were making the whole system feel unreliable.
+
+The first one: the line I use to check “can the Blocker actually see this breadcrumb” was starting from the exact center of the Blocker’s own body. That's the same kind of mistake I found with the rays back on the 27th - the check would sometimes count the Blocker’s own body as being in the way of itself, which doesn’t make any sense. I fixed it by starting that line from the edge of the Blocker instead of the center, the same fix I’d already used for the rays.
+
+The second one: breadcrumbs were getting recorded purely based on time, one every fraction of a second, no matter what. That meant if the player sat still or wiggled back and forth in one small spot, the trail would fill up with a bunch of points that were basically on top of each other. That’s not useful information; it’s just clutter. So now a new point is recorded only if the player has actually moved a real distance since the last one, not just whenever the timer goes off.
+
+The third one: once the Blocker actually reached a breadcrumb, that point never went away - it just got skipped over while the Blocker was standing right next to it. But if the trail later looped back near that same spot, the old point was still there, ready to be picked as a target again, even though it wasn’t useful anymore. Now, once the Blocker actually reaches a breadcrumb, that point gets removed for good.
+
+Small fixes individually, but this is the first time the code in blocking_bot.py has ever changed something that belongs to the player’s own data instead of just reading it - worth keeping an eye on if that ever needs to be shared with anything else down the road.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
