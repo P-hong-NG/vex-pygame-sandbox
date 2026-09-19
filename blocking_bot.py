@@ -307,6 +307,28 @@ class BlockingBot:
         return (hit_info is None or hit_info.shape == self.shape
                 or hit_info.shape.collision_type == self.COLLISION_TYPE_PLAYER)
 
+    def _find_runs(self, vision_array, target):
+        """
+        Returns a list of (start_idx, end_idx) inclusive pairs, one per
+        contiguous run of `target` (0 or 1) in vision_array. Pulled out on
+        its own since this exact loop was showing up four times: twice in
+        _classify_stuck_pattern() (once for blocked runs, once for clear
+        runs), and again copy-pasted inline in both the narrow_gap and
+        corner_one_side steering branches in update(). One copy now - every
+        call site just asks "give me the runs of blocked (1) or clear (0)."
+        """
+        runs = []
+        run_start = None
+        for i, v in enumerate(vision_array):
+            if v == target and run_start is None:
+                run_start = i
+            elif v != target and run_start is not None:
+                runs.append((run_start, i - 1))
+                run_start = None
+        if run_start is not None:
+            runs.append((run_start, len(vision_array) - 1))
+        return runs
+
     def _classify_stuck_pattern(self, vision_array):
         """
         Looks at the ray-fan's blocked/clear pattern and names what KIND
@@ -325,17 +347,7 @@ class BlockingBot:
 
         edges_clear = (vision_array[0] == 0 and vision_array[-1] == 0)
 
-        # Find contiguous blocked runs
-        blocked_runs = []
-        run_start = None
-        for i, v in enumerate(vision_array):
-            if v == 1 and run_start is None:
-                run_start = i
-            elif v == 0 and run_start is not None:
-                blocked_runs.append((run_start, i - 1))
-                run_start = None
-        if run_start is not None:
-            blocked_runs.append((run_start, n - 1))
+        blocked_runs = self._find_runs(vision_array, 1)
 
         if len(blocked_runs) == 1:
             run_start, run_end = blocked_runs[0]
@@ -350,16 +362,7 @@ class BlockingBot:
 
         # A small clear gap not touching either edge - threadable, but easy
         # to miss when only looking at "blocked vs clear" as one big count
-        clear_runs = []
-        run_start = None
-        for i, v in enumerate(vision_array):
-            if v == 0 and run_start is None:
-                run_start = i
-            elif v == 1 and run_start is not None:
-                clear_runs.append((run_start, i - 1))
-                run_start = None
-        if run_start is not None:
-            clear_runs.append((run_start, n - 1))
+        clear_runs = self._find_runs(vision_array, 0)
 
         for (cs, ce) in clear_runs:
             gap_len = ce - cs + 1
@@ -784,16 +787,7 @@ class BlockingBot:
                 # vector-blend below potentially get pulled toward a
                 # different open ray elsewhere in the fan and miss
                 # threading this specific gap.
-                clear_runs = []
-                run_start = None
-                for i, status in enumerate(vision_array):
-                    if status == 0 and run_start is None:
-                        run_start = i
-                    elif status == 1 and run_start is not None:
-                        clear_runs.append((run_start, i - 1))
-                        run_start = None
-                if run_start is not None:
-                    clear_runs.append((run_start, len(vision_array) - 1))
+                clear_runs = self._find_runs(vision_array, 0)
 
                 gap_center_idx = None
                 for (cs, ce) in clear_runs:
@@ -824,16 +818,7 @@ class BlockingBot:
                 # further out (CORNER_SWING_DEG), so the blocker swings wide
                 # around the corner's point instead of cutting the turn
                 # tight and clipping it.
-                blocked_runs = []
-                run_start = None
-                for i, status in enumerate(vision_array):
-                    if status == 1 and run_start is None:
-                        run_start = i
-                    elif status == 0 and run_start is not None:
-                        blocked_runs.append((run_start, i - 1))
-                        run_start = None
-                if run_start is not None:
-                    blocked_runs.append((run_start, len(vision_array) - 1))
+                blocked_runs = self._find_runs(vision_array, 1)
 
                 run_start, run_end = blocked_runs[0]
                 touches_left = (run_start == 0)
