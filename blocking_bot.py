@@ -99,6 +99,11 @@ class BlockingBot:
     FAST_REACT_CLEARANCE_THRESHOLD = 0.25  # ...AND this close on average (~6in) ->
                                             # back away immediately, same frame
 
+    #===Corner steering (used when stuck_kind == "corner_one_side")===
+    CORNER_SWING_DEG = 10.0  # extra degrees past the corner's clear-side edge -
+                              # aims wide of the point instead of clipping it
+                              # on a tight turn
+
     #===Physically pinned detection (separate from is_stuck - see _update_pinned_detection)===
     PINNED_CHECK_WINDOW_SECONDS = 1.0  # shorter than is_stuck's 2s window -
                                        # being wedged in place is a more
@@ -811,6 +816,38 @@ class BlockingBot:
                     safe_dy /= escape_mag
                     final_dx = (dx * 0.3) + (safe_dx * 0.7)
                     final_dy = (dy * 0.3) + (safe_dy * 0.7)
+
+            elif self.stuck_kind == "corner_one_side":
+                # Blocked run touches exactly one edge of the fan - a corner
+                # poking in from one side, not a wall dead ahead. Aim just
+                # past the run's clear-side boundary, biased a few degrees
+                # further out (CORNER_SWING_DEG), so the blocker swings wide
+                # around the corner's point instead of cutting the turn
+                # tight and clipping it.
+                blocked_runs = []
+                run_start = None
+                for i, status in enumerate(vision_array):
+                    if status == 1 and run_start is None:
+                        run_start = i
+                    elif status == 0 and run_start is not None:
+                        blocked_runs.append((run_start, i - 1))
+                        run_start = None
+                if run_start is not None:
+                    blocked_runs.append((run_start, len(vision_array) - 1))
+
+                run_start, run_end = blocked_runs[0]
+                touches_left = (run_start == 0)
+
+                if touches_left:
+                    boundary_idx = min(run_end + 1, len(vision_array) - 1)
+                    corner_offset_deg = start_offset + (boundary_idx * spread_deg) + self.CORNER_SWING_DEG
+                else:
+                    boundary_idx = max(run_start - 1, 0)
+                    corner_offset_deg = start_offset + (boundary_idx * spread_deg) - self.CORNER_SWING_DEG
+
+                escape_angle = math.radians(self.angle + corner_offset_deg)
+                final_dx = math.cos(escape_angle)
+                final_dy = math.sin(escape_angle)
 
             elif middle_hits == 3:
                 # Wall covers the whole center, only the far edges are open.
