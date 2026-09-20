@@ -372,7 +372,7 @@ class BlockingBot:
 
         return "mixed"
 
-    def _update_pinned_detection(self):
+    def _update_pinned_detection(self, player_bot):
         """
         Separate concern from is_stuck, which measures progress TOWARD THE
         PLAYER specifically - this measures whether the blocker has moved
@@ -383,6 +383,14 @@ class BlockingBot:
         anywhere. This catches "hasn't moved in over a second" directly,
         with a shorter window than is_stuck since being physically pinned
         is a more acute problem than slow progress.
+
+        Same clear-line-of-sight override as is_stuck, and for the same
+        reason: successfully catching up and holding position right next
+        to the player (the actual "block" working as intended) ALSO looks
+        like "hasn't moved much in the last second" from raw displacement
+        alone. Without this, the blocker would reverse and wander off
+        despite having a clean, unobstructed view of the player - it was
+        reading "parked and blocking" as "stuck."
         """
         now = self._elapsed()
         self._pinned_history.append((now, self.x, self.y))
@@ -396,6 +404,9 @@ class BlockingBot:
         oldest_x, oldest_y = self._pinned_history[0][1], self._pinned_history[0][2]
         displacement = math.hypot(self.x - oldest_x, self.y - oldest_y)
         self.is_pinned = displacement < self.PINNED_DISPLACEMENT_THRESHOLD_IN
+
+        if self.is_pinned and self._has_clear_line_to(player_bot.x, player_bot.y):
+            self.is_pinned = False
 
     def _update_stuck_detection(self, player_bot):
         """
@@ -579,7 +590,7 @@ class BlockingBot:
 
         self._track_player_speed(player_bot, true_speed)
         self._update_stuck_detection(player_bot)
-        self._update_pinned_detection()
+        self._update_pinned_detection(player_bot)
 
         # Predict based entirely on actual physical (in-field) values
         self.lead_x = player_bot.x + (true_vx * self.lead_time)
