@@ -93,6 +93,14 @@ class BlockingBot:
                                          # longer counts as a real target -
                                          # normalizing a direction over a
                                          # near-zero distance is unstable
+    BREADCRUMB_SWITCH_MARGIN_IN = 12.0  # a new candidate has to be at LEAST
+                                         # this much closer than the currently
+                                         # committed breadcrumb before it's
+                                         # worth abandoning ship - otherwise
+                                         # the commitment logic below keeps
+                                         # beelining toward wherever it first
+                                         # locked on, even as fresher, closer
+                                         # crumbs pile up right behind it
 
     #===Fast reactive unstuck (single-frame, doesn't wait for is_stuck's 2s window)===
     FAST_REACT_BLOCKED_FRACTION = 0.8  # this fraction of ALL rays blocked...
@@ -508,11 +516,25 @@ class BlockingBot:
         line of sight) - without this, two breadcrumbs close together in
         distance can cause the target to flip back and forth every frame,
         same root problem as the ray-fan's side-bias flip-flop from before.
+
+        That commitment used to be unconditional: as long as the committed
+        crumb stayed valid, nothing else was even considered, so the
+        blocker kept beelining toward wherever it first locked on while
+        the player kept laying down fresh, closer crumbs right behind it -
+        from the outside it looked like "always chases the oldest point in
+        the trail." Now a fresh candidate can still take over mid-chase,
+        but only if it's CLEARLY better (BREADCRUMB_SWITCH_MARGIN_IN closer,
+        not just marginally) - keeps the anti-flip-flop guarantee for two
+        similar-distance crumbs while letting a genuinely better one win.
         """
-        # Try to keep using whatever was committed last frame first
+        committed_dist = None
+        committed_point = None
+
+        # Check whether whatever was committed last frame is still good
         if self._committed_breadcrumb_full is not None and self._committed_breadcrumb_full in player_bot.breadcrumbs:
             _, cbx, cby = self._committed_breadcrumb_full
-            if math.hypot(cbx - self.x, cby - self.y) < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
+            dist_to_committed = math.hypot(cbx - self.x, cby - self.y)
+            if dist_to_committed < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
                 # Actually reached it - remove it for good, not just skip it
                 # while nearby. Without this, if the trail loops back near
                 # here later, this same old point is still sitting in the
@@ -525,13 +547,13 @@ class BlockingBot:
                 start_pt = self._edge_offset_toward(cbx, cby)
                 hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
                 if hit_info is None or hit_info.shape == self.shape or hit_info.shape.collision_type == self.COLLISION_TYPE_PLAYER:
-                    return (cbx, cby)
+                    committed_dist = dist_to_committed
+                    committed_point = (cbx, cby)
 
-        # Committed target is gone (aged out, arrived, or now blocked) -
-        # search fresh, and commit to whatever this search picks
         if not player_bot.breadcrumbs:
-            self._committed_breadcrumb_full = None
-            return None
+            if committed_point is None:
+                self._committed_breadcrumb_full = None
+            return committed_point
 
         candidates = sorted(
             player_bot.breadcrumbs,
@@ -540,8 +562,14 @@ class BlockingBot:
 
         for entry in candidates:
             _, bx, by = entry
-            if math.hypot(bx - self.x, by - self.y) < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
+            dist = math.hypot(bx - self.x, by - self.y)
+            if dist < self.BREADCRUMB_ARRIVAL_RADIUS_IN:
                 continue
+            if committed_point is not None and dist >= committed_dist - self.BREADCRUMB_SWITCH_MARGIN_IN:
+                # candidates is sorted nearest-first, so once one entry
+                # fails to clear the margin, every entry after it (all
+                # farther away) fails too - nothing left worth checking
+                break
             end_pt = pymunk.Vec2d(bx * self.scale, by * self.scale)
             start_pt = self._edge_offset_toward(bx, by)
             hit_info = self.space.segment_query_first(start_pt, end_pt, 1.0, pymunk.ShapeFilter())
@@ -554,6 +582,9 @@ class BlockingBot:
             if hit_shape == self.shape or hit_shape.collision_type == self.COLLISION_TYPE_PLAYER:
                 self._committed_breadcrumb_full = entry
                 return (bx, by)
+
+        if committed_point is not None:
+            return committed_point
 
         self._committed_breadcrumb_full = None
         return None
