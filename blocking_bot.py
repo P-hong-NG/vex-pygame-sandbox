@@ -112,6 +112,13 @@ class BlockingBot:
                               # aims wide of the point instead of clipping it
                               # on a tight turn
 
+    #===Occupancy grid (whole-map view, groundwork for A* routing)===
+    GRID_CELL_SIZE_IN = 6.0  # each cell is 6in square - fine enough for the
+                              # blocker to route around real obstacles,
+                              # coarse enough that a 144in field is a
+                              # manageable 24x24 grid instead of something
+                              # huge to recompute every time the field changes
+
     #===Physically pinned detection (separate from is_stuck - see _update_pinned_detection)===
     PINNED_CHECK_WINDOW_SECONDS = 1.0  # shorter than is_stuck's 2s window -
                                        # being wedged in place is a more
@@ -494,6 +501,72 @@ class BlockingBot:
 
         direction = pymunk.Vec2d(math.cos(angle_to_target), math.sin(angle_to_target))
         return self.body.position + direction * ((box_edge_dist + 0.5) * self.scale)
+
+    def _world_to_cell(self, x_in, y_in):
+        """
+        Field inches -> (row, col) in the occupancy grid, clamped to the
+        grid's own bounds so a position right at the field edge (or a hair
+        outside it from floating-point noise) doesn't index out of range.
+        """
+        col = int(x_in / self.GRID_CELL_SIZE_IN)
+        row = int(y_in / self.GRID_CELL_SIZE_IN)
+        col = max(0, min(self.grid_cols - 1, col))
+        row = max(0, min(self.grid_rows - 1, row))
+        return row, col
+
+    def _cell_to_world(self, row, col):
+        """(row, col) -> the field-inch coordinates of that cell's center."""
+        x_in = (col + 0.5) * self.GRID_CELL_SIZE_IN
+        y_in = (row + 0.5) * self.GRID_CELL_SIZE_IN
+        return x_in, y_in
+
+    def _build_occupancy_grid(self):
+        """
+        Rasterizes the field into a grid of blocked/open cells - the
+        "whole map view" the blocker will eventually route on with A*,
+        instead of only reacting to whatever its 9 forward rays currently
+        see. Reads straight off self.space (the same PyMunk space the
+        ray-fan already queries), not a separate copy of main.py's shape
+        list - so it automatically reflects whatever obstacles the user
+        has actually built in Edit mode, static or dynamic, without
+        blocking_bot.py needing to know main.py's data structures at all.
+
+        Stores the result as self.occupancy_grid (2D list, [row][col],
+        True = blocked), plus self.grid_rows/self.grid_cols. Ignores the
+        blocker's own shape and the player's shape, same ignore-list every
+        other space query in this file already uses.
+
+        Not called every frame yet, and not read by steering yet either -
+        this is the same "build it, prove it's correct, wire it in later"
+        pattern already used for stuck_kind and is_pinned. A* routing on
+        top of this grid is next; recomputing this on some kind of
+        schedule (only when the field actually changes, most likely) is a
+        later decision once real usage shows how often it's needed.
+        """
+        cols = max(1, int(self.field_inches / self.GRID_CELL_SIZE_IN))
+        rows = cols  # field is square (FIELD_INCHES x FIELD_INCHES)
+        grid = [[False for _ in range(cols)] for _ in range(rows)]
+
+        self.grid_cols = cols
+        self.grid_rows = rows
+
+        # Slightly smaller than a full half-cell so a query doesn't spill
+        # over into a neighboring cell's own space and mark it blocked too
+        query_radius = (self.GRID_CELL_SIZE_IN / 2.0) * 0.9 * self.scale
+
+        for row in range(rows):
+            for col in range(cols):
+                center_x_in, center_y_in = self._cell_to_world(row, col)
+                center_pt = pymunk.Vec2d(center_x_in * self.scale, center_y_in * self.scale)
+
+                hit = self.space.point_query_nearest(center_pt, query_radius, pymunk.ShapeFilter())
+                if hit is not None:
+                    hit_shape = hit.shape
+                    if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
+                        grid[row][col] = True
+
+        self.occupancy_grid = grid
+        return grid
 
     def _find_closest_visible_breadcrumb(self, player_bot):
         """
