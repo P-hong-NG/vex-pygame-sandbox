@@ -2,6 +2,7 @@ import math
 import time
 import json
 import random
+import heapq
 
 import pymunk
 
@@ -567,6 +568,86 @@ class BlockingBot:
 
         self.occupancy_grid = grid
         return grid
+
+    def _astar_path(self, start, goal):
+        """
+        Grid A* over self.occupancy_grid (call _build_occupancy_grid first),
+        8-directional movement. start/goal are (row, col) tuples. Returns
+        a list of (row, col) cells from start to goal inclusive, or None
+        if no path exists (goal unreachable, or either end is itself a
+        blocked cell).
+
+        Diagonal moves are blocked if BOTH orthogonal cells they'd cut
+        between are blocked - a real chassis can't squeeze through a
+        diagonal gap between two walls even though the grid math would
+        technically allow the move (same "give the corner room" idea as
+        CORNER_SWING_DEG, just for grid movement instead of ray steering).
+
+        Not read by steering yet, same as the grid itself - this is the
+        one routing engine prediction and the personality system will
+        both eventually sit on top of, by choosing different GOAL cells
+        to hand this, not by changing how paths get found.
+        """
+        if not hasattr(self, 'occupancy_grid'):
+            return None
+
+        rows, cols = self.grid_rows, self.grid_cols
+        if self.occupancy_grid[start[0]][start[1]] or self.occupancy_grid[goal[0]][goal[1]]:
+            return None
+        if start == goal:
+            return [start]
+
+        diagonal_cost = 2.0 ** 0.5
+        neighbor_offsets = [
+            (-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
+            (-1, -1, diagonal_cost), (-1, 1, diagonal_cost),
+            (1, -1, diagonal_cost), (1, 1, diagonal_cost),
+        ]
+
+        def heuristic(a, b):
+            # Straight-line distance in cells - matches the actual
+            # 8-directional movement cost better than Manhattan would
+            return math.hypot(a[0] - b[0], a[1] - b[1])
+
+        open_heap = [(heuristic(start, goal), 0.0, start)]
+        came_from = {}
+        g_score = {start: 0.0}
+        visited = set()
+
+        while open_heap:
+            _, current_g, current = heapq.heappop(open_heap)
+            if current in visited:
+                continue
+            visited.add(current)
+
+            if current == goal:
+                path = [current]
+                while current in came_from:
+                    current = came_from[current]
+                    path.append(current)
+                path.reverse()
+                return path
+
+            cr, cc = current
+            for dr, dc, move_cost in neighbor_offsets:
+                nr, nc = cr + dr, cc + dc
+                if not (0 <= nr < rows and 0 <= nc < cols):
+                    continue
+                if self.occupancy_grid[nr][nc]:
+                    continue
+                if dr != 0 and dc != 0:
+                    if self.occupancy_grid[cr + dr][cc] and self.occupancy_grid[cr][cc + dc]:
+                        continue
+
+                neighbor = (nr, nc)
+                tentative_g = current_g + move_cost
+                if tentative_g < g_score.get(neighbor, float('inf')):
+                    g_score[neighbor] = tentative_g
+                    came_from[neighbor] = current
+                    priority = tentative_g + heuristic(neighbor, goal)
+                    heapq.heappush(open_heap, (priority, tentative_g, neighbor))
+
+        return None
 
     def _find_closest_visible_breadcrumb(self, player_bot):
         """
