@@ -138,6 +138,14 @@ class BlockingBot:
                                           # for a map that's 99% unchanged
                                           # frame to frame
 
+    #===A* steering (used as is_stuck's fallback when no breadcrumb is visible)===
+    ASTAR_LOOKAHEAD_CELLS = 3  # aim at the path cell this many steps ahead of
+                                # the blocker's own cell, not the very next
+                                # one - the next cell over is only ~6in away
+                                # (GRID_CELL_SIZE_IN), which is the same
+                                # near-zero-distance instability breadcrumbs
+                                # solve with BREADCRUMB_ARRIVAL_RADIUS_IN
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -681,6 +689,36 @@ class BlockingBot:
 
         return None
 
+    def _get_astar_lookahead_target(self, player_bot):
+        """
+        Runs A* from the blocker's current cell to the player's current
+        cell on the (throttled) occupancy grid, and returns the world
+        (x, y) of a cell a few steps down that path - not the goal itself,
+        and not the very next cell either. Aiming at the immediate next
+        cell would retarget every ~6in of travel (GRID_CELL_SIZE_IN), which
+        produces the same jittery, unstable direction breadcrumbs already
+        ran into up close; aiming at the far goal ignores the path's actual
+        turns. A fixed number of cells ahead (ASTAR_LOOKAHEAD_CELLS) is a
+        simple middle ground - good enough to prove the grid can route the
+        blocker at all. Smoothing the path itself (the "funnel algorithm"
+        idea from the DEV_JOURNAL notes) is a later, separate improvement.
+
+        Returns None if no path exists (goal cell unreachable, or the
+        blocker/player is currently standing in a cell the grid marked
+        blocked - possible right at a wall on the query's exact grid line).
+        """
+        self._get_current_grid()  # ensures self.occupancy_grid is fresh before _astar_path reads it
+        start_cell = self._world_to_cell(self.x, self.y)
+        goal_cell = self._world_to_cell(player_bot.x, player_bot.y)
+
+        path = self._astar_path(start_cell, goal_cell)
+        if not path or len(path) < 2:
+            return None
+
+        lookahead_idx = min(len(path) - 1, self.ASTAR_LOOKAHEAD_CELLS)
+        target_row, target_col = path[lookahead_idx]
+        return self._cell_to_world(target_row, target_col)
+
     def _find_closest_visible_breadcrumb(self, player_bot):
         """
         Returns (x, y) of the closest breadcrumb in player_bot.breadcrumbs
@@ -988,25 +1026,43 @@ class BlockingBot:
                     final_dx, final_dy = dx, dy
             else:
                 # No breadcrumb visible yet (early in a life, or the trail
-                # just hasn't been near here) - fall back to hugging the
-                # wall on the committed side at a rough constant distance.
-                # Override the normal target entirely - aiming at the player is
-                # exactly what got us stuck (yesterday's corner-trap screenshot:
-                # the direction was stable, just wrong the whole time). Instead,
-                # follow the wall on the committed side at a rough constant
-                # distance. The outermost ray on that side doubles as a wall
-                # sensor; its offset (+/-45deg) IS the tangent direction once
-                # rotated to be "along the wall" instead of "at the wall," so no
-                # extra geometry is needed beyond what the ray-fan already senses.
-                bias = self._escape_side_bias
-                follow_ray_index = 0 if bias > 0 else (len(clearance_array) - 1)
-                follow_clearance = clearance_array[follow_ray_index]
-                clearance_error = follow_clearance - self.WALL_FOLLOW_TARGET_CLEARANCE
-                wall_follow_offset_deg = bias * (45.0 - clearance_error * self.WALL_FOLLOW_TURN_GAIN)
-                wall_follow_offset_deg = max(-90.0, min(90.0, wall_follow_offset_deg))
-                escape_angle = math.radians(self.angle + wall_follow_offset_deg)
-                final_dx = math.cos(escape_angle)
-                final_dy = math.sin(escape_angle)
+                # just hasn't been near here) - try routing on the occupancy
+                # grid before falling back to blind wall-hugging. A* knows
+                # the actual shape of the field; wall-following only knows
+                # "there's something on my left/right right now," which is
+                # how it kept steering the blocker along dead-end walls
+                # instead of toward a route that actually reaches the player.
+                astar_target = self._get_astar_lookahead_target(player_bot)
+                if astar_target is not None:
+                    ax, ay = astar_target
+                    a_dx, a_dy = ax - self.x, ay - self.y
+                    a_dist = math.hypot(a_dx, a_dy)
+                    if a_dist > 0:
+                        final_dx, final_dy = a_dx / a_dist, a_dy / a_dist
+                    else:
+                        final_dx, final_dy = dx, dy
+                else:
+                    # A* found no path either (goal cell unreachable, or
+                    # start/goal itself sits in a blocked cell right at the
+                    # moment of the query) - last-resort fallback to the
+                    # original wall-hugging behavior, same as before.
+                    # Override the normal target entirely - aiming at the player is
+                    # exactly what got us stuck (yesterday's corner-trap screenshot:
+                    # the direction was stable, just wrong the whole time). Instead,
+                    # follow the wall on the committed side at a rough constant
+                    # distance. The outermost ray on that side doubles as a wall
+                    # sensor; its offset (+/-45deg) IS the tangent direction once
+                    # rotated to be "along the wall" instead of "at the wall," so no
+                    # extra geometry is needed beyond what the ray-fan already senses.
+                    bias = self._escape_side_bias
+                    follow_ray_index = 0 if bias > 0 else (len(clearance_array) - 1)
+                    follow_clearance = clearance_array[follow_ray_index]
+                    clearance_error = follow_clearance - self.WALL_FOLLOW_TARGET_CLEARANCE
+                    wall_follow_offset_deg = bias * (45.0 - clearance_error * self.WALL_FOLLOW_TURN_GAIN)
+                    wall_follow_offset_deg = max(-90.0, min(90.0, wall_follow_offset_deg))
+                    escape_angle = math.radians(self.angle + wall_follow_offset_deg)
+                    final_dx = math.cos(escape_angle)
+                    final_dy = math.sin(escape_angle)
 
         elif 1 in vision_array and clear_paths > 0:
             if self.stuck_kind == "narrow_gap":
