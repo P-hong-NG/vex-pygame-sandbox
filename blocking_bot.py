@@ -1245,15 +1245,45 @@ class BlockingBot:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
-    def draw(self, screen, scale, field_pixels, show_rays=True, player_bot=None):
-        # show_rays also gates the lead-point line and breadcrumb-target
-        # marker below, not just the ray fan - all three are stale/cached
-        # from update() outside Drive mode, same reasoning applies to all.
-        # Name's a little narrow for what it now covers, kept it as-is
-        # instead of renaming already-shipped code.
+    def draw(self, screen, scale, field_pixels, debug_mode="calc", player_bot=None):
+        # debug_mode picks what debug info shows on top of the blocker's
+        # own body (always drawn): "calc" = the existing ray-fan/lead-line/
+        # breadcrumb visuals, "grid" = the new occupancy grid, "all" = both,
+        # anything else (e.g. "none") = neither. Replaces the old show_rays
+        # bool now that there are two debug layers instead of one - added
+        # for DEV_JOURNAL screenshots (see main.py's V-key toggle).
         if not self.enabled:
             return
         import pygame
+
+        show_calc = debug_mode in ("calc", "all")
+        show_grid = debug_mode in ("grid", "all")
+
+        if show_grid:
+            # Rebuilt fresh every draw call instead of cached - only runs
+            # while this debug view is actually on screen, so the cost
+            # (576 point queries for a 144in field) only shows up when
+            # someone's actively looking at it, and it stays correct if
+            # the field's obstacles changed since the last build.
+            self._build_occupancy_grid()
+            cell_px = self.GRID_CELL_SIZE_IN * scale
+            grid_surf = pygame.Surface((field_pixels, field_pixels), pygame.SRCALPHA)
+            for row in range(self.grid_rows):
+                for col in range(self.grid_cols):
+                    if self.occupancy_grid[row][col]:
+                        cx_in, cy_in = self._cell_to_world(row, col)
+                        px = (cx_in - self.GRID_CELL_SIZE_IN / 2) * scale
+                        py = field_pixels - (cy_in + self.GRID_CELL_SIZE_IN / 2) * scale
+                        pygame.draw.rect(grid_surf, (255, 40, 40, 90), (px, py, cell_px, cell_px))
+            # Faint lines over the whole grid, not just blocked cells - so
+            # open cells read as "part of the grid" too, not just empty space
+            for col in range(self.grid_cols + 1):
+                x = col * cell_px
+                pygame.draw.line(grid_surf, (255, 255, 255, 40), (x, 0), (x, field_pixels), 1)
+            for row in range(self.grid_rows + 1):
+                y = row * cell_px
+                pygame.draw.line(grid_surf, (255, 255, 255, 40), (0, y), (field_pixels, y), 1)
+            screen.blit(grid_surf, (0, 0))
 
         w_px = self.length * scale
         h_px = self.track_width * scale
@@ -1267,7 +1297,7 @@ class BlockingBot:
         rect = rot.get_rect(center=(center_x, center_y))
         screen.blit(rot, rect)
 
-        if show_rays and hasattr(self, 'lead_x') and hasattr(self, 'lead_y'):
+        if show_calc and hasattr(self, 'lead_x') and hasattr(self, 'lead_y'):
             start_pos = (center_x, center_y)
             target_px_x = self.lead_x * scale
             target_px_y = field_pixels - (self.lead_y * scale)
@@ -1291,7 +1321,7 @@ class BlockingBot:
             target_px = (target_x * scale, field_pixels - target_y * scale)
             pygame.draw.line(screen, line_color, (center_x, center_y), target_px, 2)
 
-        if show_rays and self.active_breadcrumb_target is not None:
+        if show_calc and self.active_breadcrumb_target is not None:
             bx, by = self.active_breadcrumb_target
             bc_px_x = bx * scale
             bc_px_y = field_pixels - (by * scale)
@@ -1300,7 +1330,7 @@ class BlockingBot:
             pygame.draw.line(screen, (60, 220, 60), (center_x, center_y), (bc_px_x, bc_px_y), 2)
             pygame.draw.circle(screen, (60, 220, 60), (bc_px_x, bc_px_y), 10, 3)
 
-        if show_rays and hasattr(self, 'ray_lines'):
+        if show_calc and hasattr(self, 'ray_lines'):
             for start_pt, end_pt, hit_status in self.ray_lines:
                 # Convert PyMunk coordinates to Pygame pixels (and flip the Y-axis)
                 sx = start_pt.x
