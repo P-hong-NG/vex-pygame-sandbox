@@ -221,8 +221,13 @@ class SimulatorState:
         self.current_page = "edit 1" #studio 1 / studio 2 / edit 1 / edit 2
         self.paused = False
         self.paused_sub_menu = "main" # main / settings
-        self.remapping_key = None 
+        self.remapping_key = None
         self.auton_mode = False
+        # Cycles with the V key in Drive mode - see DEBUG_VIEW_MODES below.
+        # For DEV_JOURNAL screenshots: "calc" = just the existing rays/
+        # view-line/breadcrumbs, "grid" = just the new occupancy grid,
+        # "all" = both at once.
+        self.debug_view_mode = "calc"
         self.auton_running = False
         self.resizing_shape = False
         self.dragging_speed_slider = False
@@ -826,6 +831,11 @@ def action_run_auton():
     if not sim.auton_running: sim.auton_mode = True
 def toggle_blocker():
     blocker.disable() if blocker.enabled else blocker.enable()
+# ===debug view toggle (V key, Drive mode) - for DEV_JOURNAL screenshots===
+DEBUG_VIEW_MODES = ["calc", "grid", "all"]
+def cycle_debug_view():
+    idx = DEBUG_VIEW_MODES.index(sim.debug_view_mode)
+    sim.debug_view_mode = DEBUG_VIEW_MODES[(idx + 1) % len(DEBUG_VIEW_MODES)]
 def update_blocker_diff(val):
     diff = val.lower()
     blocker.set_difficulty(diff) #Lowercase the selected option ("Easy" to "easy") to match the blocker class difficulty dictionary
@@ -1251,7 +1261,14 @@ def draw_everything():
         screen.blit(rot_bot, bot_rect)
         if sim.current_mode == "edit": pygame.draw.rect(screen, YELLOW, bot_rect, 2)
 
-        blocker.draw(screen, SCALE, FIELD_PIXELS, show_rays=(sim.current_mode == "drive"), player_bot=bot)
+        blocker.draw(screen, SCALE, FIELD_PIXELS,
+                     debug_mode=(sim.debug_view_mode if sim.current_mode == "drive" else "none"),
+                     player_bot=bot)
+
+        if blocker.enabled and sim.current_mode == "drive":
+            # Small always-visible label so a screenshot alone shows which
+            # of the 3 debug views it's from, without having to caption it
+            draw_small(f"Debug view (V to cycle): {sim.debug_view_mode}", 18, 92, LIGHT_GRAY)
 
         if blocker.enabled and sim.current_mode == "drive":
             # Debug-only markers for the breadcrumb trail (#1/#2) - one small
@@ -1936,6 +1953,8 @@ while running:
                     sim.settings["keybinds"][sim.remapping_key] = event.key
                     sim.remapping_key = None
                     save_settings()
+            elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_v:
+                cycle_debug_view()
             elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
                 is_typing = False
                 if sim.current_page == "edit 1":
