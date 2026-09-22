@@ -128,6 +128,16 @@ class BlockingBot:
                                              # whole window = genuinely
                                              # hasn't gone anywhere
 
+    #===Occupancy grid refresh (was only rebuilt when the debug view asked
+    #for it - now steering will ask for it every frame too, so it needs a
+    #real refresh budget instead of "rebuild on every request")===
+    GRID_REBUILD_INTERVAL_SECONDS = 0.5  # obstacles only move if the field
+                                          # gets edited mid-session (rare) or
+                                          # a dynamic object drifts - no need
+                                          # to redo 576 point-queries 60x/sec
+                                          # for a map that's 99% unchanged
+                                          # frame to frame
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -193,6 +203,12 @@ class BlockingBot:
         # toward - stored purely for draw() to show, no effect on behavior
         self.active_breadcrumb_target = None
 
+        # Last time the occupancy grid was actually rebuilt - see
+        # _get_current_grid(). -999 forces a real build the first time
+        # anything asks for the grid, same "force it the first time"
+        # pattern _last_breadcrumb_time uses in main.py's Robot class.
+        self._last_grid_build_time = -999.0
+
         # === data collection state ===
         self.impacts = []          # [{t, x, y, impulse}, ...]
         self.mistakes = []         # [{t, x, y, speed_before, speed_after}, ...]
@@ -227,6 +243,7 @@ class BlockingBot:
         self.stuck_kind = "clear"
         self._pinned_history = []
         self.is_pinned = False
+        self._last_grid_build_time = -999.0
         if hasattr(self, '_prev_stuck_bx'):
             del self._prev_stuck_bx, self._prev_stuck_by
             del self._prev_stuck_player_x, self._prev_stuck_player_y
@@ -568,6 +585,21 @@ class BlockingBot:
 
         self.occupancy_grid = grid
         return grid
+
+    def _get_current_grid(self):
+        """
+        Returns self.occupancy_grid, rebuilding it first only if it's
+        stale (older than GRID_REBUILD_INTERVAL_SECONDS) or doesn't exist
+        yet. This is the one entry point both draw()'s grid view and
+        steering should call - neither should call _build_occupancy_grid()
+        directly, since that always rebuilds regardless of when it last ran.
+        """
+        now = self._elapsed()
+        if (not hasattr(self, 'occupancy_grid')
+                or (now - self._last_grid_build_time) >= self.GRID_REBUILD_INTERVAL_SECONDS):
+            self._build_occupancy_grid()
+            self._last_grid_build_time = now
+        return self.occupancy_grid
 
     def _astar_path(self, start, goal):
         """
@@ -1260,12 +1292,11 @@ class BlockingBot:
         show_grid = debug_mode in ("grid", "all")
 
         if show_grid:
-            # Rebuilt fresh every draw call instead of cached - only runs
-            # while this debug view is actually on screen, so the cost
-            # (576 point queries for a 144in field) only shows up when
-            # someone's actively looking at it, and it stays correct if
-            # the field's obstacles changed since the last build.
-            self._build_occupancy_grid()
+            # Goes through _get_current_grid() now, same as steering does -
+            # only actually rebuilds every GRID_REBUILD_INTERVAL_SECONDS,
+            # not on literally every draw call (was costing 576 point
+            # queries a frame the whole time this debug view stayed on).
+            self._get_current_grid()
             cell_px = self.GRID_CELL_SIZE_IN * scale
             grid_surf = pygame.Surface((field_pixels, field_pixels), pygame.SRCALPHA)
             for row in range(self.grid_rows):
