@@ -217,6 +217,14 @@ class BlockingBot:
         # pattern _last_breadcrumb_time uses in main.py's Robot class.
         self._last_grid_build_time = -999.0
 
+        # Cached A* result - see _get_astar_lookahead_target(). Grid rebuilds
+        # are already throttled (GRID_REBUILD_INTERVAL_SECONDS), but the A*
+        # search itself was still re-running from scratch every single frame
+        # while is_stuck stayed True - wasteful, since the grid it's
+        # searching usually hasn't changed since the last frame either.
+        self._astar_cache_key = None
+        self._astar_cached_path = None
+
         # === data collection state ===
         self.impacts = []          # [{t, x, y, impulse}, ...]
         self.mistakes = []         # [{t, x, y, speed_before, speed_after}, ...]
@@ -252,6 +260,8 @@ class BlockingBot:
         self._pinned_history = []
         self.is_pinned = False
         self._last_grid_build_time = -999.0
+        self._astar_cache_key = None
+        self._astar_cached_path = None
         if hasattr(self, '_prev_stuck_bx'):
             del self._prev_stuck_bx, self._prev_stuck_by
             del self._prev_stuck_player_x, self._prev_stuck_player_y
@@ -706,12 +716,24 @@ class BlockingBot:
         Returns None if no path exists (goal cell unreachable, or the
         blocker/player is currently standing in a cell the grid marked
         blocked - possible right at a wall on the query's exact grid line).
+
+        The actual A* search only re-runs when something that could change
+        its answer has changed: the grid was rebuilt, or the start/goal
+        cell moved. Same start/goal on the same grid always finds the same
+        path, so re-searching it 60x/sec while is_stuck stays True for a
+        couple seconds was pure waste - this was noticeably slower on a
+        busier field than the grid-throttling commit alone accounted for.
         """
         self._get_current_grid()  # ensures self.occupancy_grid is fresh before _astar_path reads it
         start_cell = self._world_to_cell(self.x, self.y)
         goal_cell = self._world_to_cell(player_bot.x, player_bot.y)
 
-        path = self._astar_path(start_cell, goal_cell)
+        cache_key = (start_cell, goal_cell, self._last_grid_build_time)
+        if cache_key != self._astar_cache_key:
+            self._astar_cache_key = cache_key
+            self._astar_cached_path = self._astar_path(start_cell, goal_cell)
+
+        path = self._astar_cached_path
         if not path or len(path) < 2:
             return None
 
