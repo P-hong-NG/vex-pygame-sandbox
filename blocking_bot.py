@@ -211,6 +211,11 @@ class BlockingBot:
         # toward - stored purely for draw() to show, no effect on behavior
         self.active_breadcrumb_target = None
 
+        # Whichever A* path (if any) update() is currently steering along -
+        # same "stored purely for draw() to show" role as the breadcrumb
+        # target above, set when the else-branch below routes on the grid.
+        self.active_astar_path = None
+
         # Last time the occupancy grid was actually rebuilt - see
         # _get_current_grid(). -999 forces a real build the first time
         # anything asks for the grid, same "force it the first time"
@@ -598,7 +603,17 @@ class BlockingBot:
                 hit = self.space.point_query_nearest(center_pt, query_radius, pymunk.ShapeFilter())
                 if hit is not None:
                     hit_shape = hit.shape
-                    if hit_shape != self.shape and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER:
+                    # Field boundary walls are pymunk.Segment shapes, same as
+                    # sync_custom_obstacles_to_physics() already treats them
+                    # in main.py - without this exclusion, every cell along
+                    # all 4 edges reads "blocked," so A* fails (returns None)
+                    # any time the player is near a wall, and steering
+                    # silently falls back to old wall-hugging behavior -
+                    # this was the actual cause of the Blocker "trailing the
+                    # field's boundaries."
+                    if (hit_shape != self.shape
+                            and hit_shape.collision_type != self.COLLISION_TYPE_PLAYER
+                            and not isinstance(hit_shape, pymunk.Segment)):
                         grid[row][col] = True
 
         self.occupancy_grid = grid
@@ -847,6 +862,7 @@ class BlockingBot:
         # back to a real value. Otherwise draw() would show a stale target
         # from the last time is_stuck/boxed-in was true.
         self.active_breadcrumb_target = None
+        self.active_astar_path = None
 
         if not hasattr(self, '_prev_player_x'):
             self._prev_player_x = player_bot.x
@@ -1011,6 +1027,15 @@ class BlockingBot:
         avg_blocked_clearance = sum(blocked_clearances) / len(blocked_clearances) if blocked_clearances else 1.0
         fast_react_triggered = (blocked_fraction >= self.FAST_REACT_BLOCKED_FRACTION
                                  and avg_blocked_clearance < self.FAST_REACT_CLEARANCE_THRESHOLD)
+
+        # fast_react is pure single-frame ray geometry - it has no idea
+        # whether the player is actually visible right now, unlike
+        # is_stuck/is_pinned below which both already check this. Without
+        # this override, a tight ray-fan pattern (most rays blocked, close)
+        # can fire and yank the blocker into a blind reverse even while it
+        # has a clean, unobstructed line to the player.
+        if fast_react_triggered and self._has_clear_line_to(player_bot.x, player_bot.y):
+            fast_react_triggered = False
 
         if self.is_pinned:
             # Hasn't physically moved in over a second, regardless of what
@@ -1217,9 +1242,36 @@ class BlockingBot:
                     final_dy = math.sin(escape_angle)
 
         else:
-            final_dx = dx
-            final_dy = dy
-            
+            # No ray sees anything within look_dist (24in) - the old code
+            # just aimed straight at the player here unconditionally. That's
+            # fine with a genuinely clear view, but look_dist is short
+            # enough that a wall just past 24in away (with the player on
+            # the far side of it) reads as "all clear" on the ray-fan while
+            # actually being blocked - driving straight at the player then
+            # drives straight into that wall instead. Check the real
+            # line-of-sight first (unbounded, not just 24in), and only
+            # trust the direct line when it's actually clear; otherwise use
+            # the occupancy grid's A* route instead of blindly closing in.
+            if self._has_clear_line_to(player_bot.x, player_bot.y):
+                final_dx = dx
+                final_dy = dy
+            else:
+                astar_target = self._get_astar_lookahead_target(player_bot)
+                if astar_target is not None:
+                    ax, ay = astar_target
+                    a_dx, a_dy = ax - self.x, ay - self.y
+                    a_dist = math.hypot(a_dx, a_dy)
+                    if a_dist > 0:
+                        final_dx, final_dy = a_dx / a_dist, a_dy / a_dist
+                    else:
+                        final_dx, final_dy = dx, dy
+                    self.active_astar_path = self._astar_cached_path
+                else:
+                    # No route found either - fall back to the old direct
+                    # aim rather than doing nothing.
+                    final_dx = dx
+                    final_dy = dy
+
         # Convert the final blended vector back into an angle for the steering wheel
         target_angle = math.degrees(math.atan2(final_dy, final_dx))
 
