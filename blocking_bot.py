@@ -127,6 +127,16 @@ class BlockingBot:
     PINNED_DISPLACEMENT_THRESHOLD_IN = 2.0  # moved less than this over the
                                              # whole window = genuinely
                                              # hasn't gone anywhere
+    PINNED_OVERRIDE_MAX_DIST_IN = 30.0  # the clear-line override below is only
+                                         # meant to catch "successfully holding
+                                         # position right next to the player" -
+                                         # a straight sightline can stay open
+                                         # clear across the field (threading
+                                         # between obstacles) while the blocker
+                                         # is actually wedged somewhere far
+                                         # away. Past this distance, hasn't-
+                                         # moved-in-a-second means genuinely
+                                         # stuck, not "successfully blocking."
 
     #===Occupancy grid refresh (was only rebuilt when the debug view asked
     #for it - now steering will ask for it every frame too, so it needs a
@@ -461,7 +471,9 @@ class BlockingBot:
         displacement = math.hypot(self.x - oldest_x, self.y - oldest_y)
         self.is_pinned = displacement < self.PINNED_DISPLACEMENT_THRESHOLD_IN
 
-        if self.is_pinned and self._has_clear_line_to(player_bot.x, player_bot.y):
+        dist_to_player = math.hypot(player_bot.x - self.x, player_bot.y - self.y)
+        if (self.is_pinned and dist_to_player <= self.PINNED_OVERRIDE_MAX_DIST_IN
+                and self._has_clear_line_to(player_bot.x, player_bot.y)):
             self.is_pinned = False
 
     def _update_stuck_detection(self, player_bot):
