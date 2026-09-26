@@ -156,6 +156,19 @@ class BlockingBot:
                                 # near-zero-distance instability breadcrumbs
                                 # solve with BREADCRUMB_ARRIVAL_RADIUS_IN
 
+    #===Play style (foundations)===
+    # Every style just picks a different point to aim at - everything
+    # downstream (prediction, rays, A*, stop_distance) works the same no
+    # matter which point it's chasing. Same idea the standalone demo proved
+    # out, now wired into the real sim instead of steering-constant presets.
+    PLAY_STYLES = ("attack", "defend", "mix")
+    DEFEND_ENGAGE_RADIUS_IN = 40.0  # Defend only leaves its home spot once
+                                     # the player gets THIS close - matches
+                                     # the demo's ENGAGE_RADIUS, picked so a
+                                     # standard 144in field gives real
+                                     # "patrol vs. pounce" separation instead
+                                     # of engaging from almost anywhere
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -180,6 +193,22 @@ class BlockingBot:
         self.x = self.start_x
         self.y = self.start_y
         self.angle = 0.0
+
+        # Play style + Defend's home spot. Field center is just a starting
+        # default - VEX's defended zones move every season, so this is
+        # meant to become user-set/draggable the same way start_x/start_y
+        # already are, not a next step yet.
+        self.style = "attack"
+        self.home_x = field_inches * 0.5
+        self.home_y = field_inches * 0.5
+        # Human-readable state for the HUD/debug view - same "stored purely
+        # for display" role as stuck_kind below.
+        self.play_state = "chasing"
+        # Whatever _pick_aim_point last chose - defaults to the blocker's
+        # own spawn point until the first real update() call sets it for
+        # real, just so nothing reads a None before then.
+        self.aim_x, self.aim_y = self.x, self.y
+        self._aim_is_stationary = False
 
         moment = pymunk.moment_for_box(self.mass, (length * scale, track_width * scale))
         self.body = pymunk.Body(self.mass, moment, body_type=pymunk.Body.DYNAMIC)
@@ -258,6 +287,15 @@ class BlockingBot:
         self.lead_time = preset["lead_time"]
         self.stop_distance = preset["stop_distance"]
 
+    def set_style(self, style):
+        self.style = style if style in self.PLAY_STYLES else "attack"
+
+    def set_home_point(self, home_x, home_y):
+        # Defend's guard point. Clamped to the field so a bad save file or
+        # a future drag-to-place UI can't park it out of bounds.
+        self.home_x = max(0.0, min(self.field_inches, home_x))
+        self.home_y = max(0.0, min(self.field_inches, home_y))
+
     def enable(self, player_bot=None):
         if not self._added_to_space:
             self.space.add(self.body, self.shape)
@@ -279,7 +317,7 @@ class BlockingBot:
         self._astar_cached_path = None
         if hasattr(self, '_prev_stuck_bx'):
             del self._prev_stuck_bx, self._prev_stuck_by
-            del self._prev_stuck_player_x, self._prev_stuck_player_y
+            del self._prev_stuck_target_x, self._prev_stuck_target_y
         self._roll_dda_stats(player_bot)
 
     def _roll_dda_stats(self, player_bot):
@@ -438,25 +476,34 @@ class BlockingBot:
 
         return "mixed"
 
-    def _update_pinned_detection(self, player_bot):
+    def _update_pinned_detection(self, target_x, target_y):
         """
-        Separate concern from is_stuck, which measures progress TOWARD THE
-        PLAYER specifically - this measures whether the blocker has moved
-        AT ALL, regardless of direction or purpose. A blocker wedged
-        against a small obstacle can jitter/slide just enough that
-        is_stuck's progress-toward-player metric reads as marginal
-        progress and never triggers, even though it's genuinely not going
-        anywhere. This catches "hasn't moved in over a second" directly,
-        with a shorter window than is_stuck since being physically pinned
-        is a more acute problem than slow progress.
+        Separate concern from is_stuck, which measures progress TOWARD
+        WHATEVER THIS FRAME IS AIMING AT (see _pick_aim_point) - this
+        measures whether the blocker has moved AT ALL, regardless of
+        direction or purpose. A blocker wedged against a small obstacle can
+        jitter/slide just enough that is_stuck's progress metric reads as
+        marginal progress and never triggers, even though it's genuinely
+        not going anywhere. This catches "hasn't moved in over a second"
+        directly, with a shorter window than is_stuck since being
+        physically pinned is a more acute problem than slow progress.
+
+        target_x/target_y is whatever _pick_aim_point chose this frame -
+        the player for Attack/Mix/Defend-intercepting, or the home spot
+        while Defend is guarding it. That's what makes this work for
+        Defend at all: standing still on purpose at home would otherwise
+        look identical to being wedged against a wall.
 
         Same clear-line-of-sight override as is_stuck, and for the same
         reason: successfully catching up and holding position right next
-        to the player (the actual "block" working as intended) ALSO looks
-        like "hasn't moved much in the last second" from raw displacement
-        alone. Without this, the blocker would reverse and wander off
-        despite having a clean, unobstructed view of the player - it was
-        reading "parked and blocking" as "stuck."
+        to the current target (the actual "block"/"guard" working as
+        intended) ALSO looks like "hasn't moved much in the last second"
+        from raw displacement alone. Without this, the blocker would
+        reverse and wander off despite having a clean, unobstructed view
+        of where it's supposed to be - it was reading "parked and holding"
+        as "stuck." Gated by distance too (PINNED_OVERRIDE_MAX_DIST_IN) -
+        a clear sightline can stay open clear across the whole field while
+        the blocker is actually wedged far away with no way to reach it.
         """
         now = self._elapsed()
         self._pinned_history.append((now, self.x, self.y))
@@ -471,37 +518,45 @@ class BlockingBot:
         displacement = math.hypot(self.x - oldest_x, self.y - oldest_y)
         self.is_pinned = displacement < self.PINNED_DISPLACEMENT_THRESHOLD_IN
 
-        dist_to_player = math.hypot(player_bot.x - self.x, player_bot.y - self.y)
-        if (self.is_pinned and dist_to_player <= self.PINNED_OVERRIDE_MAX_DIST_IN
-                and self._has_clear_line_to(player_bot.x, player_bot.y)):
+        dist_to_target = math.hypot(target_x - self.x, target_y - self.y)
+        if (self.is_pinned and dist_to_target <= self.PINNED_OVERRIDE_MAX_DIST_IN
+                and self._has_clear_line_to(target_x, target_y)):
             self.is_pinned = False
 
-    def _update_stuck_detection(self, player_bot):
+    def _update_stuck_detection(self, target_x, target_y):
         """
         Tracks whether the BLOCKER's own movement is closing the distance
-        to the player, not just whether the raw distance happens to be
-        shrinking - those are different. If the player drives toward a
-        genuinely stuck blocker, raw distance shrinks even though the
-        blocker isn't doing anything useful, which would completely hide
-        the corner-trap problem this is meant to catch.
+        to whatever this frame is aiming at (see _pick_aim_point - the
+        player normally, or Defend's home spot while guarding), not just
+        whether the raw distance happens to be shrinking - those are
+        different. If the target drives toward a genuinely stuck blocker,
+        raw distance shrinks even though the blocker isn't doing anything
+        useful, which would completely hide the corner-trap problem this
+        is meant to catch.
 
-        Isolates the blocker's own contribution by holding the player's
+        Isolates the blocker's own contribution by holding the target's
         position FROZEN at last tick, and asking "how much closer did the
-        blocker's own motion get, ignoring wherever the player went."
+        blocker's own motion get, ignoring wherever the target went."
+
+        Being generic over "the target" instead of hardcoded to the player
+        is what makes this correct for Defend: guarding a stationary home
+        point on purpose isn't "no progress toward the player," it's
+        working as intended, and it shouldn't trip stuck detection into
+        chasing the player anyway.
         """
         now = self._elapsed()
 
         if hasattr(self, '_prev_stuck_bx'):
-            dist_before = math.hypot(self._prev_stuck_player_x - self._prev_stuck_bx,
-                                      self._prev_stuck_player_y - self._prev_stuck_by)
-            dist_if_only_blocker_moved = math.hypot(self._prev_stuck_player_x - self.x,
-                                                     self._prev_stuck_player_y - self.y)
+            dist_before = math.hypot(self._prev_stuck_target_x - self._prev_stuck_bx,
+                                      self._prev_stuck_target_y - self._prev_stuck_by)
+            dist_if_only_blocker_moved = math.hypot(self._prev_stuck_target_x - self.x,
+                                                     self._prev_stuck_target_y - self.y)
             blocker_contribution = dist_before - dist_if_only_blocker_moved
         else:
             blocker_contribution = 0.0
 
         self._prev_stuck_bx, self._prev_stuck_by = self.x, self.y
-        self._prev_stuck_player_x, self._prev_stuck_player_y = player_bot.x, player_bot.y
+        self._prev_stuck_target_x, self._prev_stuck_target_y = target_x, target_y
 
         self._progress_history.append((now, blocker_contribution))
         cutoff = now - self.STUCK_CHECK_WINDOW_SECONDS
@@ -519,10 +574,10 @@ class BlockingBot:
         else:
             self.is_stuck = total_progress < self.STUCK_PROGRESS_THRESHOLD_IN
 
-        if self.is_stuck and self._has_clear_line_to(player_bot.x, player_bot.y):
+        if self.is_stuck and self._has_clear_line_to(target_x, target_y):
             # A demonstrably clear direct view beats waiting on the
             # progress window - no reason to keep chasing a breadcrumb if
-            # a straight line to the player is provably open right now.
+            # a straight line to the target is provably open right now.
             self.is_stuck = False
 
     def _edge_offset_toward(self, target_x, target_y):
@@ -726,22 +781,28 @@ class BlockingBot:
 
         return None
 
-    def _get_astar_lookahead_target(self, player_bot):
+    def _get_astar_lookahead_target(self, target_x, target_y):
         """
-        Runs A* from the blocker's current cell to the player's current
-        cell on the (throttled) occupancy grid, and returns the world
-        (x, y) of a cell a few steps down that path - not the goal itself,
-        and not the very next cell either. Aiming at the immediate next
-        cell would retarget every ~6in of travel (GRID_CELL_SIZE_IN), which
-        produces the same jittery, unstable direction breadcrumbs already
-        ran into up close; aiming at the far goal ignores the path's actual
-        turns. A fixed number of cells ahead (ASTAR_LOOKAHEAD_CELLS) is a
-        simple middle ground - good enough to prove the grid can route the
+        Runs A* from the blocker's current cell to the given target cell
+        on the (throttled) occupancy grid, and returns the world (x, y) of
+        a cell a few steps down that path - not the goal itself, and not
+        the very next cell either. Aiming at the immediate next cell would
+        retarget every ~6in of travel (GRID_CELL_SIZE_IN), which produces
+        the same jittery, unstable direction breadcrumbs already ran into
+        up close; aiming at the far goal ignores the path's actual turns.
+        A fixed number of cells ahead (ASTAR_LOOKAHEAD_CELLS) is a simple
+        middle ground - good enough to prove the grid can route the
         blocker at all. Smoothing the path itself (the "funnel algorithm"
         idea from the DEV_JOURNAL notes) is a later, separate improvement.
 
+        target_x/target_y is whatever _pick_aim_point chose - the player's
+        position normally, or Defend's home spot while guarding it. Was
+        hardcoded to the player's cell before the play-style system
+        existed; now generic over "wherever this style is currently
+        headed," same reasoning as _update_stuck_detection above.
+
         Returns None if no path exists (goal cell unreachable, or the
-        blocker/player is currently standing in a cell the grid marked
+        blocker/target is currently standing in a cell the grid marked
         blocked - possible right at a wall on the query's exact grid line).
 
         The actual A* search only re-runs when something that could change
@@ -753,7 +814,7 @@ class BlockingBot:
         """
         self._get_current_grid()  # ensures self.occupancy_grid is fresh before _astar_path reads it
         start_cell = self._world_to_cell(self.x, self.y)
-        goal_cell = self._world_to_cell(player_bot.x, player_bot.y)
+        goal_cell = self._world_to_cell(target_x, target_y)
 
         cache_key = (start_cell, goal_cell, self._last_grid_build_time)
         if cache_key != self._astar_cache_key:
@@ -862,10 +923,35 @@ class BlockingBot:
         self._committed_breadcrumb_full = None
         return None
 
+    def _pick_aim_point(self, player_bot):
+        """
+        Returns (aim_x, aim_y, is_stationary) - the point update() should
+        steer/predict toward this frame, and whether it's a fixed point
+        (True - skip velocity-lead prediction) or something moving that's
+        worth leading (False).
+
+        Foundations only: Attack and Mix both just chase the player
+        directly right now (same behavior as before this existed) - Mix
+        is meant to eventually predict further out and snap to open grid
+        cells like the demo's version, not just reuse Attack's lead_time.
+        That's a real follow-up, not done here; also sets self.play_state
+        purely for the HUD/debug view, same role as stuck_kind.
+        """
+        if self.style == "defend":
+            dist_to_home = math.hypot(player_bot.x - self.home_x, player_bot.y - self.home_y)
+            if dist_to_home > self.DEFEND_ENGAGE_RADIUS_IN:
+                self.play_state = "guarding home"
+                return self.home_x, self.home_y, True
+            self.play_state = "intercepting"
+            return player_bot.x, player_bot.y, False
+
+        self.play_state = "chasing"
+        return player_bot.x, player_bot.y, False
+
     def update(self, player_bot, dt):
         # player_bot: the existing Robot instance from main.py (needs
         # .x, .y, .angle (degrees), .current_speed, .body.velocity)
-        
+
         if not self.enabled:
             return
 
@@ -894,12 +980,26 @@ class BlockingBot:
         self._prev_player_y = player_bot.y
 
         self._track_player_speed(player_bot, true_speed)
-        self._update_stuck_detection(player_bot)
-        self._update_pinned_detection(player_bot)
 
-        # Predict based entirely on actual physical (in-field) values
-        self.lead_x = player_bot.x + (true_vx * self.lead_time)
-        self.lead_y = player_bot.y + (true_vy * self.lead_time)
+        # Pick what point this style is actually chasing FIRST - stuck/
+        # pinned detection and the lead prediction below both need to know
+        # this before they can run. Attack/Mix chase the player directly;
+        # Defend chases its home spot until the player closes in. Stored on
+        # self so the fallback branches further down (is_stuck/boxed-in)
+        # can reuse it without recomputing or reaching for player_bot.
+        self.aim_x, self.aim_y, self._aim_is_stationary = self._pick_aim_point(player_bot)
+
+        self._update_stuck_detection(self.aim_x, self.aim_y)
+        self._update_pinned_detection(self.aim_x, self.aim_y)
+
+        # A stationary aim point (guarding home) skips the velocity-lead
+        # math entirely, since leading a point that isn't moving would
+        # just be the point itself.
+        if self._aim_is_stationary:
+            self.lead_x, self.lead_y = self.aim_x, self.aim_y
+        else:
+            self.lead_x = self.aim_x + (true_vx * self.lead_time)
+            self.lead_y = self.aim_y + (true_vy * self.lead_time)
 
         # ------------------------------------------------------------------
         # Rays & LiDAR section
@@ -1068,7 +1168,11 @@ class BlockingBot:
             final_dy = math.sin(escape_angle)
 
         elif self.is_stuck:
-            breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
+            # Breadcrumbs are the PLAYER's own trail - a real route only
+            # when the player is actually what's being chased. While
+            # Defend is guarding a fixed home spot, the player's trail has
+            # nothing to do with the route there, so skip straight to A*.
+            breadcrumb_target = None if self._aim_is_stationary else self._find_closest_visible_breadcrumb(player_bot)
             self.active_breadcrumb_target = breadcrumb_target
 
             if breadcrumb_target is not None:
@@ -1091,7 +1195,7 @@ class BlockingBot:
                 # "there's something on my left/right right now," which is
                 # how it kept steering the blocker along dead-end walls
                 # instead of toward a route that actually reaches the player.
-                astar_target = self._get_astar_lookahead_target(player_bot)
+                astar_target = self._get_astar_lookahead_target(self.aim_x, self.aim_y)
                 if astar_target is not None:
                     ax, ay = astar_target
                     a_dx, a_dy = ax - self.x, ay - self.y
@@ -1236,8 +1340,10 @@ class BlockingBot:
                 # A slide is actually possible (not a true dead-end) - try a
                 # breadcrumb first, same reasoning as the is_stuck case: a
                 # proven point beats a guessed ray direction. Only fall back
-                # to the best-clearance ray if nothing's visible yet.
-                breadcrumb_target = self._find_closest_visible_breadcrumb(player_bot)
+                # to the best-clearance ray if nothing's visible yet. Same
+                # "breadcrumbs only mean something while chasing the player"
+                # exception as the is_stuck branch above.
+                breadcrumb_target = None if self._aim_is_stationary else self._find_closest_visible_breadcrumb(player_bot)
                 self.active_breadcrumb_target = breadcrumb_target
                 if breadcrumb_target is not None:
                     bx, by = breadcrumb_target
@@ -1264,11 +1370,11 @@ class BlockingBot:
             # line-of-sight first (unbounded, not just 24in), and only
             # trust the direct line when it's actually clear; otherwise use
             # the occupancy grid's A* route instead of blindly closing in.
-            if self._has_clear_line_to(player_bot.x, player_bot.y):
+            if self._has_clear_line_to(self.aim_x, self.aim_y):
                 final_dx = dx
                 final_dy = dy
             else:
-                astar_target = self._get_astar_lookahead_target(player_bot)
+                astar_target = self._get_astar_lookahead_target(self.aim_x, self.aim_y)
                 if astar_target is not None:
                     ax, ay = astar_target
                     a_dx, a_dy = ax - self.x, ay - self.y
