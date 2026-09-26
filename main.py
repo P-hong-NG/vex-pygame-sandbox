@@ -242,6 +242,7 @@ class SimulatorState:
             "drive_mode": "tank",     
             "motor_cartridge": "green", #(red, green, blue)
             "blocker_difficulty": "medium",
+            "blocker_style": "attack",
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
             "keybinds": {
@@ -404,6 +405,7 @@ def save_settings():
 load_all_data()
 bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
 blocker.set_difficulty(sim.settings.get("blocker_difficulty", "medium"))
+blocker.set_style(sim.settings.get("blocker_style", "attack"))
 
 # =====================================================================
 # 4. PHYSICS & MOVEMENT ENGINE
@@ -842,10 +844,24 @@ def update_blocker_diff(val):
     sim.settings["blocker_difficulty"] = diff
     save_settings()
 
+def update_blocker_style(val):
+    style = val.lower()
+    blocker.set_style(style)  # same lowercase-to-match-dict pattern as difficulty above
+    sim.settings["blocker_style"] = style
+    save_settings()
+
 btn_blocker = UIButton(FIELD_PIXELS + 20, 400, 130, 28, "Toggle Blocker", action_callback=toggle_blocker)
 diff_list = ["Easy", "Medium", "Hard"]
 curr_diff = sim.settings.get("blocker_difficulty").capitalize()
 blocker_diff_dropdown = UIDropdown(FIELD_PIXELS + 160, 400, 130, 28, diff_list, diff_list.index(curr_diff), update_blocker_diff)
+
+# Play style - foundations only (Attack/Defend actually differ, Mix is not
+# differentiated from Attack yet, see blocking_bot.py's _pick_aim_point).
+# Sits at y=440, clear of everything else in the drive sidebar - the next
+# fixed element down is "Bot Storage" at y=680.
+style_list = ["Attack", "Defend", "Mix"]
+curr_style = sim.settings.get("blocker_style", "attack").capitalize()
+blocker_style_dropdown = UIDropdown(FIELD_PIXELS + 20, 440, 270, 28, style_list, style_list.index(curr_style), update_blocker_style)
 
 btn_drive_tank = UIButton(FIELD_PIXELS + 20, 70, 90, 26, "Tank", action_callback=set_drive_tank)
 btn_drive_arcade = UIButton(FIELD_PIXELS + 120, 70, 90, 26, "Arcade", action_callback=set_drive_arcade)
@@ -862,7 +878,7 @@ btn_reset.default_color = (180, 60, 60) # Red
 btn_reset_center.default_color = (80, 80, 180) # Blue
 btn_auton.default_color = GREEN
 
-drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker, blocker_diff_dropdown]
+drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker, blocker_diff_dropdown, blocker_style_dropdown]
 
 #Edit 1 - ui.py
 def set_field_image(): sim.settings["field_source"] = "image"; save_settings()
