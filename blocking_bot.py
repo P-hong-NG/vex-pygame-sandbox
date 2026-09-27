@@ -1654,6 +1654,32 @@ class BlockingBot:
             target_px = (target_x * scale, field_pixels - target_y * scale)
             pygame.draw.line(screen, line_color, (center_x, center_y), target_px, 2)
 
+        if self.style == "defend":
+            # Home point marker - drawn any time Defend is picked, not just
+            # in show_calc, since this is the thing the user actually drags
+            # around in Edit mode and needs to see regardless of debug view.
+            home_px_x = self.home_x * scale
+            home_px_y = field_pixels - (self.home_y * scale)
+            radius_px = self.DEFEND_ENGAGE_RADIUS_IN * scale
+            # Dashed engage-radius ring so it doesn't get mistaken for a
+            # solid wall or hitbox - built out of short arcs since pygame
+            # has no native dashed-circle primitive.
+            dash_count = 24
+            for i in range(dash_count):
+                if i % 2 == 0:
+                    start_angle = (i / dash_count) * 2 * math.pi
+                    end_angle = ((i + 1) / dash_count) * 2 * math.pi
+                    dash_rect = (home_px_x - radius_px, home_px_y - radius_px, radius_px * 2, radius_px * 2)
+                    pygame.draw.arc(screen, (80, 160, 255), dash_rect, start_angle, end_angle, 2)
+            # Flag-style marker at the exact home point - triangle on a pole,
+            # same idea as the standalone JS demo's defend visualization
+            pole_top = (home_px_x, home_px_y - 18)
+            pole_bottom = (home_px_x, home_px_y + 6)
+            pygame.draw.line(screen, (80, 160, 255), pole_bottom, pole_top, 3)
+            flag_pts = [pole_top, (home_px_x + 14, home_px_y - 13), (home_px_x, home_px_y - 8)]
+            pygame.draw.polygon(screen, (80, 160, 255), flag_pts)
+            pygame.draw.circle(screen, (30, 90, 180), (home_px_x, home_px_y), 4)
+
         if show_calc and self.active_breadcrumb_target is not None:
             bx, by = self.active_breadcrumb_target
             bc_px_x = bx * scale
