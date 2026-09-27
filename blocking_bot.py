@@ -168,6 +168,13 @@ class BlockingBot:
                                      # standard 144in field gives real
                                      # "patrol vs. pounce" separation instead
                                      # of engaging from almost anywhere
+    MIX_PREDICT_SECONDS = 1.0  # how far ahead Mix guesses the player's
+                                # position, off their CURRENT velocity - much
+                                # further out than the reactive lead_time
+                                # (0.15-0.5s depending on difficulty) used
+                                # for aiming at a target that's already
+                                # basically where it's going to be. Matches
+                                # the demo's PREDICT_SECONDS.
 
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
@@ -208,7 +215,7 @@ class BlockingBot:
         # own spawn point until the first real update() call sets it for
         # real, just so nothing reads a None before then.
         self.aim_x, self.aim_y = self.x, self.y
-        self._aim_is_stationary = False
+        self._aim_skip_lead = False
 
         moment = pymunk.moment_for_box(self.mass, (length * scale, track_width * scale))
         self.body = pymunk.Body(self.mass, moment, body_type=pymunk.Body.DYNAMIC)
@@ -923,19 +930,39 @@ class BlockingBot:
         self._committed_breadcrumb_full = None
         return None
 
-    def _pick_aim_point(self, player_bot):
+    def _nearest_open_cell(self, row, col):
         """
-        Returns (aim_x, aim_y, is_stationary) - the point update() should
-        steer/predict toward this frame, and whether it's a fixed point
-        (True - skip velocity-lead prediction) or something moving that's
-        worth leading (False).
+        Returns the closest open (row, col) to the given cell, expanding
+        outward ring by ring - same "closest open ground" idea the demo's
+        JS version used for its Mix style. Returns the same cell straight
+        back if it's already open (the common case), or as a last resort if
+        nothing on the whole grid is open (shouldn't happen in practice).
+        """
+        if not self.occupancy_grid[row][col]:
+            return (row, col)
+        max_radius = max(self.grid_rows, self.grid_cols)
+        for radius in range(1, max_radius):
+            for dr in range(-radius, radius + 1):
+                for dc in range(-radius, radius + 1):
+                    nr, nc = row + dr, col + dc
+                    if 0 <= nr < self.grid_rows and 0 <= nc < self.grid_cols:
+                        if not self.occupancy_grid[nr][nc]:
+                            return (nr, nc)
+        return (row, col)
 
-        Foundations only: Attack and Mix both just chase the player
-        directly right now (same behavior as before this existed) - Mix
-        is meant to eventually predict further out and snap to open grid
-        cells like the demo's version, not just reuse Attack's lead_time.
-        That's a real follow-up, not done here; also sets self.play_state
-        purely for the HUD/debug view, same role as stuck_kind.
+    def _pick_aim_point(self, player_bot, player_vx, player_vy):
+        """
+        Returns (aim_x, aim_y, skip_lead_time) - the point update() should
+        steer toward this frame, and whether it's already a "final" target
+        that shouldn't get the normal velocity-lead prediction piled on top
+        (True - a fixed point, or something that already baked its own
+        prediction in), vs. something worth leading the ordinary way
+        (False - chasing the player's raw current position).
+
+        Also sets self.play_state, purely for the HUD/debug view, same
+        role as stuck_kind - "guarding home" specifically is also read
+        elsewhere in update() to skip trying the player's breadcrumb trail
+        while parked at a fixed point that has nothing to do with it.
         """
         if self.style == "defend":
             dist_to_home = math.hypot(player_bot.x - self.home_x, player_bot.y - self.home_y)
@@ -944,6 +971,28 @@ class BlockingBot:
                 return self.home_x, self.home_y, True
             self.play_state = "intercepting"
             return player_bot.x, player_bot.y, False
+
+        if self.style == "mix":
+            # Guess further ahead than the reactive lead_time, off the
+            # player's actual current velocity - then snap onto the
+            # nearest open grid cell if that guess lands inside an
+            # obstacle (predicting into a wall doesn't help route around
+            # it, and A*/rays downstream would just be aiming at a point
+            # they can never actually reach). This IS the prediction, so
+            # it's returned as already-final - no extra lead on top.
+            pred_x = player_bot.x + player_vx * self.MIX_PREDICT_SECONDS
+            pred_y = player_bot.y + player_vy * self.MIX_PREDICT_SECONDS
+            pred_x = max(0.0, min(self.field_inches, pred_x))
+            pred_y = max(0.0, min(self.field_inches, pred_y))
+
+            self._get_current_grid()
+            row, col = self._world_to_cell(pred_x, pred_y)
+            if self.occupancy_grid[row][col]:
+                row, col = self._nearest_open_cell(row, col)
+                pred_x, pred_y = self._cell_to_world(row, col)
+
+            self.play_state = "predicting"
+            return pred_x, pred_y, True
 
         self.play_state = "chasing"
         return player_bot.x, player_bot.y, False
@@ -983,19 +1032,22 @@ class BlockingBot:
 
         # Pick what point this style is actually chasing FIRST - stuck/
         # pinned detection and the lead prediction below both need to know
-        # this before they can run. Attack/Mix chase the player directly;
-        # Defend chases its home spot until the player closes in. Stored on
-        # self so the fallback branches further down (is_stuck/boxed-in)
-        # can reuse it without recomputing or reaching for player_bot.
-        self.aim_x, self.aim_y, self._aim_is_stationary = self._pick_aim_point(player_bot)
+        # this before they can run. Attack chases the player directly;
+        # Defend chases its home spot until the player closes in; Mix
+        # chases a predicted future position. Stored on self so the
+        # fallback branches further down (is_stuck/boxed-in) can reuse it
+        # without recomputing or reaching for player_bot.
+        self.aim_x, self.aim_y, self._aim_skip_lead = self._pick_aim_point(player_bot, true_vx, true_vy)
 
         self._update_stuck_detection(self.aim_x, self.aim_y)
         self._update_pinned_detection(self.aim_x, self.aim_y)
 
-        # A stationary aim point (guarding home) skips the velocity-lead
-        # math entirely, since leading a point that isn't moving would
-        # just be the point itself.
-        if self._aim_is_stationary:
+        # Some aim points are already "final" and shouldn't get the normal
+        # velocity-lead math piled on top - a stationary home point (leading
+        # something that isn't moving would just be the point itself), or
+        # Mix's predicted point (which already baked its own, longer-range
+        # prediction in via MIX_PREDICT_SECONDS).
+        if self._aim_skip_lead:
             self.lead_x, self.lead_y = self.aim_x, self.aim_y
         else:
             self.lead_x = self.aim_x + (true_vx * self.lead_time)
@@ -1172,7 +1224,9 @@ class BlockingBot:
             # when the player is actually what's being chased. While
             # Defend is guarding a fixed home spot, the player's trail has
             # nothing to do with the route there, so skip straight to A*.
-            breadcrumb_target = None if self._aim_is_stationary else self._find_closest_visible_breadcrumb(player_bot)
+            # (Mix's predicted point still counts as "chasing the player" -
+            # only the stationary home-guard case is excluded here.)
+            breadcrumb_target = None if self.play_state == "guarding home" else self._find_closest_visible_breadcrumb(player_bot)
             self.active_breadcrumb_target = breadcrumb_target
 
             if breadcrumb_target is not None:
@@ -1343,7 +1397,7 @@ class BlockingBot:
                 # to the best-clearance ray if nothing's visible yet. Same
                 # "breadcrumbs only mean something while chasing the player"
                 # exception as the is_stuck branch above.
-                breadcrumb_target = None if self._aim_is_stationary else self._find_closest_visible_breadcrumb(player_bot)
+                breadcrumb_target = None if self.play_state == "guarding home" else self._find_closest_visible_breadcrumb(player_bot)
                 self.active_breadcrumb_target = breadcrumb_target
                 if breadcrumb_target is not None:
                     bx, by = breadcrumb_target
