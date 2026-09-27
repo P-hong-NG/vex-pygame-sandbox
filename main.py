@@ -268,7 +268,10 @@ class SimulatorState:
         self.dragging_blocker = False
         self.blocker_drag_offset_x = 0.0
         self.blocker_drag_offset_y = 0.0
-        self.active_textbox = None  
+        self.dragging_home_point = False
+        self.home_drag_offset_x = 0.0
+        self.home_drag_offset_y = 0.0
+        self.active_textbox = None
         self.textbox_value = ""
         self.add_shape_dropdown_open = False
         self.add_shape_type = "rect"  
@@ -365,6 +368,9 @@ def load_all_data():
                     # call) - sync it directly, same as blocker's own drag
                     # handler already does
                     blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
+                elif tag == "HOME_POINT" and len(parts) == 3:
+                    _, hx, hy = parts
+                    blocker.set_home_point(float(hx), float(hy))
 
 def save_field_data():
     with open(FIELD_FILE, "w") as f:
@@ -380,6 +386,7 @@ def save_field_data():
                 f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
         f.write(f"BLOCKER_START {blocker.start_x} {blocker.start_y}\n")
+        f.write(f"HOME_POINT {blocker.home_x} {blocker.home_y}\n")
 
 def save_settings():
     try:
@@ -1835,6 +1842,19 @@ while running:
                     fake_click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(-100, -100), button=1)
                     for element in edit_shape_txt + edit_robot_ui:
                         element.handle_event(fake_click, -100, -100)
+                # Home point drag focus - only clickable in Defend, since
+                # that's the only style that reads home_x/home_y at all.
+                # Checked before the blocker's own body so the flag marker
+                # (which sits well away from the blocker most of the time)
+                # doesn't get shadowed by a wider blocker hitbox.
+                hdx, hdy = mx - blocker.home_x * SCALE, my - (FIELD_PIXELS - blocker.home_y * SCALE)
+                h_radius = 18
+                if blocker.enabled and blocker.style == "defend" and hdx*hdx + hdy*hdy <= h_radius*h_radius:
+                    sim.dragging_home_point = True
+                    sim.home_drag_offset_x = (mx / SCALE) - blocker.home_x
+                    sim.home_drag_offset_y = ((FIELD_PIXELS - my) / SCALE) - blocker.home_y
+                    continue
+
                 # Check blocker drag focus first - only draggable while
                 # actually placed on the field (matches bot's own pattern,
                 # just gated on blocker.enabled too since an off-field
@@ -1893,6 +1913,9 @@ while running:
             mx, my = event.pos
             if sim.current_mode == "edit":
                 if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
+                elif sim.dragging_home_point:
+                    sim.dragging_home_point = False
+                    save_field_data()
                 elif sim.dragging_blocker:
                     sim.dragging_blocker = False
                     blocker.start_x, blocker.start_y = blocker.x, blocker.y
@@ -1923,6 +1946,13 @@ while running:
                         new_r = m_fx - s["x"]
                         s["radius"] = max(1.0, new_r)
 
+                elif sim.dragging_home_point:
+                    # No physics body to sync here - home_x/home_y is just a
+                    # target coordinate the Defend style reads, not a real
+                    # object on the field. set_home_point() also clamps to
+                    # the field bounds, so no manual max/min needed like the
+                    # blocker's own drag does.
+                    blocker.set_home_point(m_fx - sim.home_drag_offset_x, m_fy - sim.home_drag_offset_y)
                 elif sim.dragging_blocker:
                     blocker.x = m_fx - sim.blocker_drag_offset_x
                     blocker.y = m_fy - sim.blocker_drag_offset_y
