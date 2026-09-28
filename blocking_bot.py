@@ -215,6 +215,10 @@ class BlockingBot:
         # own spawn point until the first real update() call sets it for
         # real, just so nothing reads a None before then.
         self.aim_x, self.aim_y = self.x, self.y
+        # How fast the player is closing the physical gap, updated every
+        # update() call - starts at 0 (no rush happening) until the first
+        # real frame runs.
+        self.player_closing_speed = 0.0
         self._aim_skip_lead = False
 
         moment = pymunk.moment_for_box(self.mass, (length * scale, track_width * scale))
@@ -1029,6 +1033,18 @@ class BlockingBot:
         self._prev_player_y = player_bot.y
 
         self._track_player_speed(player_bot, true_speed)
+
+        # Actual physical gap to the player right now, not the lead/aim
+        # point used below - this is specifically for telling how fast the
+        # player is closing in on the blocker's real body, so a rush attempt
+        # can be caught regardless of which play style picked the aim point.
+        player_dist = math.hypot(player_bot.x - self.x, player_bot.y - self.y)
+        if not hasattr(self, '_prev_player_dist'):
+            self._prev_player_dist = player_dist
+        # Positive = player closing the gap, negative = player pulling away.
+        # Shrinking distance is a closing player, so previous minus current.
+        self.player_closing_speed = (self._prev_player_dist - player_dist) / dt if dt > 0 else 0.0
+        self._prev_player_dist = player_dist
 
         # Pick what point this style is actually chasing FIRST - stuck/
         # pinned detection and the lead prediction below both need to know
