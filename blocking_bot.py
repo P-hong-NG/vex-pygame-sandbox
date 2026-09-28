@@ -73,6 +73,21 @@ class BlockingBot:
                                      # facing the wrong way" - candidate for
                                      # backing up instead of just rotating in place
 
+    # === Rush back-off constants ===
+    RUSH_CLOSING_SPEED_IN_PER_S = 50.0  # player closing the gap faster than
+                                        # this counts as a rush - picked near
+                                        # medium's own max_speed, since the
+                                        # blocker mathematically can't outdrive
+                                        # something closing in that fast
+    RUSH_TRIGGER_DIST_IN = 8.0  # only backs off once actually close - a
+                                # rush from far away just becomes a normal
+                                # chase, this is for the last few inches
+    RUSH_BACKOFF_SPEED_FACTOR = 0.6  # fraction of max_speed used to open
+                                     # space back up during a rush, weaker
+                                     # than REVERSE_SPEED_FACTOR since this
+                                     # is a controlled step back, not an
+                                     # escape maneuver
+
     #===Partial-block hysteresis (prevents flip-flopping near a symmetric obstacle)===
     ESCAPE_BIAS_DEADZONE_DEG = 5.0  # relative_player_angle has to be at least
                                      # this far off dead-ahead before we trust
@@ -219,6 +234,7 @@ class BlockingBot:
         # update() call - starts at 0 (no rush happening) until the first
         # real frame runs.
         self.player_closing_speed = 0.0
+        self.player_dist = 0.0
         self._aim_skip_lead = False
 
         moment = pymunk.moment_for_box(self.mass, (length * scale, track_width * scale))
@@ -1038,13 +1054,13 @@ class BlockingBot:
         # point used below - this is specifically for telling how fast the
         # player is closing in on the blocker's real body, so a rush attempt
         # can be caught regardless of which play style picked the aim point.
-        player_dist = math.hypot(player_bot.x - self.x, player_bot.y - self.y)
+        self.player_dist = math.hypot(player_bot.x - self.x, player_bot.y - self.y)
         if not hasattr(self, '_prev_player_dist'):
-            self._prev_player_dist = player_dist
+            self._prev_player_dist = self.player_dist
         # Positive = player closing the gap, negative = player pulling away.
         # Shrinking distance is a closing player, so previous minus current.
-        self.player_closing_speed = (self._prev_player_dist - player_dist) / dt if dt > 0 else 0.0
-        self._prev_player_dist = player_dist
+        self.player_closing_speed = (self._prev_player_dist - self.player_dist) / dt if dt > 0 else 0.0
+        self._prev_player_dist = self.player_dist
 
         # Pick what point this style is actually chasing FIRST - stuck/
         # pinned detection and the lead prediction below both need to know
@@ -1492,6 +1508,17 @@ class BlockingBot:
             # the blocker - rays only look forward, so this can't tell if
             # it's about to back into something.
             forward_speed = -self.max_speed * self.REVERSE_SPEED_FACTOR
+
+        # Rush check - separate from the misalignment back-up above, this
+        # one fires even while lined up straight at the player. Before this,
+        # a player closing in fast just meant forward_speed got clamped to 0
+        # by distance_factor - the blocker would freeze in place and let the
+        # player drive straight into it instead of giving ground. Checked
+        # against the player's actual position, not the lead/aim point, so
+        # this still catches a rush during Defend or Mix.
+        if (self.player_dist <= (player_bot.length / 2 + self.length / 2 + self.RUSH_TRIGGER_DIST_IN)
+                and self.player_closing_speed > self.RUSH_CLOSING_SPEED_IN_PER_S):
+            forward_speed = -self.max_speed * self.RUSH_BACKOFF_SPEED_FACTOR
 
         self.body.angular_velocity = math.radians(omega)
         heading = math.radians(self.angle)
