@@ -845,6 +845,15 @@ DEBUG_VIEW_MODES = ["calc", "grid", "all"]
 def cycle_debug_view():
     idx = DEBUG_VIEW_MODES.index(sim.debug_view_mode)
     sim.debug_view_mode = DEBUG_VIEW_MODES[(idx + 1) % len(DEBUG_VIEW_MODES)]
+
+def cycle_nav_mode():
+    # N key in Drive mode - lets the two navigation modes actually get
+    # driven and compared back to back instead of just reading about the
+    # difference. Not saved to settings on purpose - this resets to
+    # "reactive" every run since it's still just a testing toggle, not a
+    # feature the user picks and keeps.
+    idx = blocker.NAV_MODES.index(blocker.nav_mode)
+    blocker.set_nav_mode(blocker.NAV_MODES[(idx + 1) % len(blocker.NAV_MODES)])
 def update_blocker_diff(val):
     diff = val.lower()
     blocker.set_difficulty(diff) #Lowercase the selected option ("Easy" to "easy") to match the blocker class difficulty dictionary
@@ -1292,6 +1301,13 @@ def draw_everything():
             # Small always-visible label so a screenshot alone shows which
             # of the 3 debug views it's from, without having to caption it
             draw_small(f"Debug view (V to cycle): {sim.debug_view_mode}", 18, 92, LIGHT_GRAY)
+            # Same idea for the nav mode test toggle - needs to be visible
+            # while driving, otherwise there's no way to tell which mode is
+            # actually running without checking the code. Sits right under
+            # the debug view line, same 18px spacing as the rest of this
+            # HUD stack - the DDA stat lines below got pushed down to match
+            # instead of sitting on top of this.
+            draw_small(f"Nav mode (N to cycle): {blocker.nav_mode}", 18, 110, LIGHT_GRAY)
 
         if blocker.enabled and sim.current_mode == "drive":
             # Debug-only markers for the breadcrumb trail (#1/#2) - one small
@@ -1307,11 +1323,13 @@ def draw_everything():
             # Debug-only readout for the new DDA stat tracking -- confirms
             # the numbers look sane before blocking_bot.py is wired to read
             # them. Safe to remove once that hookup is done and trusted.
+            # Shifted down 18px from where these used to sit (110/128/146)
+            # to make room for the nav mode line above without overlapping.
             stat_color = GREEN if bot.has_enough_stats else LIGHT_GRAY
-            draw_small(f"Player avg speed: {bot.avg_speed:.1f} in/s", 18, 110, stat_color)
-            draw_small(f"Player avg turn rate: {bot.avg_turn_rate:.1f} deg/s", 18, 128, stat_color)
+            draw_small(f"Player avg speed: {bot.avg_speed:.1f} in/s", 18, 128, stat_color)
+            draw_small(f"Player avg turn rate: {bot.avg_turn_rate:.1f} deg/s", 18, 146, stat_color)
             if not bot.has_enough_stats:
-                draw_small("(warming up -- not enough data yet)", 18, 146, LIGHT_GRAY)
+                draw_small("(warming up -- not enough data yet)", 18, 164, LIGHT_GRAY)
 
     if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
         for i, s in enumerate(sim.shapes):
@@ -2001,6 +2019,8 @@ while running:
                     save_settings()
             elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_v:
                 cycle_debug_view()
+            elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_n:
+                cycle_nav_mode()
             elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
                 is_typing = False
                 if sim.current_page == "edit 1":
