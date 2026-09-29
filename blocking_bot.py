@@ -191,6 +191,16 @@ class BlockingBot:
                                 # basically where it's going to be. Matches
                                 # the demo's PREDICT_SECONDS.
 
+    # === Navigation mode - testing scaffold, not a picked-for-good feature yet ===
+    # "reactive" is everything already in update() below: rays lead, A* only
+    # steps in once the whole ray fan comes back clear. "astar_lead" flips
+    # that around - steers straight off the pathfinder every frame, same
+    # idea the standalone demo used, with rays doing nothing but the
+    # close-range obstacle_brake safety. Added so both can actually be
+    # driven and compared side by side before picking one for real, not to
+    # replace the reactive system outright.
+    NAV_MODES = ("reactive", "astar_lead")
+
     def __init__(self, space, scale, field_inches, difficulty="medium",
                  length=16.25, track_width=14.5, mass=14.0):
         self.space = space
@@ -223,6 +233,9 @@ class BlockingBot:
         self.style = "attack"
         self.home_x = field_inches * 0.5
         self.home_y = field_inches * 0.5
+        # Testing scaffold - see NAV_MODES above. Starts on "reactive" so
+        # nothing about default behavior changes just from this existing.
+        self.nav_mode = "reactive"
         # Human-readable state for the HUD/debug view - same "stored purely
         # for display" role as stuck_kind below.
         self.play_state = "chasing"
@@ -316,6 +329,9 @@ class BlockingBot:
 
     def set_style(self, style):
         self.style = style if style in self.PLAY_STYLES else "attack"
+
+    def set_nav_mode(self, nav_mode):
+        self.nav_mode = nav_mode if nav_mode in self.NAV_MODES else "reactive"
 
     def set_home_point(self, home_x, home_y):
         # Defend's guard point. Clamped to the field so a bad save file or
@@ -1233,7 +1249,26 @@ class BlockingBot:
         if fast_react_triggered and self._has_clear_line_to(player_bot.x, player_bot.y):
             fast_react_triggered = False
 
-        if self.is_pinned:
+        if self.nav_mode == "astar_lead":
+            # Testing branch - see NAV_MODES up top. Skips the whole
+            # reactive cascade below (pinned/fast_react/is_stuck/ray
+            # weighting) and steers straight off the pathfinder every
+            # frame instead. The ray fan still ran above and still feeds
+            # obstacle_brake, so close-range safety isn't gone, it's just
+            # not what's choosing the direction anymore.
+            lookahead = self._get_astar_lookahead_target(self.aim_x, self.aim_y)
+            if lookahead is not None:
+                final_dx = lookahead[0] - self.x
+                final_dy = lookahead[1] - self.y
+                self.active_astar_path = self._astar_cached_path
+            else:
+                # No path found (goal cell blocked, unreachable, etc) -
+                # fall back to a straight line at the aim point rather
+                # than freezing in place.
+                final_dx = self.aim_x - self.x
+                final_dy = self.aim_y - self.y
+
+        elif self.is_pinned:
             # Hasn't physically moved in over a second, regardless of what
             # the ray pattern or is_stuck's progress-toward-player metric
             # say - this is the most direct, most certain signal of the
