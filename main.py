@@ -1138,6 +1138,22 @@ def draw_textbox(rect, label, value, is_active):
     draw_small(label, rect.x, rect.y - 16, LIGHT_GRAY)
     screen.blit(SMALL_FONT.render(str(value), True, BLACK), (rect.x + 4, rect.y + 3))
 
+def draw_ui_list(elements, surface):
+    # Same two-pass fix used for drive_ui's diff/style dropdown overlap
+    # (Sep 28 bug), pulled out into one shared function instead of copying
+    # the same two loops everywhere a UI list might contain a dropdown.
+    # Closed elements draw first in their normal order, then any dropdown
+    # that's actually open gets a second pass on top of everything else -
+    # so an open dropdown can never end up buried under something drawn
+    # right after it in the list, regardless of where in the list either
+    # one sits.
+    for element in elements:
+        if not (isinstance(element, UIDropdown) and element.is_open):
+            element.draw(surface)
+    for element in elements:
+        if isinstance(element, UIDropdown) and element.is_open:
+            element.draw(surface)
+
 def draw_everything():
     mx, my = pygame.mouse.get_pos()
     m_fx = mx / SCALE if (0 <= mx < FIELD_PIXELS and 0 <= my < FIELD_PIXELS) else -1
@@ -1415,9 +1431,12 @@ def draw_everything():
             draw_small("Drivetrain gear ratio:", FIELD_PIXELS + 20, 190, LIGHT_GRAY)
             draw_small("Motor Gear Cartridge:", FIELD_PIXELS + 20, 310, LIGHT_GRAY)
 
-            # Draw all the components
-            for element in studio_1_ui:
-                element.draw(screen)
+            # Draw all the components - same latent overlap risk as
+            # drive_ui had (cartridge_dropdown sits ahead of studio_wrad_box/
+            # btn_w275/etc in this list), so this goes through the same
+            # shared fix even though nobody's actually reported it breaking
+            # here yet
+            draw_ui_list(studio_1_ui, screen)
 
         elif sim.current_page == "studio 2":
         # Header indicator
@@ -1494,21 +1513,11 @@ def draw_everything():
             speed_slider.draw(screen)
             turn_slider.draw(screen)
 
-            # Drawn in two passes, not one straight loop - blocker_diff_dropdown
-            # comes before blocker_style_dropdown in drive_ui, so when diff's
-            # open option list dropped down far enough, style's own box (drawn
-            # right after) painted over top of it (screenshot from Sep 28 -
-            # "Easy/Medium/Hard" list showing cut off under the style box).
-            # Closed elements draw first in their normal order, then whichever
-            # dropdown is actually open gets a second pass on top of
-            # everything else, so its open list can never end up buried under
-            # a box that just happens to come later in the list.
-            for element in drive_ui:
-                if not (isinstance(element, UIDropdown) and element.is_open):
-                    element.draw(screen)
-            for element in drive_ui:
-                if isinstance(element, UIDropdown) and element.is_open:
-                    element.draw(screen)
+            # Was two loops written out by hand here (the Sep 28 dropdown
+            # overlap fix) - pulled into draw_ui_list() above so the same
+            # fix can be reused on any other list that might mix a dropdown
+            # in with other elements, instead of copy-pasting it again.
+            draw_ui_list(drive_ui, screen)
 
             # Drive mode inventory HUD
             inv_y = 180
