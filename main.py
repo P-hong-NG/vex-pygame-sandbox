@@ -1493,9 +1493,22 @@ def draw_everything():
 
             speed_slider.draw(screen)
             turn_slider.draw(screen)
-        
+
+            # Drawn in two passes, not one straight loop - blocker_diff_dropdown
+            # comes before blocker_style_dropdown in drive_ui, so when diff's
+            # open option list dropped down far enough, style's own box (drawn
+            # right after) painted over top of it (screenshot from Sep 28 -
+            # "Easy/Medium/Hard" list showing cut off under the style box).
+            # Closed elements draw first in their normal order, then whichever
+            # dropdown is actually open gets a second pass on top of
+            # everything else, so its open list can never end up buried under
+            # a box that just happens to come later in the list.
             for element in drive_ui:
-                element.draw(screen)
+                if not (isinstance(element, UIDropdown) and element.is_open):
+                    element.draw(screen)
+            for element in drive_ui:
+                if isinstance(element, UIDropdown) and element.is_open:
+                    element.draw(screen)
 
             # Drive mode inventory HUD
             inv_y = 180
