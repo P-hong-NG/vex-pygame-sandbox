@@ -299,6 +299,19 @@ While testing that, I ran into a bug: the rays and the line showing where the Bl
 
 For now I just made the rays stop drawing entirely while in Edit mode, since a frozen, wrong picture is worse than no picture at all. The Blocker can be dragged around cleanly now, but the rays only come back to life once I switch back to Drive mode and the Blocker starts actually "thinking" again.
 
+## [September 20th, 2026] - Giving the Blocker an actual map of the field
+
+===The Problem=== Blocker kept running into the walls with the ray system: it can only tell what’s directly in front of it at that time. It’s good for reacting to something that just showed up, but has zero sense of the field as a whole. The corner-wedging bug and the wall-hugging bugs I had been fixing were really all the same root issue - the Blocker has no actual plan, just a reflex.
+
+===Brainstorming & Solutions=== I looked into two different ways to give the Blocker a “whole map” awareness:
+
+_1. Visibility Graph: Connect the corners of every obstacle together with straight lines a robot could legally travel along, then search through that graph to find a route. This is the classic way of many pathfinding algorithms that I have looked into.
+_2. Grid-Based Occupancy Map + A* (Chosen Strategy): Rasterize the whole field into a grid of small cells, mark each one open or blocked based on what’s currently there, and run A* search over that grid to find a path.
+
+===Why Option 2 Wins=== The deciding factor came down to one thing specific to this sim: every obstacle on the field is fully user-editable in Edit mode. A visibility graph is built directly FROM the obstacle geometry, so the second something gets dragged, resized, or added, the whole graph is stale and has to be rebuilt by hand - and I’d have to write separate logic just for “what happens if two obstacles start overlapping”. A grid bypasses all of that: it just gets rasterized fresh off whatever shapes currently exist, with no extra steps. For a sandbox where the field itself is what people are supposed to customize, that makes the grid the much better choice.
+
+===Status=== Built and tested the occupancy grid rasterizer and the A* search over it independently. Haven’t wired either one into the Blocker’s actual steering yet; that’s the next step. To be clear, this isn’t replacing the ray system - rays are still the right tool for fast, close-range reacting (something just appeared right in front of the Blocker, no time to replan), while A* is for the bigger, whole-field-level decision like which path is better.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
