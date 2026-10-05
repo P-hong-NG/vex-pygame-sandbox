@@ -315,6 +315,8 @@ _2. Grid-Based Occupancy Map + A* (Chosen Strategy): Rasterize the whole field i
 
 ===Status=== Built and tested the occupancy grid rasterizer and the A* search over it independently. Haven’t wired either one into the Blocker’s actual steering yet; that’s the next step. To be clear, this isn’t replacing the ray system - rays are still the right tool for fast, close-range reacting (something just appeared right in front of the Blocker, no time to replan), while A* is for the bigger, whole-field-level decision like which path is better.
 
+<img src="images/sep22-grid.png" alt="The field has a smaller grid system of 24 by 24 drawn with gray lines that turns red when there's a game object inside its areas" width="400">
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
