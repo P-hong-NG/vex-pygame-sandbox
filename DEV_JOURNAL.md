@@ -251,6 +251,9 @@ So now the Robot keeps a short list of its own past positions, saved every fract
 
 This doesn’t change how the Blocker drives yet - right now it’s just data being collected and a way to see it. The next step is having the Blocker actually use one of these points as a target when it can’t see the player directly.
 
+<img src="images/sep6-breadcrumbs.png" alt="Breadcrumbs or orange dots left behind the user's driving" width="400">
+
+
 ## [September 8th, 2026] - Breadcrumb targeting kept changing its mind
 
 I ran into two separate problems while testing the breadcrumb system, and both came down to the same root issue: the Blocker was switching its decision too easily, instead of sticking with a choice long enough for it to work.
