@@ -271,6 +271,7 @@ class SimulatorState:
         self.dragging_home_point = False
         self.home_drag_offset_x = 0.0
         self.home_drag_offset_y = 0.0
+        self.dragging_defend_radius = False
         self.active_textbox = None
         self.textbox_value = ""
         self.add_shape_dropdown_open = False
@@ -371,6 +372,18 @@ def load_all_data():
                 elif tag == "HOME_POINT" and len(parts) == 3:
                     _, hx, hy = parts
                     blocker.set_home_point(float(hx), float(hy))
+                elif tag == "DEFEND_RADIUS" and len(parts) == 2:
+                    blocker.set_defend_radius(float(parts[1]))
+
+def defend_handle_pixel():
+    # Grab handle for the Defend ring - sits on the ring's right edge, or
+    # the left edge when the right one would fall off the field. Only the
+    # distance from the flag matters when dragging, so the side is just
+    # about keeping the handle on screen.
+    side = 1 if blocker.home_x + blocker.defend_radius_in <= blocker.field_inches else -1
+    hx = (blocker.home_x + side * blocker.defend_radius_in) * SCALE
+    hy = FIELD_PIXELS - blocker.home_y * SCALE
+    return hx, hy
 
 def save_field_data():
     with open(FIELD_FILE, "w") as f:
@@ -387,6 +400,7 @@ def save_field_data():
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
         f.write(f"BLOCKER_START {blocker.start_x} {blocker.start_y}\n")
         f.write(f"HOME_POINT {blocker.home_x} {blocker.home_y}\n")
+        f.write(f"DEFEND_RADIUS {blocker.defend_radius_in}\n")
 
 def save_settings():
     try:
@@ -1313,6 +1327,13 @@ def draw_everything():
                      debug_mode=(sim.debug_view_mode if sim.current_mode == "drive" else "none"),
                      player_bot=bot)
 
+        if sim.current_mode == "edit" and blocker.enabled and blocker.style == "defend":
+            # Resize handle on the dashed ring - white dot with a blue edge
+            # so it reads as "grab me" against the ring's own blue.
+            hpx, hpy = defend_handle_pixel()
+            pygame.draw.circle(screen, (255, 255, 255), (hpx, hpy), 7)
+            pygame.draw.circle(screen, (30, 90, 180), (hpx, hpy), 7, 2)
+
         if blocker.enabled and sim.current_mode == "drive":
             # Small always-visible label so a screenshot alone shows which
             # of the 3 debug views it's from, without having to caption it
@@ -1882,6 +1903,14 @@ while running:
                     fake_click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(-100, -100), button=1)
                     for element in edit_shape_txt + edit_robot_ui:
                         element.handle_event(fake_click, -100, -100)
+                # Defend ring resize handle - checked before the flag so it
+                # still wins if a tiny ring pulls the two close together.
+                if blocker.enabled and blocker.style == "defend":
+                    rhx, rhy = defend_handle_pixel()
+                    if (mx - rhx) ** 2 + (my - rhy) ** 2 <= 10 * 10:
+                        sim.dragging_defend_radius = True
+                        continue
+
                 # Home point drag focus - only clickable in Defend, since
                 # that's the only style that reads home_x/home_y at all.
                 # Checked before the blocker's own body so the flag marker
@@ -1953,6 +1982,9 @@ while running:
             mx, my = event.pos
             if sim.current_mode == "edit":
                 if sim.dragging_robot: sim.dragging_robot = False; bot.start_pose = (bot.x, bot.y, bot.angle); save_field_data()
+                elif sim.dragging_defend_radius:
+                    sim.dragging_defend_radius = False
+                    save_field_data()
                 elif sim.dragging_home_point:
                     sim.dragging_home_point = False
                     save_field_data()
@@ -1986,6 +2018,10 @@ while running:
                         new_r = m_fx - s["x"]
                         s["radius"] = max(1.0, new_r)
 
+                elif sim.dragging_defend_radius:
+                    # Radius is just how far the mouse is from the flag.
+                    # set_defend_radius() clamps to the min/max range.
+                    blocker.set_defend_radius(math.hypot(m_fx - blocker.home_x, m_fy - blocker.home_y))
                 elif sim.dragging_home_point:
                     # No physics body to sync here - home_x/home_y is just a
                     # target coordinate the Defend style reads, not a real
