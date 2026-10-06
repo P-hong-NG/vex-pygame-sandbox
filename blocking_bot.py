@@ -43,10 +43,19 @@ class BlockingBot:
     # Difficulty presets: how aggressively the blocker pursues
     #Bot's speed/ how quicking blocker turns to bot/ how far into the future it predict user's movement
     DIFFICULTY_PRESETS = {
-        "easy":   {"max_speed_in_per_s": 30.0, "turn_gain": 2.0, "lead_time": 0.15, "stop_distance": 10.0}, 
-        "medium": {"max_speed_in_per_s": 45.0, "turn_gain": 3.0, "lead_time": 0.30, "stop_distance": 3.0},
-        "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.50, "stop_distance": -3.0},
+        "easy":   {"max_speed_in_per_s": 30.0, "turn_gain": 2.0, "lead_time": 0.15, "stop_distance": 10.0, "max_turn_rate_deg_per_s": 140.0},
+        "medium": {"max_speed_in_per_s": 45.0, "turn_gain": 3.0, "lead_time": 0.30, "stop_distance": 3.0, "max_turn_rate_deg_per_s": 180.0},
+        "hard":   {"max_speed_in_per_s": 60.0, "turn_gain": 4.0, "lead_time": 0.50, "stop_distance": -3.0, "max_turn_rate_deg_per_s": 220.0},
     }
+    # max_turn_rate_deg_per_s used to just be a flat 180 for every
+    # difficulty, baked straight into the omega clamp below instead of
+    # living here as a real setting - turn_gain alone controlled how FAST
+    # the blocker ramped up to that shared ceiling, not how high the
+    # ceiling itself went. Pulling an actual per-difficulty number out
+    # here is step one of giving the blocker's turning an honest deg/s
+    # value instead of just the unitless turn_gain multiplier - medium
+    # keeps the old 180 so nothing changes there, easy/hard now actually
+    # differ in top turn speed too, not just how eagerly they reach it.
 
     # === DDA (Dynamic Difficulty Adjustment) constants ===
     # Roguelike-style variance, re-rolled each blocker "life": instead of a
@@ -59,6 +68,9 @@ class BlockingBot:
     MIN_BLOCKER_SPEED = 15.0       # in/s floor -- guards against a near-stationary
                                    # blocker if the player's own sampled avg_speed
                                    # happened to be very low (e.g. mostly idle)
+    MIN_BLOCKER_TURN_RATE = 60.0   # deg/s floor -- same idea as MIN_BLOCKER_SPEED,
+                                   # for a player who's been driving mostly straight
+                                   # and barely has any measured turning on record
 
     # === "Fully boxed in" escape constants ===
     BOXED_IN_CLEARANCE_THRESHOLD = 0.15  # below this even the "best" ray is
@@ -177,6 +189,7 @@ class BlockingBot:
     # matter which point it's chasing. Same idea the standalone demo proved
     # out, now wired into the real sim instead of steering-constant presets.
     PLAY_STYLES = ("attack", "defend", "mix")
+    DEFEND_MIN_RADIUS_IN = 10.0
     DEFEND_ENGAGE_RADIUS_IN = 40.0  # Defend only leaves its home spot once
                                      # the player gets THIS close - matches
                                      # the demo's ENGAGE_RADIUS, picked so a
@@ -233,6 +246,9 @@ class BlockingBot:
         self.style = "attack"
         self.home_x = field_inches * 0.5
         self.home_y = field_inches * 0.5
+        # Per-Blocker copy of the engage radius so Edit mode can resize it.
+        # The class constant above stays as the default.
+        self.defend_radius_in = self.DEFEND_ENGAGE_RADIUS_IN
         # Testing scaffold - see NAV_MODES above. Starts on "reactive" so
         # nothing about default behavior changes just from this existing.
         self.nav_mode = "reactive"
@@ -326,6 +342,7 @@ class BlockingBot:
         self.turn_gain = preset["turn_gain"]
         self.lead_time = preset["lead_time"]
         self.stop_distance = preset["stop_distance"]
+        self.max_turn_rate = preset["max_turn_rate_deg_per_s"]
 
     def set_style(self, style):
         self.style = style if style in self.PLAY_STYLES else "attack"
@@ -338,6 +355,13 @@ class BlockingBot:
         # a future drag-to-place UI can't park it out of bounds.
         self.home_x = max(0.0, min(self.field_inches, home_x))
         self.home_y = max(0.0, min(self.field_inches, home_y))
+
+    def set_defend_radius(self, radius_in):
+        # Clamped so the ring can't shrink to nothing (Blocker would never
+        # guard anything) or grow past half the field (Defend would just
+        # act like Attack with extra steps).
+        self.defend_radius_in = max(self.DEFEND_MIN_RADIUS_IN,
+                                    min(self.field_inches * 0.5, radius_in))
 
     def enable(self, player_bot=None):
         if not self._added_to_space:
@@ -366,34 +390,47 @@ class BlockingBot:
     def _roll_dda_stats(self, player_bot):
         """
         Called once per "life" (each time enable() runs). Re-rolls this
-        life's max_speed off the PLAYER's own measured average speed, plus
-        a randomized +/-10% offset -- so the blocker isn't a fixed number,
-        it's "roughly as fast as you've been driving lately, give or take."
+        life's max_speed AND max_turn_rate off the PLAYER's own measured
+        averages, plus a randomized +/-10% offset -- so the blocker isn't a
+        fixed number, it's "roughly as fast/as sharp a turner as you've
+        been driving lately, give or take."
 
-        Falls back to the difficulty preset's max_speed if we don't have
+        Falls back to the difficulty preset's values if we don't have
         trustworthy player data yet (player_bot is None, or main.py's
         has_enough_stats is still False early in a session) -- this is the
         "cold start" case.
 
-        turn_gain/lead_time/stop_distance are left at their difficulty-preset
-        values for now. turn_gain in particular isn't a direct unit match to
-        the player's avg_turn_rate (deg/s vs. a steering-gain constant), so
-        scaling it needs its own normalization decision -- doing that as a
-        separate, later step rather than guessing at a conversion here.
+        turn_gain/lead_time/stop_distance still stay at their difficulty-
+        preset values - those govern HOW the blocker steers (ramp-up
+        sharpness, how far ahead it leads, how close it parks), not a top
+        speed, so there's nothing on the player's own stats to scale them
+        against. max_turn_rate was the one actual unit mismatch (deg/s vs.
+        turn_gain's unitless multiplier) - now that it's its own real
+        deg/s number (see set_difficulty), it scales the same way
+        max_speed always has.
         """
         if player_bot is not None and getattr(player_bot, "has_enough_stats", False):
             baseline_speed = player_bot.avg_speed
+            baseline_turn_rate = player_bot.avg_turn_rate
         else:
             baseline_speed = self.DIFFICULTY_PRESETS[self.difficulty]["max_speed_in_per_s"]
+            baseline_turn_rate = self.DIFFICULTY_PRESETS[self.difficulty]["max_turn_rate_deg_per_s"]
 
         offset = random.uniform(*self.DDA_OFFSET_RANGE)
         self.max_speed = max(self.MIN_BLOCKER_SPEED, baseline_speed * offset)
+        # Separate roll, not the same offset reused - a session where the
+        # player drove fast in mostly straight lines shouldn't also force
+        # the blocker's turning to scale up by that same amount.
+        turn_offset = random.uniform(*self.DDA_OFFSET_RANGE)
+        self.max_turn_rate = max(self.MIN_BLOCKER_TURN_RATE, baseline_turn_rate * turn_offset)
 
         # Kept around for the end-of-session report/debug HUD -- lets a
         # reader see what this life's blocker was actually scaled to, and
         # off of what baseline, instead of just a final number with no context.
         self.dda_baseline_speed = baseline_speed
         self.dda_offset = offset
+        self.dda_baseline_turn_rate = baseline_turn_rate
+        self.dda_turn_offset = turn_offset
 
     def disable(self):
         self.enabled = False
@@ -1002,7 +1039,7 @@ class BlockingBot:
         """
         if self.style == "defend":
             dist_to_home = math.hypot(player_bot.x - self.home_x, player_bot.y - self.home_y)
-            if dist_to_home > self.DEFEND_ENGAGE_RADIUS_IN:
+            if dist_to_home > self.defend_radius_in:
                 self.play_state = "guarding home"
                 return self.home_x, self.home_y, True
             self.play_state = "intercepting"
@@ -1519,8 +1556,12 @@ class BlockingBot:
         # WANT minus the heading it currently HAS (angles, not positions)
         # "Wrapping" it into [-180, 180] stops the bot from ever turning the "wrong way"
         angle_diff = (target_angle - self.angle + 180) % 360 - 180
-        # Proportional steering: turn hard when misaligned, drive straight when lined up
-        omega = max(-180.0, min(180.0, angle_diff * self.turn_gain))
+        # Proportional steering: turn hard when misaligned, drive straight when
+        # lined up. Clamp used to be a flat +/-180 here no matter the
+        # difficulty - now it's self.max_turn_rate, the per-difficulty value
+        # set in set_difficulty(), so easy/hard actually cap out at different
+        # turn speeds instead of just reaching the same 180 at different rates.
+        omega = max(-self.max_turn_rate, min(self.max_turn_rate, angle_diff * self.turn_gain))
 
         # Slow down while turning sharply (mirrors how a real tank drive behaves),
         # and stop closing distance once basically on top of the player so it
@@ -1641,6 +1682,9 @@ class BlockingBot:
             "dda_baseline_speed": round(getattr(self, "dda_baseline_speed", 0.0), 1),
             "dda_offset": round(getattr(self, "dda_offset", 1.0), 2),
             "max_speed": round(self.max_speed, 1),
+            "dda_baseline_turn_rate": round(getattr(self, "dda_baseline_turn_rate", 0.0), 1),
+            "dda_turn_offset": round(getattr(self, "dda_turn_offset", 1.0), 2),
+            "max_turn_rate": round(self.max_turn_rate, 1),
         }
 
     def save_report(self, path):
@@ -1738,7 +1782,7 @@ class BlockingBot:
             # around in Edit mode and needs to see regardless of debug view.
             home_px_x = self.home_x * scale
             home_px_y = field_pixels - (self.home_y * scale)
-            radius_px = self.DEFEND_ENGAGE_RADIUS_IN * scale
+            radius_px = self.defend_radius_in * scale
             # Dashed engage-radius ring so it doesn't get mistaken for a
             # solid wall or hitbox - built out of short arcs since pygame
             # has no native dashed-circle primitive.
