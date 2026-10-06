@@ -315,7 +315,19 @@ _2. Grid-Based Occupancy Map + A* (Chosen Strategy): Rasterize the whole field i
 
 ===Status=== Built and tested the occupancy grid rasterizer and the A* search over it independently. Haven’t wired either one into the Blocker’s actual steering yet; that’s the next step. To be clear, this isn’t replacing the ray system - rays are still the right tool for fast, close-range reacting (something just appeared right in front of the Blocker, no time to replan), while A* is for the bigger, whole-field-level decision like which path is better.
 
-<img src="images/sep22-grid.png" alt="The field has a smaller grid system of 24 by 24 drawn with gray lines that turns red when there's a game object inside its areas" width="400">
+<img src="images/sep22-grid.png" alt="The field has a smaller grid system of 24 by 24 drawn with gray lines that turns red when there’s a game object inside its areas" width="400">
+
+## [September 22nd, 2026] - Wiring the grid into the Blocker’s actual driving
+
+Picking up from the 20th - the occupancy grid and A* search worked fine on their own, but the Blocker wasn’t actually driving off either of them yet. Today was about actually plugging that in.
+
+===How it works=== Every tick, the field gets rasterized into a grid of small cells (6 inches each, so a 144x144in field turns into a 24x24 grid), and each cell gets marked blocked or open based on whatever’s sitting on top of it right now - walls, static obstacles, dynamic ones, all of it. A* then searches across that grid from whatever cell the Blocker’s currently in to whatever cell the target is in.
+
+The part I had to think through was HOW the Blocker actually uses that path once A* finds one. Just aiming straight at the final goal cell would undo the whole point of using a grid in the first place - that’s basically back to square one, driving in a straight line and hoping nothing’s in the way. So instead, the Blocker looks a few cells AHEAD along the found path, not at the very end, and steers toward that closer point the same way it already steers toward any other target. As the Blocker gets closer, that lookahead point keeps sliding forward along the path, so it’s less “drive to this one fixed spot” and more “keep aiming a little ways ahead of yourself along the route.”
+
+I also kept the ray system completely in charge of anything close-range - the grid path only takes over once the ray fan comes back fully clear, meaning nothing’s close enough to react to right now. If something IS nearby, rays still win. A* is for “which general direction should I even be heading,” not for dodging something that just appeared two feet away.
+
+===Status=== Rays + grid are both driving the Blocker now, rays first, grid as the fallback/backup layer. Ran into a performance hit almost immediately from rebuilding the whole grid every single frame, 60 times a second, so that’s throttled down to rebuilding only every so often instead of constantly - more on that if it ends up causing its own problems.
 
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
