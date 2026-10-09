@@ -2173,7 +2173,7 @@ while running:
                 cycle_debug_view()
             elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_n:
                 cycle_nav_mode()
-            elif sim.current_mode == "edit" and sim.selected_shape_idx is not None and event.key == pygame.K_BACKSPACE:
+            elif sim.current_mode == "edit" and (sim.selected_shape_idx is not None or sim.multi_selected) and event.key == pygame.K_BACKSPACE:
                 is_typing = False
                 if sim.current_page == "edit 1":
                     for box in edit_shape_txt + edit_robot_ui:
@@ -2182,12 +2182,17 @@ while running:
                             break
                             
                 if not is_typing:
-                    removed_s = sim.shapes.pop(sim.selected_shape_idx)
-                    if "body" in removed_s and removed_s["body"] in space.bodies:
-                        space.remove(removed_s["body"])
-                    if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
-                        space.remove(removed_s["pymunk_shape"])
+                    # One shape, or the whole box-selected group. Highest index
+                    # first so popping one doesn't shift the ones still waiting.
+                    to_delete = sorted(sim.multi_selected, reverse=True) if sim.multi_selected else [sim.selected_shape_idx]
+                    for idx in to_delete:
+                        removed_s = sim.shapes.pop(idx)
+                        if "body" in removed_s and removed_s["body"] in space.bodies:
+                            space.remove(removed_s["body"])
+                        if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
+                            space.remove(removed_s["pymunk_shape"])
                     sim.selected_shape_idx = None
+                    sim.multi_selected = []
                     save_field_data()
                     sync_custom_obstacles_to_physics()
 
