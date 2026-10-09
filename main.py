@@ -272,6 +272,14 @@ class SimulatorState:
         self.home_drag_offset_x = 0.0
         self.home_drag_offset_y = 0.0
         self.dragging_defend_radius = False
+        # Multi-select (Edit mode): drag a box on empty field to grab every
+        # shape it touches, then drag any one of them to move the whole group.
+        self.multi_selected = []
+        self.marquee_start = None   # (x, y) in field inches while box is being dragged
+        self.marquee_end = None
+        self.dragging_group = False
+        self.group_anchor = (0.0, 0.0)
+        self.group_origins = {}     # shape index -> (x, y) when the group drag started
         self.active_textbox = None
         self.textbox_value = ""
         self.add_shape_dropdown_open = False
@@ -374,6 +382,37 @@ def load_all_data():
                     blocker.set_home_point(float(hx), float(hy))
                 elif tag == "DEFEND_RADIUS" and len(parts) == 2:
                     blocker.set_defend_radius(float(parts[1]))
+
+def shape_index_at(fx, fy):
+    # Topmost shape under a field-inch point, or None. Same check the
+    # single-click select always used, just pulled out so group drag can
+    # ask "did the click land on one of the selected shapes" too.
+    for i in reversed(range(len(sim.shapes))):
+        s = sim.shapes[i]
+        if s["type"] == "rect" and s["x"] <= fx <= s["x"] + s["w"] and s["y"] <= fy <= s["y"] + s["h"]:
+            return i
+        elif s["type"] == "circ" and (fx - s["x"])**2 + (fy - s["y"])**2 <= s["radius"]**2:
+            return i
+    return None
+
+def shapes_touching_box(x1, y1, x2, y2):
+    # Any shape whose bounding box overlaps the dragged box counts, so a
+    # student doesn't have to swallow a whole object to grab it. Rotation is
+    # ignored (rect angle only spins it visually around its center), which
+    # keeps this matching how clicking already treats rects.
+    left, right = min(x1, x2), max(x1, x2)
+    bottom, top = min(y1, y2), max(y1, y2)
+    hits = []
+    for i, s in enumerate(sim.shapes):
+        if s.get("stored", False):
+            continue
+        if s["type"] == "rect":
+            sl, sr, sb, st = s["x"], s["x"] + s["w"], s["y"], s["y"] + s["h"]
+        else:
+            sl, sr, sb, st = s["x"] - s["radius"], s["x"] + s["radius"], s["y"] - s["radius"], s["y"] + s["radius"]
+        if sl <= right and sr >= left and sb <= top and st >= bottom:
+            hits.append(i)
+    return hits
 
 def defend_handle_pixel():
     # Grab handle for the Defend ring - sits on the ring's right edge, or
@@ -758,6 +797,7 @@ setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
 def set_mode_drive():
     sim.current_mode = "drive"
     sim.selected_shape_idx = None
+    sim.multi_selected = []
     sim.active_textbox = None
     bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
     sync_custom_obstacles_to_physics()
@@ -824,6 +864,7 @@ def action_studio():
     if sim.current_mode == "studio":
         sim.current_mode = "drive"
         sim.selected_shape_idx = None
+        sim.multi_selected = []
         sim.active_textbox = None
         bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
         sync_custom_obstacles_to_physics()
@@ -920,6 +961,7 @@ def action_add_shape():
     else:
         sim.shapes.append({"type": "circ", "x": cx, "y": cy, "radius": 6, "color": (150,150,150), "body_type": "dynamic"})
     sim.selected_shape_idx = len(sim.shapes) - 1
+    sim.multi_selected = []
     save_field_data()
 def action_delete_shape():
     if sim.selected_shape_idx is not None:
@@ -927,6 +969,7 @@ def action_delete_shape():
         if "body" in removed_s and removed_s["body"] in space.bodies: space.remove(removed_s["body"])
         if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes: space.remove(removed_s["pymunk_shape"])
         sim.selected_shape_idx = None
+        sim.multi_selected = []
         save_field_data()
         sync_custom_obstacles_to_physics()
 def toggle_physics_mode():
@@ -1215,7 +1258,7 @@ def draw_everything():
                 rot = pygame.transform.rotate(surf, s["angle"])
                 rect = rot.get_rect(center=((s["x"] + s["w"]/2) * SCALE, FIELD_PIXELS - (s["y"] + s["h"]/2) * SCALE))
                 screen.blit(rot, rect)
-                if i == sim.selected_shape_idx: 
+                if i == sim.selected_shape_idx or i in sim.multi_selected:
                     pygame.draw.rect(screen, YELLOW, rect, 2)
 
                 if i == sim.selected_shape_idx:
@@ -1242,9 +1285,10 @@ def draw_everything():
                 
                 pygame.draw.line(screen, WHITE, (cx, cy), (line_end_x, line_end_y), 2)
                 
-                if i == sim.selected_shape_idx: 
+                if i == sim.selected_shape_idx or i in sim.multi_selected:
                     pygame.draw.circle(screen, YELLOW, (cx, cy), radius_pixels + 2, 2)
 
+                if i == sim.selected_shape_idx:
                     red_px_x = int(s["x"] * SCALE)
                     red_px_y = int(FIELD_PIXELS - (s["y"] * SCALE))
                     #Dot representing XY cord
@@ -1373,6 +1417,17 @@ def draw_everything():
             if s.get("body_type") == "passthrough" and s.get("is_overpass", False):
                 render_shape(i, s)
 
+
+    # Selection box while it's being dragged - drawn last so it sits over
+    # shapes and both bots.
+    if sim.current_mode == "edit" and sim.marquee_start is not None:
+        bx1, by1 = sim.marquee_start[0] * SCALE, FIELD_PIXELS - sim.marquee_start[1] * SCALE
+        bx2, by2 = sim.marquee_end[0] * SCALE, FIELD_PIXELS - sim.marquee_end[1] * SCALE
+        box_rect = pygame.Rect(min(bx1, bx2), min(by1, by2), abs(bx2 - bx1), abs(by2 - by1))
+        box_fill = pygame.Surface((max(1, box_rect.w), max(1, box_rect.h)), pygame.SRCALPHA)
+        box_fill.fill((255, 220, 40, 50))
+        screen.blit(box_fill, box_rect.topleft)
+        pygame.draw.rect(screen, YELLOW, box_rect, 1)
 
     # Tracks and indicates if user is in Driver vs Edit Mode
     mode_label = f"SYSTEM STATUS: {sim.current_mode.upper()} MODE"
@@ -1960,13 +2015,25 @@ while running:
                             sim.resizing_shape = True
                             continue
 
-                    sim.selected_shape_idx = None
-                    for i in reversed(range(len(sim.shapes))):
-                        s = sim.shapes[i]
-                        if s["type"] == "rect" and s["x"] <= m_fx <= s["x"] + s["w"] and s["y"] <= m_fy <= s["y"] + s["h"]:
-                            sim.selected_shape_idx = i; break
-                        elif s["type"] == "circ" and (m_fx - s["x"])**2 + (m_fy - s["y"])**2 <= s["radius"]**2:
-                            sim.selected_shape_idx = i; break
+                    hit_idx = shape_index_at(m_fx, m_fy)
+
+                    # Clicking one of the multi-selected shapes grabs the
+                    # whole group; clicking anywhere else drops the group.
+                    if sim.multi_selected:
+                        if hit_idx in sim.multi_selected:
+                            sim.dragging_group = True
+                            sim.group_anchor = (m_fx, m_fy)
+                            sim.group_origins = {i: (sim.shapes[i]["x"], sim.shapes[i]["y"]) for i in sim.multi_selected}
+                            continue
+                        sim.multi_selected = []
+
+                    sim.selected_shape_idx = hit_idx
+
+                    # Empty spot on the field - start a selection box. Kept
+                    # to the field area so clicking the sidebar can't start one.
+                    if hit_idx is None and mx < FIELD_PIXELS and my < FIELD_PIXELS:
+                        sim.marquee_start = (m_fx, m_fy)
+                        sim.marquee_end = (m_fx, m_fy)
                     if sim.selected_shape_idx is not None:
                         s = sim.shapes[sim.selected_shape_idx]
                         sim.drag_offset_x = m_fx - (s["x"] + s["w"]/2 if s["type"]=="rect" else s["x"])
@@ -1991,6 +2058,23 @@ while running:
                 elif sim.dragging_blocker:
                     sim.dragging_blocker = False
                     blocker.start_x, blocker.start_y = blocker.x, blocker.y
+                    save_field_data()
+                elif sim.marquee_start is not None:
+                    x1, y1 = sim.marquee_start
+                    x2, y2 = sim.marquee_end
+                    sim.marquee_start = sim.marquee_end = None
+                    # A barely-moved box is just a click on empty field
+                    # (selection already cleared on mouse down).
+                    if abs(x2 - x1) * SCALE >= 4 or abs(y2 - y1) * SCALE >= 4:
+                        hits = shapes_touching_box(x1, y1, x2, y2)
+                        if len(hits) == 1:
+                            # One shape caught - treat as a normal selection so
+                            # the sidebar boxes still show its values.
+                            sim.selected_shape_idx = hits[0]
+                        else:
+                            sim.multi_selected = hits
+                elif sim.dragging_group:
+                    sim.dragging_group = False
                     save_field_data()
                 elif sim.dragging_shape: sim.dragging_shape = False; save_field_data()
                 elif sim.resizing_shape: sim.resizing_shape = False; save_field_data()
@@ -2040,6 +2124,16 @@ while running:
                     bot.y = m_fy - sim.robot_drag_offset_y
                     #Bring the physics (backend) body while dragging
                     bot.body.position = (bot.x * SCALE, bot.y * SCALE)
+                elif sim.marquee_start is not None:
+                    sim.marquee_end = (m_fx, m_fy)
+                elif sim.dragging_group:
+                    # Every shape moves by the same amount the mouse moved
+                    # since the click, so the group keeps its layout.
+                    gdx = m_fx - sim.group_anchor[0]
+                    gdy = m_fy - sim.group_anchor[1]
+                    for i, (ox, oy) in sim.group_origins.items():
+                        sim.shapes[i]["x"] = ox + gdx
+                        sim.shapes[i]["y"] = oy + gdy
                 elif sim.dragging_shape and sim.selected_shape_idx is not None:
                     s = sim.shapes[sim.selected_shape_idx]
                     if s["type"] == "rect":
