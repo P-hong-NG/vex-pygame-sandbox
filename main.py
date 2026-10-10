@@ -383,6 +383,78 @@ def load_all_data():
                 elif tag == "DEFEND_RADIUS" and len(parts) == 2:
                     blocker.set_defend_radius(float(parts[1]))
 
+#===Toast messages===
+# Small red pill that slides in from the right edge of the field, sits for a
+# moment, then slides back out. For "that didn't happen" moments (nothing
+# left to undo, nothing selected) so a key press never feels dead. One at a
+# time on purpose - a new message replaces the old one instead of stacking.
+TOAST_SLIDE_MS = 220
+TOAST_HOLD_MS = 1800
+current_toast = None
+
+def show_toast(text):
+    global current_toast
+    now = pygame.time.get_ticks()
+    if current_toast is not None and current_toast["text"] == text:
+        # Same message again (like mashing Ctrl+Z) - keep it on screen and
+        # restart the hold instead of replaying the slide-in.
+        elapsed = now - current_toast["start"]
+        if elapsed < TOAST_SLIDE_MS * 2 + TOAST_HOLD_MS:
+            current_toast["start"] = now - TOAST_SLIDE_MS
+            return
+    current_toast = {"text": text, "start": now}
+
+def draw_toast():
+    global current_toast
+    if current_toast is None:
+        return
+    elapsed = pygame.time.get_ticks() - current_toast["start"]
+    if elapsed >= TOAST_SLIDE_MS * 2 + TOAST_HOLD_MS:
+        current_toast = None
+        return
+    if elapsed < TOAST_SLIDE_MS:
+        p = elapsed / TOAST_SLIDE_MS
+        shown = 1 - (1 - p) ** 3                       # eases in
+    elif elapsed > TOAST_SLIDE_MS + TOAST_HOLD_MS:
+        q = (elapsed - TOAST_SLIDE_MS - TOAST_HOLD_MS) / TOAST_SLIDE_MS
+        shown = 1 - q ** 3                              # eases out
+    else:
+        shown = 1.0
+
+    label = FONT.render(current_toast["text"], True, WHITE)
+    w, h, margin = label.get_width() + 28, 36, 16
+    x = FIELD_PIXELS - shown * (w + margin)
+    y = FIELD_PIXELS - 70
+    rect = pygame.Rect(int(x), y, w, h)
+    # Clipped to the field so the slide doesn't smear over the sidebar
+    screen.set_clip(pygame.Rect(0, 0, FIELD_PIXELS, WINDOW_HEIGHT))
+    pygame.draw.rect(screen, (200, 50, 50), rect, border_radius=10)
+    pygame.draw.rect(screen, (120, 20, 20), rect, 2, border_radius=10)
+    screen.blit(label, (rect.x + 14, rect.y + (h - label.get_height()) // 2))
+    screen.set_clip(None)
+
+def delete_selected_shapes():
+    # One shape or the whole box-selected group. Shared by the Backspace key
+    # and the sidebar Delete button so they can't drift apart. Highest index
+    # first so popping one doesn't shift the ones still waiting.
+    if sim.multi_selected:
+        to_delete = sorted(sim.multi_selected, reverse=True)
+    elif sim.selected_shape_idx is not None:
+        to_delete = [sim.selected_shape_idx]
+    else:
+        return False
+    for idx in to_delete:
+        removed_s = sim.shapes.pop(idx)
+        if "body" in removed_s and removed_s["body"] in space.bodies:
+            space.remove(removed_s["body"])
+        if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
+            space.remove(removed_s["pymunk_shape"])
+    sim.selected_shape_idx = None
+    sim.multi_selected = []
+    save_field_data()
+    sync_custom_obstacles_to_physics()
+    return True
+
 #===Undo for field shapes (Edit mode)===
 # Instead of saving a snapshot at every place the shapes can change (drag,
 # resize, delete, add, sidebar boxes, group moves), the loop just compares
@@ -441,7 +513,10 @@ def track_shape_undo():
 
 def undo_shape_change():
     global undo_last_state
-    if gesture_in_progress() or not undo_stack:
+    if gesture_in_progress():
+        return
+    if not undo_stack:
+        show_toast("No more undo")
         return
     prev = undo_stack.pop()
     sim.shapes[:] = [dict(d) for d in prev]
@@ -1066,14 +1141,8 @@ def action_add_shape():
     sim.multi_selected = []
     save_field_data()
 def action_delete_shape():
-    if sim.selected_shape_idx is not None:
-        removed_s = sim.shapes.pop(sim.selected_shape_idx)
-        if "body" in removed_s and removed_s["body"] in space.bodies: space.remove(removed_s["body"])
-        if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes: space.remove(removed_s["pymunk_shape"])
-        sim.selected_shape_idx = None
-        sim.multi_selected = []
-        save_field_data()
-        sync_custom_obstacles_to_physics()
+    if not delete_selected_shapes():
+        show_toast("Select a shape to delete first")
 def toggle_physics_mode():
     if sim.selected_shape_idx is not None:
         s = sim.shapes[sim.selected_shape_idx]
@@ -1521,7 +1590,13 @@ def draw_everything():
 
 
     if sim.current_mode == "edit" and sim.multi_selected:
-        draw_small(f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Backspace delete, Ctrl+Z undo", 18, 92, YELLOW)
+        # Dark bar behind light blue text, same look as the status bar up top,
+        # so it reads on the light default field and on custom field images.
+        hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Backspace delete, Ctrl+Z undo"
+        hint_surf = SMALL_FONT.render(hint_text, True, (140, 200, 255))
+        hint_bar = pygame.Rect(10, 88, hint_surf.get_width() + 16, hint_surf.get_height() + 8)
+        pygame.draw.rect(screen, (20, 20, 28), hint_bar, border_radius=4)
+        screen.blit(hint_surf, (hint_bar.x + 8, hint_bar.y + 4))
 
     # Selection box while it's being dragged - drawn last so it sits over
     # shapes and both bots.
@@ -1936,7 +2011,8 @@ def draw_everything():
             btn_mode.text = f"Intake Mode: {sim.settings['intake_control_mode'].upper()}"
 
             settings_scrollview.draw(screen)
-    
+
+    draw_toast()
     pygame.display.flip()
 # =====================================================================
 # 6. ACTION INTERACTION ROUTINES (UI Click & Inputs Handler)
@@ -2292,19 +2368,7 @@ while running:
                             break
                             
                 if not is_typing:
-                    # One shape, or the whole box-selected group. Highest index
-                    # first so popping one doesn't shift the ones still waiting.
-                    to_delete = sorted(sim.multi_selected, reverse=True) if sim.multi_selected else [sim.selected_shape_idx]
-                    for idx in to_delete:
-                        removed_s = sim.shapes.pop(idx)
-                        if "body" in removed_s and removed_s["body"] in space.bodies:
-                            space.remove(removed_s["body"])
-                        if "pymunk_shape" in removed_s and removed_s["pymunk_shape"] in space.shapes:
-                            space.remove(removed_s["pymunk_shape"])
-                    sim.selected_shape_idx = None
-                    sim.multi_selected = []
-                    save_field_data()
-                    sync_custom_obstacles_to_physics()
+                    delete_selected_shapes()
 
             # Toggle mode intake switching
             elif sim.current_mode == "drive" and not sim.paused and sim.settings["intake_control_mode"] == "toggle":
