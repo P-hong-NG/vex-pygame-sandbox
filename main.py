@@ -390,6 +390,7 @@ def load_all_data():
 # difference becomes one undo step, so a whole drag is one step instead of
 # hundreds, and new ways of editing shapes get undo for free.
 UNDO_LIMIT = 50
+GROUP_ROTATE_STEP_DEG = 15.0
 undo_stack = []
 undo_last_state = None
 
@@ -449,6 +450,40 @@ def undo_shape_change():
     undo_last_state = snapshot_shapes()
     save_field_data()
     sync_custom_obstacles_to_physics()
+
+def rotate_selected_group(degrees):
+    # Spins every multi-selected shape around the middle of the group, so the
+    # layout turns as one piece instead of each shape twisting in place. A
+    # rect's x/y is its bottom-left corner, so its center is what orbits and
+    # the corner is recomputed from it afterward.
+    if not sim.multi_selected:
+        return
+    centers = {}
+    for i in sim.multi_selected:
+        s = sim.shapes[i]
+        if s["type"] == "rect":
+            centers[i] = (s["x"] + s["w"] / 2, s["y"] + s["h"] / 2)
+        else:
+            centers[i] = (s["x"], s["y"])
+    xs = [c[0] for c in centers.values()]
+    ys = [c[1] for c in centers.values()]
+    pivot_x = (min(xs) + max(xs)) / 2
+    pivot_y = (min(ys) + max(ys)) / 2
+
+    rad = math.radians(degrees)
+    cos_a, sin_a = math.cos(rad), math.sin(rad)
+    for i, (cx, cy) in centers.items():
+        s = sim.shapes[i]
+        dx, dy = cx - pivot_x, cy - pivot_y
+        new_cx = pivot_x + dx * cos_a - dy * sin_a
+        new_cy = pivot_y + dx * sin_a + dy * cos_a
+        if s["type"] == "rect":
+            s["x"] = new_cx - s["w"] / 2
+            s["y"] = new_cy - s["h"] / 2
+        else:
+            s["x"], s["y"] = new_cx, new_cy
+        s["angle"] = (s.get("angle", 0.0) + degrees) % 360.0
+    save_field_data()
 
 def shape_index_at(fx, fy):
     # Topmost shape under a field-inch point, or None. Same check the
@@ -1485,6 +1520,9 @@ def draw_everything():
                 render_shape(i, s)
 
 
+    if sim.current_mode == "edit" and sim.multi_selected:
+        draw_small(f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Backspace delete, Ctrl+Z undo", 18, 92, YELLOW)
+
     # Selection box while it's being dragged - drawn last so it sits over
     # shapes and both bots.
     if sim.current_mode == "edit" and sim.marquee_start is not None:
@@ -2238,6 +2276,9 @@ while running:
                     save_settings()
             elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
                 undo_shape_change()
+            elif sim.current_mode == "edit" and sim.multi_selected and event.key == pygame.K_r and not gesture_in_progress():
+                # R turns the group 15 degrees counter-clockwise, Shift+R the other way
+                rotate_selected_group(-GROUP_ROTATE_STEP_DEG if event.mod & pygame.KMOD_SHIFT else GROUP_ROTATE_STEP_DEG)
             elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_v:
                 cycle_debug_view()
             elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_n:
