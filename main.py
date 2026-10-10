@@ -1360,6 +1360,37 @@ def draw_text(text, x, y, color=WHITE, font=FONT):
 def draw_small(text, x, y, color=WHITE):
     screen.blit(SMALL_FONT.render(text, True, color), (x, y))
 
+#===See-through HUD bars===
+# The status bar and the selection hint sit on top of the field, so a solid
+# bar hides whatever is under it (a shape dragged to the top edge, say).
+# The bar is drawn translucent, and fades to nearly nothing while the mouse
+# is over it so the user can see and grab what's behind it. The text stays
+# solid, with a 1px shadow so it still reads once the bar has faded.
+HUD_BAR_ALPHA = 170         # about 2/3 opaque
+HUD_BAR_HOVER_ALPHA = 30    # barely there under the mouse
+hud_bar_alpha = {}
+
+def draw_hud_bar(key, rect, text, text_color):
+    mx, my = pygame.mouse.get_pos()
+    target = HUD_BAR_HOVER_ALPHA if rect.collidepoint(mx, my) else HUD_BAR_ALPHA
+    cur = hud_bar_alpha.get(key, HUD_BAR_ALPHA)
+    # Eases toward the target a bit each frame so it fades instead of popping
+    cur += (target - cur) * 0.25
+    if abs(target - cur) < 1:
+        cur = target
+    hud_bar_alpha[key] = cur
+
+    bar = pygame.Surface(rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(bar, (20, 20, 28, int(cur)), bar.get_rect(), border_radius=4)
+    screen.blit(bar, rect.topleft)
+
+    label = SMALL_FONT.render(text, True, text_color)
+    shadow = SMALL_FONT.render(text, True, (0, 0, 0))
+    tx = rect.x + 8
+    ty = rect.y + (rect.h - label.get_height()) // 2
+    screen.blit(shadow, (tx + 1, ty + 1))
+    screen.blit(label, (tx, ty))
+
 def draw_textbox(rect, label, value, is_active):
     pygame.draw.rect(screen, WHITE if is_active else LIGHT_GRAY, rect, border_radius=4)
     pygame.draw.rect(screen, BLACK, rect, 1, border_radius=4)
@@ -1590,13 +1621,11 @@ def draw_everything():
 
 
     if sim.current_mode == "edit" and sim.multi_selected:
-        # Dark bar behind light blue text, same look as the status bar up top,
-        # so it reads on the light default field and on custom field images.
+        # Light blue text on a see-through dark bar, same look as the status
+        # bar up top, so it reads on the light default field and on images.
         hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Backspace delete, Ctrl+Z undo"
-        hint_surf = SMALL_FONT.render(hint_text, True, (140, 200, 255))
-        hint_bar = pygame.Rect(10, 88, hint_surf.get_width() + 16, hint_surf.get_height() + 8)
-        pygame.draw.rect(screen, (20, 20, 28), hint_bar, border_radius=4)
-        screen.blit(hint_surf, (hint_bar.x + 8, hint_bar.y + 4))
+        hint_bar = pygame.Rect(10, 88, SMALL_FONT.size(hint_text)[0] + 16, SMALL_FONT.get_height() + 8)
+        draw_hud_bar("selection_hint", hint_bar, hint_text, (140, 200, 255))
 
     # Selection box while it's being dragged - drawn last so it sits over
     # shapes and both bots.
@@ -1621,9 +1650,8 @@ def draw_everything():
         mode_label = "SYSTEM STATUS: RUNNING AUTONOMOUS ROUTINE"
         status_color = GREEN
 
-    # Draws a clean dark background strip for text readability over bright field assets
-    pygame.draw.rect(screen, (20, 20, 25), (10, 10, 395, 30), border_radius=4)
-    draw_small(mode_label, 18, 18, status_color)
+    # See-through dark strip for text readability over bright field assets
+    draw_hud_bar("status", pygame.Rect(10, 10, 395, 30), mode_label, status_color)
     
     # Control Side UI Column Render Processing
     pygame.draw.rect(screen, (25, 25, 25), (FIELD_PIXELS, 0, UI_WIDTH, WINDOW_HEIGHT))
