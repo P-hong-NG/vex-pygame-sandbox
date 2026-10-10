@@ -383,6 +383,73 @@ def load_all_data():
                 elif tag == "DEFEND_RADIUS" and len(parts) == 2:
                     blocker.set_defend_radius(float(parts[1]))
 
+#===Undo for field shapes (Edit mode)===
+# Instead of saving a snapshot at every place the shapes can change (drag,
+# resize, delete, add, sidebar boxes, group moves), the loop just compares
+# the shapes to the last saved copy once nothing is being dragged. Any
+# difference becomes one undo step, so a whole drag is one step instead of
+# hundreds, and new ways of editing shapes get undo for free.
+UNDO_LIMIT = 50
+undo_stack = []
+undo_last_state = None
+
+def snapshot_shapes():
+    # Copies of each shape minus the live physics objects, which get rebuilt
+    # by sync_custom_obstacles_to_physics() after a restore.
+    snap = []
+    for s in sim.shapes:
+        d = {k: v for k, v in s.items() if k not in ("body", "pymunk_shape")}
+        if isinstance(d.get("color"), list):
+            d["color"] = tuple(d["color"])
+        snap.append(d)
+    return snap
+
+def gesture_in_progress():
+    if (sim.dragging_shape or sim.resizing_shape or sim.dragging_group
+            or sim.marquee_start is not None or sim.dragging_robot
+            or sim.dragging_blocker or sim.dragging_home_point
+            or sim.dragging_defend_radius):
+        return True
+    # A sidebar box that's still being typed in counts too, so typing "12.5"
+    # is one step instead of one per keystroke.
+    if sim.current_page == "edit 1":
+        for box in edit_shape_txt + edit_robot_ui:
+            if getattr(box, "is_active", False):
+                return True
+    return False
+
+def track_shape_undo():
+    global undo_last_state
+    if sim.current_mode != "edit":
+        # Drive mode moves dynamic objects around for real, so history from
+        # before it would no longer match the field. Start fresh next time.
+        undo_stack.clear()
+        undo_last_state = None
+        return
+    if undo_last_state is None:
+        undo_last_state = snapshot_shapes()
+        return
+    if gesture_in_progress():
+        return
+    now = snapshot_shapes()
+    if now != undo_last_state:
+        undo_stack.append(undo_last_state)
+        if len(undo_stack) > UNDO_LIMIT:
+            undo_stack.pop(0)
+        undo_last_state = now
+
+def undo_shape_change():
+    global undo_last_state
+    if gesture_in_progress() or not undo_stack:
+        return
+    prev = undo_stack.pop()
+    sim.shapes[:] = [dict(d) for d in prev]
+    sim.selected_shape_idx = None
+    sim.multi_selected = []
+    undo_last_state = snapshot_shapes()
+    save_field_data()
+    sync_custom_obstacles_to_physics()
+
 def shape_index_at(fx, fy):
     # Topmost shape under a field-inch point, or None. Same check the
     # single-click select always used, just pulled out so group drag can
@@ -2169,6 +2236,8 @@ while running:
                     sim.settings["keybinds"][sim.remapping_key] = event.key
                     sim.remapping_key = None
                     save_settings()
+            elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
+                undo_shape_change()
             elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_v:
                 cycle_debug_view()
             elif sim.current_mode == "drive" and not sim.paused and event.key == pygame.K_n:
@@ -2208,6 +2277,8 @@ while running:
             joystick = pygame.joystick.Joystick(event.device_index); joystick.init()
         elif event.type == pygame.JOYDEVICEREMOVED and joystick is not None and event.instance_id == joystick.get_instance_id():
             joystick = None
+
+    track_shape_undo()
 
     # Teleop update context loop checks
     if sim.current_mode == "drive" and not sim.paused:
