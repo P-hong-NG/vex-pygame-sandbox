@@ -526,6 +526,56 @@ def undo_shape_change():
     save_field_data()
     sync_custom_obstacles_to_physics()
 
+DUPLICATE_OFFSET_IN = 6.0   # one grid cell, so a copy never sits exactly on top of its original
+
+def duplicate_selected_shapes():
+    # Copies the selected shape (or the whole box-selected group) with every
+    # property the original has - size, angle, color, physics type, mass,
+    # friction, bounce, layer - and selects the copies so they can be dragged
+    # straight away. Live physics objects are left out and rebuilt on sync.
+    if sim.multi_selected:
+        source_idxs = list(sim.multi_selected)
+    elif sim.selected_shape_idx is not None:
+        source_idxs = [sim.selected_shape_idx]
+    else:
+        return False
+
+    # Copies go down and to the right, unless that would push any of them
+    # off the field - then they go up and to the left instead.
+    dx, dy = DUPLICATE_OFFSET_IN, -DUPLICATE_OFFSET_IN
+    field = blocker.field_inches
+    for i in source_idxs:
+        s = sim.shapes[i]
+        w = s["w"] if s["type"] == "rect" else s["radius"]
+        h = s["h"] if s["type"] == "rect" else s["radius"]
+        if s["type"] == "rect":
+            right, bottom = s["x"] + w + dx, s["y"] + dy
+        else:
+            right, bottom = s["x"] + w + dx, s["y"] - h + dy
+        if right > field or bottom < 0:
+            dx, dy = -DUPLICATE_OFFSET_IN, DUPLICATE_OFFSET_IN
+            break
+
+    new_idxs = []
+    for i in source_idxs:
+        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape")}
+        if isinstance(copy_s.get("color"), list):
+            copy_s["color"] = tuple(copy_s["color"])
+        copy_s["x"] += dx
+        copy_s["y"] += dy
+        sim.shapes.append(copy_s)
+        new_idxs.append(len(sim.shapes) - 1)
+
+    if len(new_idxs) == 1:
+        sim.selected_shape_idx = new_idxs[0]
+        sim.multi_selected = []
+    else:
+        sim.selected_shape_idx = None
+        sim.multi_selected = new_idxs
+    save_field_data()
+    sync_custom_obstacles_to_physics()
+    return True
+
 def rotate_selected_group(degrees):
     # Spins every multi-selected shape around the middle of the group, so the
     # layout turns as one piece instead of each shape twisting in place. A
@@ -1623,7 +1673,7 @@ def draw_everything():
     if sim.current_mode == "edit" and sim.multi_selected:
         # Light blue text on a see-through dark bar, same look as the status
         # bar up top, so it reads on the light default field and on images.
-        hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Backspace delete, Ctrl+Z undo"
+        hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Ctrl+D copy, Backspace delete, Ctrl+Z undo"
         hint_bar = pygame.Rect(10, 88, SMALL_FONT.size(hint_text)[0] + 16, SMALL_FONT.get_height() + 8)
         draw_hud_bar("selection_hint", hint_bar, hint_text, (140, 200, 255))
 
@@ -2380,6 +2430,9 @@ while running:
                     save_settings()
             elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
                 undo_shape_change()
+            elif sim.current_mode == "edit" and event.key == pygame.K_d and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
+                if not duplicate_selected_shapes():
+                    show_toast("Select a shape to duplicate first")
             elif sim.current_mode == "edit" and sim.multi_selected and event.key == pygame.K_r and not gesture_in_progress():
                 # R turns the group 15 degrees counter-clockwise, Shift+R the other way
                 rotate_selected_group(-GROUP_ROTATE_STEP_DEG if event.mod & pygame.KMOD_SHIFT else GROUP_ROTATE_STEP_DEG)
