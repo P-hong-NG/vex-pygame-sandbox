@@ -329,6 +329,48 @@ I also kept the ray system completely in charge of anything close-range - the gr
 
 ===Status=== Rays + grid are both driving the Blocker now, rays first, grid as the fallback/backup layer. Ran into a performance hit almost immediately from rebuilding the whole grid every single frame, 60 times a second, so that’s throttled down to rebuilding only every so often instead of constantly - more on that if it ends up causing its own problems.
 
+## [October 12th, 2026] - Quality of life features for the User in Edit mode, and the new Load Field system
+
+===Quality of Life Features===
+These are some of the things I have added over the last few days to make Edit mode feel nicer for the User:
+- Undo (Ctrl+Z) and redo (Ctrl+Y) for anything done to the field shapes
+- Drag a box to multi-select, then move, rotate (R), or copy (Ctrl+D) the whole group at once
+- Select all (Ctrl+A), with a warning pop-up if the User tries to delete everything on the field
+- A small red message that slides in when an action can’t be done, like “No more undo” so the User knows that the button is working or can’t
+- A see-through box for the status bar and the selection hint, which fades even more when the mouse goes over it so the User can still see and grab what is behind it
+
+<img src="images/oct12 - deletion all confirmation.png" width="400" alt="Pop-up asking if the User want to delete everything on screen after Cltr + A and Backspace">
+
+<img src="images/oct12 - multi-select & duplicate.png" width="400" alt="User able to Ctrl + D to duplicate selected objetc(s)">
+
+<img src="images/oct12 - multi-select dragbox.png" width="400" alt="User able to hold-drag across the field to multi-select objects">
+
+Two design choices I want to remember here. For undo, I didn’t save a copy every time a shape changes (dragging, resizing, deleting, typing in the sidebar, and so on). The loop compares the shapes to the last saved copy only when nothing is being dragged, so one whole drag counts as one step instead of hundreds, and any new editing method gets undo for free. And the delete everything pop-up intentionally doesn’t react to Enter, since a stray Enter shouldn’t wipe a field.
+
+===The Load Field System===
+Moving back to today’s main focus: the Load Field system. When I started building the simulator, it was meant for our whole robotics team to practice driving and test our robot when we have a limited field. That led to additions like the Blocker, which lets us practice against another "person" at different difficulties. But that does not cover the “practice for this year’s field” part.
+
+So I thought of a Load Field system that works like the saved worlds in a game like Minecraft. The User can drive in an empty field, load a pre-made field that targets a specific driving skill, or build their own field, mess around with it, then save it, load it back later, and have it return to normal. No more moving every object back by hand, and no more fear of losing a field they spent time on when they just wanted to try something else. It is a sandbox after all.
+
+===What I Built Today===
+- A new **Load Field** button in the Pause menu that opens a list of fields
+- Two pre-made practice fields to start with: "Practice drive - easy" (an open field with 3 blocks and 4 pieces to push around) and "Practice drive - medium" (center walls with gaps, corner blocks, and 6 pieces)
+- Gaps between obstacles are kept at 24 inches or more, so a normal-sized bot can always get through. These are for practice, not for getting stuck
+- Loading a field replaces the current one, so it asks first. I turned the delete everything pop-up into one shared confirm box, so anything else that needs an "are you sure?" can reuse it
+
+<img src="images/oct12 - Load Field button.png" width="400" alt="Pause menu with the new Load Field button">
+
+<img src="images/oct12 - pre-made field options.png" width="400" alt="Load Field screen listing the two practice fields with comfirmation to replace everything">
+
+===What is Next===
+- An “Add your own field” button at the end of the list, with a plus like in other games. When the User adds one, it shows up in the list, and the plus button moves down below it
+- Saving a field under a name, so it can be loaded back later
+- The official 26-27 field, once I have the layout
+- More practice fields that each target one skill, like tight turns or pushing pieces
+- A short tutorial that lists everything the User can do in each mode (Ctrl+A, Ctrl+Z, resizing, changing properties, and so on)
+
+Status: undo only brings back the shapes for now, not the robot start, the Blocker start, or the Defend flag after loading a field. I will look at that when I add saving.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
