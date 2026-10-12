@@ -473,6 +473,7 @@ def delete_selected_shapes(confirmed=False):
 UNDO_LIMIT = 50
 GROUP_ROTATE_STEP_DEG = 15.0
 undo_stack = []
+redo_stack = []     # states undone with Ctrl+Z, replayable with Ctrl+Y
 undo_last_state = None
 
 def snapshot_shapes():
@@ -506,6 +507,7 @@ def track_shape_undo():
         # Drive mode moves dynamic objects around for real, so history from
         # before it would no longer match the field. Start fresh next time.
         undo_stack.clear()
+        redo_stack.clear()
         undo_last_state = None
         return
     if undo_last_state is None:
@@ -519,21 +521,38 @@ def track_shape_undo():
         if len(undo_stack) > UNDO_LIMIT:
             undo_stack.pop(0)
         undo_last_state = now
+        # A brand new edit starts a new timeline - whatever was undone before
+        # it can't be replayed on top of it
+        redo_stack.clear()
 
-def undo_shape_change():
+def restore_shape_snapshot(snap):
     global undo_last_state
-    if gesture_in_progress():
-        return
-    if not undo_stack:
-        show_toast("No more undo")
-        return
-    prev = undo_stack.pop()
-    sim.shapes[:] = [dict(d) for d in prev]
+    sim.shapes[:] = [dict(d) for d in snap]
     sim.selected_shape_idx = None
     sim.multi_selected = []
     undo_last_state = snapshot_shapes()
     save_field_data()
     sync_custom_obstacles_to_physics()
+
+def undo_shape_change():
+    if gesture_in_progress():
+        return
+    track_shape_undo()   # fold in any edit from this same frame first
+    if not undo_stack:
+        show_toast("No more undo")
+        return
+    redo_stack.append(snapshot_shapes())
+    restore_shape_snapshot(undo_stack.pop())
+
+def redo_shape_change():
+    if gesture_in_progress():
+        return
+    track_shape_undo()
+    if not redo_stack:
+        show_toast("No more redo")
+        return
+    undo_stack.append(snapshot_shapes())
+    restore_shape_snapshot(redo_stack.pop())
 
 def select_all_shapes():
     idxs = [i for i, s in enumerate(sim.shapes) if not s.get("stored", False)]
@@ -1748,7 +1767,7 @@ def draw_everything():
     if sim.current_mode == "edit" and sim.multi_selected:
         # Light blue text on a see-through dark bar, same look as the status
         # bar up top, so it reads on the light default field and on images.
-        hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Ctrl+D copy, Backspace delete, Ctrl+Z undo"
+        hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Ctrl+D copy, Backspace delete, Ctrl+Z undo, Ctrl+Y redo"
         hint_bar = pygame.Rect(10, 88, SMALL_FONT.size(hint_text)[0] + 16, SMALL_FONT.get_height() + 8)
         draw_hud_bar("selection_hint", hint_bar, hint_text, (140, 200, 255))
 
@@ -2512,7 +2531,13 @@ while running:
             elif sim.current_mode == "edit" and event.key == pygame.K_a and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
                 select_all_shapes()
             elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
-                undo_shape_change()
+                # Ctrl+Shift+Z is redo too, same as most editors
+                if event.mod & pygame.KMOD_SHIFT:
+                    redo_shape_change()
+                else:
+                    undo_shape_change()
+            elif sim.current_mode == "edit" and event.key == pygame.K_y and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
+                redo_shape_change()
             elif sim.current_mode == "edit" and event.key == pygame.K_d and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
                 if not duplicate_selected_shapes():
                     show_toast("Select a shape to duplicate first")
