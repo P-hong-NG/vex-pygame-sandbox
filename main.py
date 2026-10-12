@@ -272,7 +272,7 @@ class SimulatorState:
         self.home_drag_offset_x = 0.0
         self.home_drag_offset_y = 0.0
         self.dragging_defend_radius = False
-        self.confirm_delete_all = False   # "delete everything?" pop-up is open
+        self.confirm_action = None   # open confirm pop-up: dict with title, sub, yes_label, on_yes
         # Multi-select (Edit mode): drag a box on empty field to grab every
         # shape it touches, then drag any one of them to move the whole group.
         self.multi_selected = []
@@ -449,7 +449,9 @@ def delete_selected_shapes(confirmed=False):
     # (Ctrl+A then Backspace), so it asks first. Anything smaller just goes.
     on_field = {i for i, s in enumerate(sim.shapes) if not s.get("stored", False)}
     if not confirmed and len(to_delete) > 1 and on_field <= set(to_delete):
-        sim.confirm_delete_all = True
+        ask_confirm(f"Delete all {len(to_delete)} shapes on the field?",
+                    "You can bring them back with Ctrl+Z.", "Delete all (Y)",
+                    lambda: delete_selected_shapes(confirmed=True))
         return True
 
     for idx in to_delete:
@@ -566,26 +568,33 @@ def select_all_shapes():
         sim.selected_shape_idx = None
         sim.multi_selected = idxs
 
-#===Delete-everything pop-up===
+#===Confirm pop-up===
+# One reusable "are you sure?" box for anything that can't be taken back with
+# a single click (wiping the field, loading a map over the current one).
+def ask_confirm(title, sub, yes_label, on_yes):
+    sim.confirm_action = {"title": title, "sub": sub, "yes_label": yes_label, "on_yes": on_yes}
+
 def confirm_dialog_rects():
-    box = pygame.Rect(0, 0, 460, 190)
+    sub_w = SMALL_FONT.size(sim.confirm_action["sub"])[0] if sim.confirm_action else 0
+    box = pygame.Rect(0, 0, max(460, sub_w + 60), 190)
     box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
     cancel = pygame.Rect(box.x + 30, box.bottom - 66, 190, 42)
-    delete = pygame.Rect(box.right - 220, box.bottom - 66, 190, 42)
-    return box, cancel, delete
+    yes = pygame.Rect(box.right - 220, box.bottom - 66, 190, 42)
+    return box, cancel, yes
 
-def close_confirm_dialog(do_delete):
-    sim.confirm_delete_all = False
-    if do_delete:
-        delete_selected_shapes(confirmed=True)
+def close_confirm_dialog(do_it):
+    action = sim.confirm_action
+    sim.confirm_action = None
+    if do_it and action is not None:
+        action["on_yes"]()
 
-def handle_confirm_delete_event(event):
+def handle_confirm_event(event):
     # While the pop-up is open it gets every click and key, nothing behind
-    # it reacts. Esc/N/Cancel back out, Y/Delete go ahead. Enter is left
-    # alone on purpose so a stray Enter can't wipe the field.
-    _, cancel, delete = confirm_dialog_rects()
+    # it reacts. Esc/N/Cancel back out, Y/the red button go ahead. Enter is
+    # left alone on purpose so a stray Enter can't do something destructive.
+    _, cancel, yes = confirm_dialog_rects()
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-        if delete.collidepoint(event.pos):
+        if yes.collidepoint(event.pos):
             close_confirm_dialog(True)
         elif cancel.collidepoint(event.pos):
             close_confirm_dialog(False)
@@ -595,30 +604,91 @@ def handle_confirm_delete_event(event):
         elif event.key == pygame.K_y:
             close_confirm_dialog(True)
 
-def draw_confirm_delete_dialog():
-    if not sim.confirm_delete_all:
+def draw_confirm_dialog():
+    if sim.confirm_action is None:
         return
     dim = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
     dim.fill((0, 0, 0, 140))
     screen.blit(dim, (0, 0))
 
-    box, cancel, delete = confirm_dialog_rects()
+    box, cancel, yes = confirm_dialog_rects()
     pygame.draw.rect(screen, (32, 32, 38), box, border_radius=12)
     pygame.draw.rect(screen, (90, 90, 100), box, 2, border_radius=12)
-    count = len(sim.multi_selected)
-    title = FONT.render(f"Delete all {count} shapes on the field?", True, WHITE)
+    title = FONT.render(sim.confirm_action["title"], True, WHITE)
     screen.blit(title, (box.centerx - title.get_width() // 2, box.y + 28))
-    sub = SMALL_FONT.render("You can bring them back with Ctrl+Z.", True, LIGHT_GRAY)
+    sub = SMALL_FONT.render(sim.confirm_action["sub"], True, LIGHT_GRAY)
     screen.blit(sub, (box.centerx - sub.get_width() // 2, box.y + 62))
 
     mx, my = pygame.mouse.get_pos()
     for rect, label, base, hover in (
         (cancel, "Cancel (Esc)", (70, 70, 80), (95, 95, 108)),
-        (delete, "Delete all (Y)", (170, 45, 45), (210, 65, 65)),
+        (yes, sim.confirm_action["yes_label"], (170, 45, 45), (210, 65, 65)),
     ):
         pygame.draw.rect(screen, hover if rect.collidepoint(mx, my) else base, rect, border_radius=8)
         text = SMALL_FONT.render(label, True, WHITE)
         screen.blit(text, (rect.centerx - text.get_width() // 2, rect.centery - text.get_height() // 2))
+
+#===Practice maps (Pause menu > Load Field)===
+def _rect(x, y, w, h, color=(150, 150, 150), body="static"):
+    return {"type": "rect", "x": x, "y": y, "w": w, "h": h, "angle": 0.0, "color": color,
+            "body_type": body, "mass": 1.0, "friction": 0.5, "elasticity": 0.0, "is_overpass": False}
+
+def _piece(x, y, r=3.5, color=(255, 80, 80)):
+    # A loose game piece the robot can push around
+    return {"type": "circ", "x": x, "y": y, "radius": r, "color": color,
+            "body_type": "dynamic", "mass": 1.0, "friction": 0.5, "elasticity": 0.0, "is_overpass": False}
+
+# Gaps between obstacles are kept at 24 inches or more so a normal sized bot
+# can always get through - these are for practice, not for getting stuck.
+PRACTICE_MAPS = [
+    {
+        "name": "Practice drive - easy",
+        "blurb": "Open field, 3 blocks, 4 pieces",
+        "robot_start": (24.0, 24.0, 0.0),
+        "blocker_start": (120.0, 120.0),
+        "home": (120.0, 120.0),
+        "shapes": [
+            _rect(66, 66, 12, 12), _rect(30, 100, 12, 12), _rect(102, 30, 12, 12),
+            _piece(48, 48), _piece(96, 96), _piece(48, 96), _piece(96, 48),
+        ],
+    },
+    {
+        "name": "Practice drive - medium",
+        "blurb": "Center walls, corner blocks, 6 pieces",
+        "robot_start": (24.0, 24.0, 0.0),
+        "blocker_start": (100.0, 100.0),
+        "home": (100.0, 100.0),
+        "shapes": [
+            _rect(20, 70, 40, 4), _rect(84, 70, 40, 4),
+            _rect(70, 20, 4, 34), _rect(70, 90, 4, 34),
+            _rect(118, 118, 16, 16), _rect(10, 118, 16, 16), _rect(118, 10, 16, 16),
+            _piece(40, 40), _piece(108, 40), _piece(36, 108),
+            _piece(60, 92), _piece(90, 52), _piece(110, 84),
+        ],
+    },
+]
+
+def load_practice_map(m):
+    # Replaces the whole field with the map. Copies the shapes so the map
+    # list itself never gets edited by playing on it.
+    sim.shapes[:] = [dict(sh) for sh in m["shapes"]]
+    sim.selected_shape_idx = None
+    sim.multi_selected = []
+    bot.start_pose = m["robot_start"]
+    bot.reset_to_start()
+    blocker.start_x, blocker.start_y = m["blocker_start"]
+    blocker.x, blocker.y = blocker.start_x, blocker.start_y
+    blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
+    blocker.set_home_point(*m["home"])
+    save_field_data()
+    sync_custom_obstacles_to_physics()
+    sim.paused = False
+    sim.paused_sub_menu = "main"
+
+def ask_load_practice_map(m):
+    ask_confirm(f"Load '{m['name']}'?",
+                "This replaces the current field. Ctrl+Z undoes it in Edit mode.",
+                "Load map (Y)", lambda: load_practice_map(m))
 
 DUPLICATE_OFFSET_IN = 6.0   # one grid cell, so a copy never sits exactly on top of its original
 
@@ -1103,7 +1173,7 @@ COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,1
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 180, 30, 30) for i in range(len(COLOR_PALETTE))]
 
 #Pause Menu Modal (pop-up) definitions
-MODAL_W, MODAL_H = 280, 260 #Width and Height of modal
+MODAL_W, MODAL_H = 280, 305 #Width and Height of modal
 modal_x = (WINDOW_WIDTH - MODAL_W) // 2 #Top-left of the modal
 modal_y = (WINDOW_HEIGHT - MODAL_H) // 2
 
@@ -1180,6 +1250,8 @@ shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circ
 #Pause menu - ui.py
 def action_resume(): sim.paused = False
 def action_settings(): sim.paused_sub_menu = "settings"
+def action_open_maps(): sim.paused_sub_menu = "maps"
+def action_close_maps(): sim.paused_sub_menu = "main"
 def action_exit(): pygame.quit(); raise SystemExit
 def action_studio():
     if sim.current_mode == "studio":
@@ -1197,12 +1269,24 @@ def action_studio():
 btn_pause_resume = UIButton(modal_x + 30, modal_y + 60, 220, 36, "Resume Game", action_callback=action_resume)
 btn_pause_resume.default_color = GREEN
 btn_pause_studio = UIButton(modal_x + 30, modal_y + 105, 220, 36, "Robot Design Studio", action_callback=action_studio)
-btn_pause_settings = UIButton(modal_x + 30, modal_y + 150, 220, 36, "Settings & Keybinds", action_callback=action_settings)
-btn_pause_exit = UIButton(modal_x + 30, modal_y + 195, 220, 36, "Exit Simulator", action_callback=action_exit)
+btn_pause_maps = UIButton(modal_x + 30, modal_y + 150, 220, 36, "Load Field", action_callback=action_open_maps)
+btn_pause_settings = UIButton(modal_x + 30, modal_y + 195, 220, 36, "Settings & Keybinds", action_callback=action_settings)
+btn_pause_exit = UIButton(modal_x + 30, modal_y + 240, 220, 36, "Exit Simulator", action_callback=action_exit)
 btn_pause_exit.default_color = RED
 
 # Rendering list to loop through in draw_everything()
-pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_settings, btn_pause_exit]
+pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_settings, btn_pause_exit]
+
+# Load Field screen - one button per map with a one-line description under it
+MAP_ROW_H = 62
+maps_modal_rect = pygame.Rect(0, 0, 380, 110 + len(PRACTICE_MAPS) * MAP_ROW_H + 50)
+maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+maps_ui = []
+for _i, _m in enumerate(PRACTICE_MAPS):
+    maps_ui.append(UIButton(maps_modal_rect.x + 30, maps_modal_rect.y + 70 + _i * MAP_ROW_H, 320, 36, _m["name"],
+                            action_callback=lambda m=_m: ask_load_practice_map(m)))
+btn_maps_back = UIButton(maps_modal_rect.x + 30, maps_modal_rect.bottom - 56, 320, 36, "Back to Pause Menu", action_callback=action_close_maps)
+maps_ui.append(btn_maps_back)
 
 #Drive mode sidebar - ui.py
 def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
@@ -2172,6 +2256,15 @@ def draw_everything():
             for element in pause_ui:
                 element.draw(screen)   
 
+        elif sim.paused_sub_menu == "maps":
+            pygame.draw.rect(screen, (35, 35, 45), maps_modal_rect, border_radius=12)
+            pygame.draw.rect(screen, YELLOW, maps_modal_rect, 2, border_radius=12)
+            draw_text("LOAD FIELD", maps_modal_rect.x + 130, maps_modal_rect.y + 20, YELLOW)
+            for _i, _m in enumerate(PRACTICE_MAPS):
+                draw_small(_m["blurb"], maps_modal_rect.x + 32, maps_modal_rect.y + 70 + _i * MAP_ROW_H + 40, LIGHT_GRAY)
+            for element in maps_ui:
+                element.draw(screen)
+
         elif sim.paused_sub_menu == "settings":
             k_in = pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
             k_out = pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
@@ -2184,7 +2277,7 @@ def draw_everything():
 
             settings_scrollview.draw(screen)
 
-    draw_confirm_delete_dialog()
+    draw_confirm_dialog()
     draw_toast()
     pygame.display.flip()
 # =====================================================================
@@ -2255,9 +2348,9 @@ while running:
     dt = clock.tick(60) / 1000.0
 
     for event in pygame.event.get():
-        # The delete-everything pop-up swallows all input until answered
-        if sim.confirm_delete_all and event.type != pygame.QUIT:
-            handle_confirm_delete_event(event)
+        # An open confirm pop-up swallows all input until answered
+        if sim.confirm_action is not None and event.type != pygame.QUIT:
+            handle_confirm_event(event)
             continue
 
         if event.type == pygame.QUIT: running = False
@@ -2269,6 +2362,11 @@ while running:
                 if sim.paused_sub_menu == "main":
                     #Letting the objects (ui.py) handle their own clicks
                     for element in pause_ui:
+                        if element.handle_event(event, mx, my):
+                            break
+
+                elif sim.paused_sub_menu == "maps":
+                    for element in maps_ui:
                         if element.handle_event(event, mx, my):
                             break
 
@@ -2519,7 +2617,7 @@ while running:
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
                 sim.active_textbox = None
-                if sim.paused and sim.paused_sub_menu == "settings":
+                if sim.paused and sim.paused_sub_menu in ("settings", "maps"):
                     sim.paused_sub_menu = "main"
                 else:
                     sim.paused = not sim.paused
