@@ -272,6 +272,7 @@ class SimulatorState:
         self.home_drag_offset_x = 0.0
         self.home_drag_offset_y = 0.0
         self.dragging_defend_radius = False
+        self.confirm_delete_all = False   # "delete everything?" pop-up is open
         # Multi-select (Edit mode): drag a box on empty field to grab every
         # shape it touches, then drag any one of them to move the whole group.
         self.multi_selected = []
@@ -433,7 +434,7 @@ def draw_toast():
     screen.blit(label, (rect.x + 14, rect.y + (h - label.get_height()) // 2))
     screen.set_clip(None)
 
-def delete_selected_shapes():
+def delete_selected_shapes(confirmed=False):
     # One shape or the whole box-selected group. Shared by the Backspace key
     # and the sidebar Delete button so they can't drift apart. Highest index
     # first so popping one doesn't shift the ones still waiting.
@@ -443,6 +444,14 @@ def delete_selected_shapes():
         to_delete = [sim.selected_shape_idx]
     else:
         return False
+
+    # Wiping the whole field is the one delete that's easy to do by accident
+    # (Ctrl+A then Backspace), so it asks first. Anything smaller just goes.
+    on_field = {i for i, s in enumerate(sim.shapes) if not s.get("stored", False)}
+    if not confirmed and len(to_delete) > 1 and on_field <= set(to_delete):
+        sim.confirm_delete_all = True
+        return True
+
     for idx in to_delete:
         removed_s = sim.shapes.pop(idx)
         if "body" in removed_s and removed_s["body"] in space.bodies:
@@ -525,6 +534,72 @@ def undo_shape_change():
     undo_last_state = snapshot_shapes()
     save_field_data()
     sync_custom_obstacles_to_physics()
+
+def select_all_shapes():
+    idxs = [i for i, s in enumerate(sim.shapes) if not s.get("stored", False)]
+    if not idxs:
+        show_toast("No shapes to select")
+        return
+    if len(idxs) == 1:
+        sim.selected_shape_idx = idxs[0]
+        sim.multi_selected = []
+    else:
+        sim.selected_shape_idx = None
+        sim.multi_selected = idxs
+
+#===Delete-everything pop-up===
+def confirm_dialog_rects():
+    box = pygame.Rect(0, 0, 460, 190)
+    box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
+    cancel = pygame.Rect(box.x + 30, box.bottom - 66, 190, 42)
+    delete = pygame.Rect(box.right - 220, box.bottom - 66, 190, 42)
+    return box, cancel, delete
+
+def close_confirm_dialog(do_delete):
+    sim.confirm_delete_all = False
+    if do_delete:
+        delete_selected_shapes(confirmed=True)
+
+def handle_confirm_delete_event(event):
+    # While the pop-up is open it gets every click and key, nothing behind
+    # it reacts. Esc/N/Cancel back out, Y/Delete go ahead. Enter is left
+    # alone on purpose so a stray Enter can't wipe the field.
+    _, cancel, delete = confirm_dialog_rects()
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if delete.collidepoint(event.pos):
+            close_confirm_dialog(True)
+        elif cancel.collidepoint(event.pos):
+            close_confirm_dialog(False)
+    elif event.type == pygame.KEYDOWN:
+        if event.key in (pygame.K_ESCAPE, pygame.K_n):
+            close_confirm_dialog(False)
+        elif event.key == pygame.K_y:
+            close_confirm_dialog(True)
+
+def draw_confirm_delete_dialog():
+    if not sim.confirm_delete_all:
+        return
+    dim = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 140))
+    screen.blit(dim, (0, 0))
+
+    box, cancel, delete = confirm_dialog_rects()
+    pygame.draw.rect(screen, (32, 32, 38), box, border_radius=12)
+    pygame.draw.rect(screen, (90, 90, 100), box, 2, border_radius=12)
+    count = len(sim.multi_selected)
+    title = FONT.render(f"Delete all {count} shapes on the field?", True, WHITE)
+    screen.blit(title, (box.centerx - title.get_width() // 2, box.y + 28))
+    sub = SMALL_FONT.render("You can bring them back with Ctrl+Z.", True, LIGHT_GRAY)
+    screen.blit(sub, (box.centerx - sub.get_width() // 2, box.y + 62))
+
+    mx, my = pygame.mouse.get_pos()
+    for rect, label, base, hover in (
+        (cancel, "Cancel (Esc)", (70, 70, 80), (95, 95, 108)),
+        (delete, "Delete all (Y)", (170, 45, 45), (210, 65, 65)),
+    ):
+        pygame.draw.rect(screen, hover if rect.collidepoint(mx, my) else base, rect, border_radius=8)
+        text = SMALL_FONT.render(label, True, WHITE)
+        screen.blit(text, (rect.centerx - text.get_width() // 2, rect.centery - text.get_height() // 2))
 
 DUPLICATE_OFFSET_IN = 6.0   # one grid cell, so a copy never sits exactly on top of its original
 
@@ -2090,6 +2165,7 @@ def draw_everything():
 
             settings_scrollview.draw(screen)
 
+    draw_confirm_delete_dialog()
     draw_toast()
     pygame.display.flip()
 # =====================================================================
@@ -2160,6 +2236,11 @@ while running:
     dt = clock.tick(60) / 1000.0
 
     for event in pygame.event.get():
+        # The delete-everything pop-up swallows all input until answered
+        if sim.confirm_delete_all and event.type != pygame.QUIT:
+            handle_confirm_delete_event(event)
+            continue
+
         if event.type == pygame.QUIT: running = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -2428,6 +2509,8 @@ while running:
                     sim.settings["keybinds"][sim.remapping_key] = event.key
                     sim.remapping_key = None
                     save_settings()
+            elif sim.current_mode == "edit" and event.key == pygame.K_a and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
+                select_all_shapes()
             elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
                 undo_shape_change()
             elif sim.current_mode == "edit" and event.key == pygame.K_d and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
