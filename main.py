@@ -668,9 +668,9 @@ PRACTICE_MAPS = [
     },
 ]
 
-def load_practice_map(m):
-    # Replaces the whole field with the map. Copies the shapes so the map
-    # list itself never gets edited by playing on it.
+def load_field_entry(m):
+    # Replaces the whole field with a built-in map or a saved field. Copies
+    # the shapes so the entry itself never gets edited by playing on it.
     sim.shapes[:] = [dict(sh) for sh in m["shapes"]]
     sim.selected_shape_idx = None
     sim.multi_selected = []
@@ -680,15 +680,88 @@ def load_practice_map(m):
     blocker.x, blocker.y = blocker.start_x, blocker.start_y
     blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
     blocker.set_home_point(*m["home"])
+    if "defend_radius" in m:
+        blocker.set_defend_radius(m["defend_radius"])
     save_field_data()
     sync_custom_obstacles_to_physics()
     sim.paused = False
     sim.paused_sub_menu = "main"
 
-def ask_load_practice_map(m):
+def ask_load_field_entry(m):
     ask_confirm(f"Load '{m['name']}'?",
                 "This replaces the current field. Ctrl+Z undoes it in Edit mode.",
-                "Load map (Y)", lambda: load_practice_map(m))
+                "Load field (Y)", lambda: load_field_entry(m))
+
+#===Saved fields (Pause menu > Load Field > + Save current field)===
+# The User's own fields, kept in saved_fields.json next to the sim so they
+# survive restarts. Each one is a full copy of the field: shapes, robot start,
+# Blocker start, Defend flag and ring size.
+SAVED_FIELDS_FILE = os.path.join(BASE_DIR, "saved_fields.json")
+MAX_SAVED_FIELDS = 8   # the list has no scrolling yet, so it's capped to fit the screen
+saved_fields = []
+
+def load_saved_fields_file():
+    saved_fields.clear()
+    if not os.path.exists(SAVED_FIELDS_FILE):
+        return
+    try:
+        with open(SAVED_FIELDS_FILE, "r") as f:
+            raw = json.load(f)
+        for e in raw:
+            shapes = []
+            for sh in e["shapes"]:
+                d = dict(sh)
+                d["color"] = tuple(d["color"])   # JSON turns colors into lists
+                shapes.append(d)
+            saved_fields.append({
+                "name": e["name"], "shapes": shapes,
+                "robot_start": tuple(e["robot_start"]),
+                "blocker_start": tuple(e["blocker_start"]),
+                "home": tuple(e["home"]),
+                "defend_radius": float(e.get("defend_radius", blocker.DEFEND_ENGAGE_RADIUS_IN)),
+            })
+    except (OSError, ValueError, KeyError, TypeError):
+        # A damaged file shouldn't stop the sim from starting
+        saved_fields.clear()
+
+def write_saved_fields_file():
+    try:
+        with open(SAVED_FIELDS_FILE, "w") as f:
+            json.dump(saved_fields, f, indent=1)
+        return True
+    except OSError:
+        return False
+
+def capture_current_field(name):
+    shapes = []
+    for sh in snapshot_shapes():
+        sh = dict(sh)
+        sh.pop("stored", None)   # a piece the robot is holding mid-drive isn't part of the layout
+        shapes.append(sh)
+    return {"name": name, "shapes": shapes,
+            "robot_start": tuple(bot.start_pose),
+            "blocker_start": (blocker.start_x, blocker.start_y),
+            "home": (blocker.home_x, blocker.home_y),
+            "defend_radius": blocker.defend_radius_in}
+
+def action_save_current_field():
+    if len(saved_fields) >= MAX_SAVED_FIELDS:
+        show_toast(f"Field list is full ({MAX_SAVED_FIELDS} saved)")
+        return
+    used = {e["name"] for e in saved_fields}
+    n = 1
+    while f"My field {n}" in used:
+        n += 1
+    saved_fields.append(capture_current_field(f"My field {n}"))
+    if not write_saved_fields_file():
+        saved_fields.pop()
+        show_toast("Couldn't save the field")
+        return
+    rebuild_maps_ui()
+
+def entry_blurb(e):
+    n = len(e["shapes"])
+    return e.get("blurb") or f"Saved field - {n} shape{'' if n == 1 else 's'}"
 
 DUPLICATE_OFFSET_IN = 6.0   # one grid cell, so a copy never sits exactly on top of its original
 
@@ -1277,16 +1350,34 @@ btn_pause_exit.default_color = RED
 # Rendering list to loop through in draw_everything()
 pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_settings, btn_pause_exit]
 
-# Load Field screen - one button per map with a one-line description under it
+# Load Field screen - one button per field (built-in first, then the User's
+# saved ones) with a one-line description under it, then the + button that
+# saves the current field, then Back. Rebuilt whenever the list changes.
 MAP_ROW_H = 62
-maps_modal_rect = pygame.Rect(0, 0, 380, 110 + len(PRACTICE_MAPS) * MAP_ROW_H + 50)
-maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+maps_modal_rect = pygame.Rect(0, 0, 380, 300)
 maps_ui = []
-for _i, _m in enumerate(PRACTICE_MAPS):
-    maps_ui.append(UIButton(maps_modal_rect.x + 30, maps_modal_rect.y + 70 + _i * MAP_ROW_H, 320, 36, _m["name"],
-                            action_callback=lambda m=_m: ask_load_practice_map(m)))
-btn_maps_back = UIButton(maps_modal_rect.x + 30, maps_modal_rect.bottom - 56, 320, 36, "Back to Pause Menu", action_callback=action_close_maps)
-maps_ui.append(btn_maps_back)
+maps_blurbs = []   # (text, y) for the description lines
+
+def rebuild_maps_ui():
+    global maps_modal_rect, maps_ui, maps_blurbs
+    entries = PRACTICE_MAPS + saved_fields
+    plus_y = 70 + len(entries) * MAP_ROW_H
+    back_y = plus_y + 36 + 14
+    maps_modal_rect = pygame.Rect(0, 0, 380, back_y + 36 + 20)
+    maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+    x0, y0 = maps_modal_rect.x + 30, maps_modal_rect.y
+    maps_ui, maps_blurbs = [], []
+    for i, e in enumerate(entries):
+        maps_ui.append(UIButton(x0, y0 + 70 + i * MAP_ROW_H, 320, 36, e["name"],
+                                action_callback=lambda m=e: ask_load_field_entry(m)))
+        maps_blurbs.append((entry_blurb(e), y0 + 70 + i * MAP_ROW_H + 40))
+    btn_plus = UIButton(x0, y0 + plus_y, 320, 36, "+ Save current field", action_callback=action_save_current_field)
+    btn_plus.default_color = GREEN
+    maps_ui.append(btn_plus)
+    maps_ui.append(UIButton(x0, y0 + back_y, 320, 36, "Back to Pause Menu", action_callback=action_close_maps))
+
+load_saved_fields_file()
+rebuild_maps_ui()
 
 #Drive mode sidebar - ui.py
 def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
@@ -2260,8 +2351,8 @@ def draw_everything():
             pygame.draw.rect(screen, (35, 35, 45), maps_modal_rect, border_radius=12)
             pygame.draw.rect(screen, YELLOW, maps_modal_rect, 2, border_radius=12)
             draw_text("LOAD FIELD", maps_modal_rect.x + 130, maps_modal_rect.y + 20, YELLOW)
-            for _i, _m in enumerate(PRACTICE_MAPS):
-                draw_small(_m["blurb"], maps_modal_rect.x + 32, maps_modal_rect.y + 70 + _i * MAP_ROW_H + 40, LIGHT_GRAY)
+            for _text, _y in maps_blurbs:
+                draw_small(_text, maps_modal_rect.x + 32, _y, LIGHT_GRAY)
             for element in maps_ui:
                 element.draw(screen)
 
