@@ -759,6 +759,18 @@ def action_save_current_field():
         return
     rebuild_maps_ui()
 
+def delete_saved_field(e):
+    saved_fields.remove(e)
+    if not write_saved_fields_file():
+        # The file still has it, so keep the list matching the file
+        saved_fields.append(e)
+        show_toast("Couldn't delete the field")
+    rebuild_maps_ui()
+
+def ask_delete_saved_field(e):
+    ask_confirm(f"Delete '{e['name']}'?", "This can't be undone.", "Delete (Y)",
+                lambda: delete_saved_field(e))
+
 def entry_blurb(e):
     n = len(e["shapes"])
     return e.get("blurb") or f"Saved field - {n} shape{'' if n == 1 else 's'}"
@@ -1368,9 +1380,18 @@ def rebuild_maps_ui():
     x0, y0 = maps_modal_rect.x + 30, maps_modal_rect.y
     maps_ui, maps_blurbs = [], []
     for i, e in enumerate(entries):
-        maps_ui.append(UIButton(x0, y0 + 70 + i * MAP_ROW_H, 320, 36, e["name"],
+        row_y = y0 + 70 + i * MAP_ROW_H
+        is_saved = e in saved_fields
+        # Saved fields get a small red X on the right, so the name button
+        # is a bit shorter to make room. Built-in maps can't be deleted.
+        maps_ui.append(UIButton(x0, row_y, 272 if is_saved else 320, 36, e["name"],
                                 action_callback=lambda m=e: ask_load_field_entry(m)))
-        maps_blurbs.append((entry_blurb(e), y0 + 70 + i * MAP_ROW_H + 40))
+        if is_saved:
+            btn_x = UIButton(x0 + 280, row_y, 40, 36, "X",
+                             action_callback=lambda m=e: ask_delete_saved_field(m))
+            btn_x.default_color = RED
+            maps_ui.append(btn_x)
+        maps_blurbs.append((entry_blurb(e), row_y + 40))
     btn_plus = UIButton(x0, y0 + plus_y, 320, 36, "+ Save current field", action_callback=action_save_current_field)
     btn_plus.default_color = GREEN
     maps_ui.append(btn_plus)
