@@ -1354,7 +1354,7 @@ COLOR_PALETTE = [(150,150,150), (255,80,80), (80,80,255), (255,220,0), (80,200,1
 color_button_rects = [pygame.Rect(FIELD_PIXELS + 20 + i*36, shape_panel_y + 180, 30, 30) for i in range(len(COLOR_PALETTE))]
 
 #Pause Menu Modal (pop-up) definitions
-MODAL_W, MODAL_H = 280, 305 #Width and Height of modal
+MODAL_W, MODAL_H = 280, 350 #Width and Height of modal
 modal_x = (WINDOW_WIDTH - MODAL_W) // 2 #Top-left of the modal
 modal_y = (WINDOW_HEIGHT - MODAL_H) // 2
 
@@ -1433,6 +1433,7 @@ def action_resume(): sim.paused = False
 def action_settings(): sim.paused_sub_menu = "settings"
 def action_open_maps(): sim.paused_sub_menu = "maps"
 def action_close_maps(): sim.paused_sub_menu = "main"
+def action_open_controls(): sim.paused_sub_menu = "controls"
 def action_exit(): pygame.quit(); raise SystemExit
 def action_studio():
     if sim.current_mode == "studio":
@@ -1451,12 +1452,13 @@ btn_pause_resume = UIButton(modal_x + 30, modal_y + 60, 220, 36, "Resume Game", 
 btn_pause_resume.default_color = GREEN
 btn_pause_studio = UIButton(modal_x + 30, modal_y + 105, 220, 36, "Robot Design Studio", action_callback=action_studio)
 btn_pause_maps = UIButton(modal_x + 30, modal_y + 150, 220, 36, "Load Field", action_callback=action_open_maps)
-btn_pause_settings = UIButton(modal_x + 30, modal_y + 195, 220, 36, "Settings & Keybinds", action_callback=action_settings)
-btn_pause_exit = UIButton(modal_x + 30, modal_y + 240, 220, 36, "Exit Simulator", action_callback=action_exit)
+btn_pause_controls = UIButton(modal_x + 30, modal_y + 195, 220, 36, "Controls", action_callback=action_open_controls)
+btn_pause_settings = UIButton(modal_x + 30, modal_y + 240, 220, 36, "Settings & Keybinds", action_callback=action_settings)
+btn_pause_exit = UIButton(modal_x + 30, modal_y + 285, 220, 36, "Exit Simulator", action_callback=action_exit)
 btn_pause_exit.default_color = RED
 
 # Rendering list to loop through in draw_everything()
-pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_settings, btn_pause_exit]
+pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_controls, btn_pause_settings, btn_pause_exit]
 
 # Load Field screen - one button per field (built-in first, then the User's
 # saved ones) with a one-line description under it, then the + button that
@@ -1498,6 +1500,64 @@ def rebuild_maps_ui():
 
 load_saved_fields_file()
 rebuild_maps_ui()
+
+# Controls screen - a plain cheat sheet of what each key and mouse action
+# does, grouped by mode. The three intake keys are read from the saved
+# keybinds so the sheet stays right after the user remaps them.
+controls_modal_rect = pygame.Rect(0, 0, 600, 660)
+controls_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+btn_controls_back = UIButton(controls_modal_rect.x + 30, controls_modal_rect.bottom - 56, 540, 36,
+                             "Back to Pause Menu", action_callback=action_close_maps)
+
+def controls_sections():
+    kb = sim.settings["keybinds"]
+    k_in = pygame.key.name(kb["intake_in"]).upper()
+    k_out = pygame.key.name(kb["intake_out"]).upper()
+    k_score = pygame.key.name(kb["outtake_score"]).upper()
+    return [
+        ("DRIVE MODE", [
+            ("W / S", "Forward / back (Arcade and Custom)"),
+            ("A / D", "Turn left / right (Arcade and Custom)"),
+            ("I / K", "Left side forward / back (Tank)"),
+            ("J / L", "Right side back / forward (Tank)"),
+            (f"{k_in} / {k_out}", "Intake in / out"),
+            (k_score, "Outtake (score)"),
+            ("V", "Cycle the Blocker's debug view"),
+            ("N", "Switch the Blocker's navigation mode"),
+        ]),
+        ("EDIT MODE", [
+            ("Click + drag", "Move a shape, the robot or the Blocker"),
+            ("Drag empty field", "Draw a box to select many shapes"),
+            ("White dot", "Drag to resize the selected shape"),
+            ("Ring dot", "Drag to resize the Blocker's defend zone"),
+            ("Ctrl+A", "Select all shapes"),
+            ("Ctrl+D", "Duplicate the selection"),
+            ("R / Shift+R", "Rotate a group 15 degrees each way"),
+            ("Backspace", "Delete the selection"),
+            ("Ctrl+Z", "Undo"),
+            ("Ctrl+Y / Ctrl+Shift+Z", "Redo"),
+        ]),
+        ("EVERYWHERE", [
+            ("Esc", "Open or close the pause menu"),
+            ("Pause > Settings", "Change drive style, intake keys and more"),
+        ]),
+    ]
+
+def draw_controls_screen():
+    r = controls_modal_rect
+    pygame.draw.rect(screen, (35, 35, 45), r, border_radius=12)
+    pygame.draw.rect(screen, YELLOW, r, 2, border_radius=12)
+    draw_text("CONTROLS", r.x + 225, r.y + 18, YELLOW)
+    y = r.y + 62
+    for title, rows in controls_sections():
+        draw_small(title, r.x + 30, y, (140, 200, 255))
+        y += 22
+        for keys, desc in rows:
+            draw_small(keys, r.x + 40, y, YELLOW)
+            draw_small(desc, r.x + 230, y, LIGHT_GRAY)
+            y += 20
+        y += 12
+    btn_controls_back.draw(screen)
 
 #Drive mode sidebar - ui.py
 def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
@@ -2476,6 +2536,9 @@ def draw_everything():
             for element in maps_ui:
                 element.draw(screen)
 
+        elif sim.paused_sub_menu == "controls":
+            draw_controls_screen()
+
         elif sim.paused_sub_menu == "settings":
             k_in = pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
             k_out = pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
@@ -2586,6 +2649,9 @@ while running:
                     for element in maps_ui:
                         if element.handle_event(event, mx, my):
                             break
+
+                elif sim.paused_sub_menu == "controls":
+                    btn_controls_back.handle_event(event, mx, my)
 
                 elif sim.paused_sub_menu == "settings":
                     settings_scrollview.handle_event(event, mx, my)
@@ -2834,7 +2900,7 @@ while running:
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
                 sim.active_textbox = None
-                if sim.paused and sim.paused_sub_menu in ("settings", "maps"):
+                if sim.paused and sim.paused_sub_menu in ("settings", "maps", "controls"):
                     sim.paused_sub_menu = "main"
                 else:
                     sim.paused = not sim.paused
