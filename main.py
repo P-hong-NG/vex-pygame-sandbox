@@ -273,6 +273,7 @@ class SimulatorState:
         self.home_drag_offset_y = 0.0
         self.dragging_defend_radius = False
         self.confirm_action = None   # open confirm pop-up: dict with title, sub, yes_label, on_yes
+        self.rename_action = None    # open rename pop-up: dict with the entry and the text typed so far
         # Multi-select (Edit mode): drag a box on empty field to grab every
         # shape it touches, then drag any one of them to move the whole group.
         self.multi_selected = []
@@ -770,6 +771,101 @@ def delete_saved_field(e):
 def ask_delete_saved_field(e):
     ask_confirm(f"Delete '{e['name']}'?", "This can't be undone.", "Delete (Y)",
                 lambda: delete_saved_field(e))
+
+#===Rename pop-up===
+MAX_FIELD_NAME_LEN = 24   # about 185px in the list font, which fits the name button
+
+def rename_dialog_rects():
+    box = pygame.Rect(0, 0, 460, 210)
+    box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
+    field = pygame.Rect(box.x + 30, box.y + 70, box.w - 60, 38)
+    cancel = pygame.Rect(box.x + 30, box.bottom - 62, 190, 42)
+    save = pygame.Rect(box.right - 220, box.bottom - 62, 190, 42)
+    return box, field, cancel, save
+
+def start_rename(e):
+    sim.rename_action = {"entry": e, "text": e["name"]}
+    pygame.key.set_repeat(400, 40)   # hold Backspace to keep deleting
+
+def close_rename_dialog():
+    sim.rename_action = None
+    pygame.key.set_repeat()          # back to one key press per KEYDOWN
+
+def commit_rename():
+    act = sim.rename_action
+    e, new_name = act["entry"], act["text"].strip()
+    if not new_name:
+        show_toast("Name can't be empty")
+        return
+    if new_name == e["name"]:
+        close_rename_dialog()
+        return
+    taken = {x["name"].lower() for x in PRACTICE_MAPS + saved_fields if x is not e}
+    if new_name.lower() in taken:
+        show_toast("That name is already used")
+        return
+    old_name = e["name"]
+    e["name"] = new_name
+    if not write_saved_fields_file():
+        e["name"] = old_name
+        show_toast("Couldn't rename the field")
+    close_rename_dialog()
+    rebuild_maps_ui()
+
+def handle_rename_event(event):
+    # Same idea as the confirm box: while it's open it takes every click and
+    # key. Enter saves, Esc cancels, typing fills the name.
+    _, _, cancel, save = rename_dialog_rects()
+    act = sim.rename_action
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if save.collidepoint(event.pos):
+            commit_rename()
+        elif cancel.collidepoint(event.pos):
+            close_rename_dialog()
+    elif event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_ESCAPE:
+            close_rename_dialog()
+        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            commit_rename()
+        elif event.key == pygame.K_BACKSPACE:
+            act["text"] = act["text"][:-1]
+        elif (event.unicode and event.unicode.isprintable()
+              and not (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META))
+              and len(act["text"]) < MAX_FIELD_NAME_LEN):
+            act["text"] += event.unicode
+
+def draw_rename_dialog():
+    if sim.rename_action is None:
+        return
+    dim = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 140))
+    screen.blit(dim, (0, 0))
+
+    box, field, cancel, save = rename_dialog_rects()
+    pygame.draw.rect(screen, (32, 32, 38), box, border_radius=12)
+    pygame.draw.rect(screen, (90, 90, 100), box, 2, border_radius=12)
+    title = FONT.render("Rename field", True, WHITE)
+    screen.blit(title, (box.centerx - title.get_width() // 2, box.y + 22))
+
+    pygame.draw.rect(screen, (18, 18, 24), field, border_radius=6)
+    pygame.draw.rect(screen, YELLOW, field, 2, border_radius=6)
+    typed = sim.rename_action["text"]
+    label = FONT.render(typed, True, WHITE)
+    screen.blit(label, (field.x + 10, field.centery - label.get_height() // 2))
+    if (pygame.time.get_ticks() // 500) % 2 == 0:   # blinking cursor
+        cx = field.x + 10 + label.get_width() + 2
+        pygame.draw.line(screen, WHITE, (cx, field.y + 8), (cx, field.bottom - 8), 2)
+    count = SMALL_FONT.render(f"{len(typed)}/{MAX_FIELD_NAME_LEN}", True, LIGHT_GRAY)
+    screen.blit(count, (field.right - count.get_width(), field.bottom + 4))
+
+    mx, my = pygame.mouse.get_pos()
+    for rect, text, base, hover in (
+        (cancel, "Cancel (Esc)", (70, 70, 80), (95, 95, 108)),
+        (save, "Save (Enter)", (45, 130, 70), (65, 170, 95)),
+    ):
+        pygame.draw.rect(screen, hover if rect.collidepoint(mx, my) else base, rect, border_radius=8)
+        t = SMALL_FONT.render(text, True, WHITE)
+        screen.blit(t, (rect.centerx - t.get_width() // 2, rect.centery - t.get_height() // 2))
 
 def entry_blurb(e):
     n = len(e["shapes"])
@@ -1382,12 +1478,15 @@ def rebuild_maps_ui():
     for i, e in enumerate(entries):
         row_y = y0 + 70 + i * MAP_ROW_H
         is_saved = e in saved_fields
-        # Saved fields get a small red X on the right, so the name button
-        # is a bit shorter to make room. Built-in maps can't be deleted.
-        maps_ui.append(UIButton(x0, row_y, 272 if is_saved else 320, 36, e["name"],
+        # Saved fields get an Edit (rename) button and a small red X on the
+        # right, so the name button is shorter to make room. Built-in maps
+        # can't be renamed or deleted.
+        maps_ui.append(UIButton(x0, row_y, 220 if is_saved else 320, 36, e["name"],
                                 action_callback=lambda m=e: ask_load_field_entry(m)))
         if is_saved:
-            btn_x = UIButton(x0 + 280, row_y, 40, 36, "X",
+            maps_ui.append(UIButton(x0 + 226, row_y, 54, 36, "Edit",
+                                    action_callback=lambda m=e: start_rename(m)))
+            btn_x = UIButton(x0 + 286, row_y, 34, 36, "X",
                              action_callback=lambda m=e: ask_delete_saved_field(m))
             btn_x.default_color = RED
             maps_ui.append(btn_x)
@@ -2390,6 +2489,7 @@ def draw_everything():
             settings_scrollview.draw(screen)
 
     draw_confirm_dialog()
+    draw_rename_dialog()
     draw_toast()
     pygame.display.flip()
 # =====================================================================
@@ -2460,6 +2560,11 @@ while running:
     dt = clock.tick(60) / 1000.0
 
     for event in pygame.event.get():
+        # An open rename pop-up swallows all input until it's saved or cancelled
+        if sim.rename_action is not None and event.type != pygame.QUIT:
+            handle_rename_event(event)
+            continue
+
         # An open confirm pop-up swallows all input until answered
         if sim.confirm_action is not None and event.type != pygame.QUIT:
             handle_confirm_event(event)
