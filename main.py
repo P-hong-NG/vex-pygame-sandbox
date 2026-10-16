@@ -533,6 +533,9 @@ def restore_shape_snapshot(snap):
     sim.shapes[:] = [dict(d) for d in snap]
     sim.selected_shape_idx = None
     sim.multi_selected = []
+    # Restored pieces are fresh copies, so the robot's bag has to point at
+    # them. Whatever was marked as held in that snapshot goes back in the bag.
+    bot.inventory[:] = [sh for sh in sim.shapes if sh.get("stored", False)]
     undo_last_state = snapshot_shapes()
     save_field_data()
     sync_custom_obstacles_to_physics()
@@ -675,6 +678,9 @@ def load_field_entry(m):
     sim.shapes[:] = [dict(sh) for sh in m["shapes"]]
     sim.selected_shape_idx = None
     sim.multi_selected = []
+    # The old field's pieces are gone, so anything the robot was carrying
+    # has to go too - otherwise it keeps a slot but has nothing to drop.
+    bot.inventory.clear()
     bot.start_pose = m["robot_start"]
     bot.reset_to_start()
     blocker.start_x, blocker.start_y = m["blocker_start"]
