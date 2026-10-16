@@ -670,6 +670,20 @@ PRACTICE_MAPS = [
             _piece(60, 92), _piece(90, 52), _piece(110, 84),
         ],
     },
+    {
+        "name": "Practice drive - serpentine",
+        "blurb": "S-curve lanes, 3 walls, 5 pieces",
+        "robot_start": (24.0, 24.0, 0.0),
+        "blocker_start": (120.0, 120.0),
+        "home": (120.0, 120.0),
+        "shapes": [
+            # Three long walls with the opening on alternating sides, so the
+            # robot has to make wide turns back and forth to get up the
+            # field. Lanes are 30 inches wide and openings 48.
+            _rect(0, 40, 96, 6), _rect(48, 76, 96, 6), _rect(0, 112, 96, 6),
+            _piece(80, 22), _piece(120, 58), _piece(24, 96), _piece(110, 96), _piece(60, 130),
+        ],
+    },
 ]
 
 def load_field_entry(m):
@@ -1337,6 +1351,13 @@ def sync_custom_obstacles_to_physics():
                 shape.elasticity = elas_val
                 space.add(body, shape)
                 s["body"] = body #Stores a reference to the backend body (aka this specific shape has this body)
+
+            # A piece the robot is carrying has to stay out of the world, the
+            # same way picking it up took it out. Without this, switching
+            # modes dropped an invisible copy of it back on the field.
+            if s.get("stored", False) and "body" in s:
+                space.remove(s["body"], shape)
+                s["pymunk_shape"] = shape
 # =====================================================================
 # 5. GRAPHICS & UI DRAWING SYSTEM
 # =====================================================================
