@@ -275,6 +275,7 @@ class SimulatorState:
         self.home_drag_offset_y = 0.0
         self.dragging_defend_radius = False
         self.confirm_action = None   # open confirm pop-up: dict with title, sub, yes_label, on_yes
+        self.code_dialog = None      # open Share / Import code pop-up (a dict), or None
         self.rename_action = None    # open rename pop-up: dict with the entry and the text typed so far
         # Multi-select (Edit mode): drag a box on empty field to grab every
         # shape it touches, then drag any one of them to move the whole group.
@@ -1026,6 +1027,206 @@ def draw_rename_dialog():
         t = SMALL_FONT.render(text, True, WHITE)
         screen.blit(t, (rect.centerx - t.get_width() // 2, rect.centery - t.get_height() // 2))
 
+#===Share / Import code pop-ups===
+# Share shows a saved field's code with Copy and Save-to-file buttons. Import
+# takes a code from the clipboard (Ctrl+V or the Paste button) or from
+# field_code.txt, checks it right away and only enables Import when it's good.
+# The file route is there because the clipboard doesn't work on every computer.
+FIELD_CODE_FILE = os.path.join(BASE_DIR, "field_code.txt")
+
+def clipboard_put(text):
+    try:
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
+        pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8"))
+        return True
+    except Exception:
+        return False
+
+def clipboard_get():
+    try:
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
+        raw = pygame.scrap.get(pygame.SCRAP_TEXT)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    return raw.decode("utf-8", "ignore").replace("\x00", "")
+
+def read_code_file():
+    try:
+        with open(FIELD_CODE_FILE, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
+
+def start_share(e):
+    sim.code_dialog = {"mode": "share", "entry": e, "code": field_to_code(e), "msg": "", "ok": True}
+
+def start_import():
+    if len(saved_fields) >= MAX_SAVED_FIELDS:
+        show_toast(f"Field list is full ({MAX_SAVED_FIELDS} saved)")
+        return
+    sim.code_dialog = {"mode": "import", "code": "", "field": None,
+                       "msg": "Paste a field code with Ctrl+V", "ok": True}
+
+def close_code_dialog():
+    sim.code_dialog = None
+
+def code_dialog_rects():
+    d = sim.code_dialog
+    box = pygame.Rect(0, 0, 580, 300)
+    box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
+    area = pygame.Rect(box.x + 30, box.y + 66, box.w - 60, 120)
+    if d["mode"] == "share":
+        names = [("copy", "Copy code"), ("file", "Save to file"), ("close", "Close (Esc)")]
+    else:
+        names = [("paste", "Paste (Ctrl+V)"), ("file", "From file"),
+                 ("close", "Cancel (Esc)"), ("import", "Import (Enter)")]
+    gap = 10
+    w = (box.w - 60 - gap * (len(names) - 1)) // len(names)
+    buttons = [(k, pygame.Rect(box.x + 30 + i * (w + gap), box.bottom - 62, w, 42), label)
+               for i, (k, label) in enumerate(names)]
+    return box, area, buttons
+
+def set_import_code(text):
+    # Checks the code as soon as it arrives so the dialog can say what's in it
+    d = sim.code_dialog
+    d["code"] = "".join(text.split())
+    try:
+        d["field"] = code_to_field(d["code"])
+        n = len(d["field"]["shapes"])
+        d["msg"] = f"Ready: {d['field']['name']} ({n} shape{'s' if n != 1 else ''})"
+        d["ok"] = True
+    except ValueError as err:
+        d["field"] = None
+        d["msg"] = str(err)
+        d["ok"] = False
+
+def commit_import():
+    d = sim.code_dialog
+    if d["field"] is None:
+        show_toast("Paste a valid field code first")
+        return
+    if len(saved_fields) >= MAX_SAVED_FIELDS:
+        show_toast(f"Field list is full ({MAX_SAVED_FIELDS} saved)")
+        return
+    entry = d["field"]
+    # A name that's already taken gets a number on the end, kept inside the cap
+    taken = {x["name"].lower() for x in PRACTICE_MAPS + saved_fields}
+    base, n = entry["name"], 2
+    while entry["name"].lower() in taken:
+        suffix = f" {n}"
+        entry["name"] = base[:MAX_FIELD_NAME_LEN - len(suffix)] + suffix
+        n += 1
+    saved_fields.append(entry)
+    if not write_saved_fields_file():
+        saved_fields.pop()
+        show_toast("Couldn't save the field")
+        return
+    close_code_dialog()
+    rebuild_maps_ui()
+
+def code_dialog_action(key):
+    d = sim.code_dialog
+    if key == "close":
+        close_code_dialog()
+    elif d["mode"] == "share":
+        if key == "copy":
+            if clipboard_put(d["code"]):
+                d["msg"], d["ok"] = "Copied. Paste it into a chat to share.", True
+            else:
+                d["msg"], d["ok"] = "Couldn't reach the clipboard. Use Save to file.", False
+        elif key == "file":
+            try:
+                with open(FIELD_CODE_FILE, "w", encoding="utf-8") as f:
+                    f.write(d["code"] + "\n")
+                d["msg"], d["ok"] = "Saved as field_code.txt next to the sim.", True
+            except OSError:
+                d["msg"], d["ok"] = "Couldn't save the file.", False
+    else:
+        if key == "paste":
+            text = clipboard_get()
+            if text is None:
+                d["msg"], d["ok"] = "Clipboard is empty or unavailable. Try From file.", False
+            else:
+                set_import_code(text)
+        elif key == "file":
+            text = read_code_file()
+            if text is None:
+                d["msg"], d["ok"] = "No field_code.txt found next to the sim.", False
+            else:
+                set_import_code(text)
+        elif key == "import":
+            commit_import()
+
+def handle_code_dialog_event(event):
+    d = sim.code_dialog
+    _, _, buttons = code_dialog_rects()
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        for key, rect, _label in buttons:
+            if rect.collidepoint(event.pos):
+                code_dialog_action(key)
+                break
+    elif event.type == pygame.KEYDOWN:
+        ctrl = event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)
+        if event.key == pygame.K_ESCAPE:
+            close_code_dialog()
+        elif d["mode"] == "import" and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            commit_import()
+        elif d["mode"] == "import" and ctrl and event.key == pygame.K_v:
+            code_dialog_action("paste")
+
+def wrap_code(text, width):
+    return [text[i:i + width] for i in range(0, len(text), width)] or [""]
+
+def draw_code_dialog():
+    d = sim.code_dialog
+    if d is None:
+        return
+    dim = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 140))
+    screen.blit(dim, (0, 0))
+
+    box, area, buttons = code_dialog_rects()
+    pygame.draw.rect(screen, (32, 32, 38), box, border_radius=12)
+    pygame.draw.rect(screen, (90, 90, 100), box, 2, border_radius=12)
+    title_text = f"Share '{d['entry']['name']}'" if d["mode"] == "share" else "Import field code"
+    title = FONT.render(title_text, True, WHITE)
+    screen.blit(title, (box.centerx - title.get_width() // 2, box.y + 22))
+
+    pygame.draw.rect(screen, (18, 18, 24), area, border_radius=6)
+    pygame.draw.rect(screen, (90, 90, 100), area, 1, border_radius=6)
+    if d["code"]:
+        per_line = max(10, (area.w - 20) // SMALL_FONT.size("W")[0])
+        lines = wrap_code(d["code"], per_line)
+        max_lines = (area.h - 16) // (SMALL_FONT.get_height() + 2)
+        if len(lines) > max_lines:
+            lines = lines[:max_lines - 1] + [lines[max_lines - 1][:per_line - 3] + "..."]
+        for i, line in enumerate(lines):
+            t = SMALL_FONT.render(line, True, (190, 200, 215))
+            screen.blit(t, (area.x + 10, area.y + 8 + i * (SMALL_FONT.get_height() + 2)))
+    else:
+        t = SMALL_FONT.render("Nothing pasted yet", True, (110, 110, 120))
+        screen.blit(t, (area.x + 10, area.y + 8))
+
+    if d["msg"]:
+        color = (110, 220, 140) if d["ok"] else (255, 120, 120)
+        t = SMALL_FONT.render(d["msg"], True, color)
+        screen.blit(t, (box.x + 30, area.bottom + 12))
+
+    mx, my = pygame.mouse.get_pos()
+    for key, rect, label in buttons:
+        if key == "import":
+            enabled = d["field"] is not None
+            base, hover = ((45, 130, 70), (65, 170, 95)) if enabled else ((55, 55, 60), (55, 55, 60))
+        else:
+            base, hover = (70, 70, 80), (95, 95, 108)
+        pygame.draw.rect(screen, hover if rect.collidepoint(mx, my) else base, rect, border_radius=8)
+        t = SMALL_FONT.render(label, True, WHITE if key != "import" or d["field"] is not None else (120, 120, 125))
+        screen.blit(t, (rect.centerx - t.get_width() // 2, rect.centery - t.get_height() // 2))
+
 def entry_blurb(e):
     n = len(e["shapes"])
     return e.get("blurb") or f"Saved field - {n} shape{'' if n == 1 else 's'}"
@@ -1630,7 +1831,7 @@ pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_contro
 # saved ones) with a one-line description under it, then the + button that
 # saves the current field, then Back. Rebuilt whenever the list changes.
 MAP_ROW_H = 62
-maps_modal_rect = pygame.Rect(0, 0, 380, 300)
+maps_modal_rect = pygame.Rect(0, 0, 440, 300)
 maps_ui = []
 maps_blurbs = []   # (text, y) for the description lines
 
@@ -1642,30 +1843,33 @@ def rebuild_maps_ui():
     row_h = min(MAP_ROW_H, (WINDOW_HEIGHT - 20 - 176) // len(entries))
     plus_y = 70 + len(entries) * row_h
     back_y = plus_y + 36 + 14
-    maps_modal_rect = pygame.Rect(0, 0, 380, back_y + 36 + 20)
+    maps_modal_rect = pygame.Rect(0, 0, 440, back_y + 36 + 20)
     maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     x0, y0 = maps_modal_rect.x + 30, maps_modal_rect.y
     maps_ui, maps_blurbs = [], []
     for i, e in enumerate(entries):
         row_y = y0 + 70 + i * row_h
         is_saved = e in saved_fields
-        # Saved fields get an Edit (rename) button and a small red X on the
+        # Saved fields get Share, Edit (rename) and a small red X on the
         # right, so the name button is shorter to make room. Built-in maps
         # can't be renamed or deleted.
-        maps_ui.append(UIButton(x0, row_y, 220 if is_saved else 320, 36, e["name"],
+        maps_ui.append(UIButton(x0, row_y, 214 if is_saved else 380, 36, e["name"],
                                 action_callback=lambda m=e: ask_load_field_entry(m)))
         if is_saved:
-            maps_ui.append(UIButton(x0 + 226, row_y, 54, 36, "Edit",
+            maps_ui.append(UIButton(x0 + 220, row_y, 60, 36, "Share",
+                                    action_callback=lambda m=e: start_share(m)))
+            maps_ui.append(UIButton(x0 + 286, row_y, 54, 36, "Edit",
                                     action_callback=lambda m=e: start_rename(m)))
-            btn_x = UIButton(x0 + 286, row_y, 34, 36, "X",
+            btn_x = UIButton(x0 + 346, row_y, 34, 36, "X",
                              action_callback=lambda m=e: ask_delete_saved_field(m))
             btn_x.default_color = RED
             maps_ui.append(btn_x)
         maps_blurbs.append((entry_blurb(e), row_y + 40))
-    btn_plus = UIButton(x0, y0 + plus_y, 320, 36, "+ Save current field", action_callback=action_save_current_field)
+    btn_plus = UIButton(x0, y0 + plus_y, 185, 36, "+ Save current", action_callback=action_save_current_field)
     btn_plus.default_color = GREEN
     maps_ui.append(btn_plus)
-    maps_ui.append(UIButton(x0, y0 + back_y, 320, 36, "Back to Pause Menu", action_callback=action_close_maps))
+    maps_ui.append(UIButton(x0 + 195, y0 + plus_y, 185, 36, "Import code", action_callback=start_import))
+    maps_ui.append(UIButton(x0, y0 + back_y, 380, 36, "Back to Pause Menu", action_callback=action_close_maps))
 
 load_saved_fields_file()
 rebuild_maps_ui()
@@ -2710,7 +2914,7 @@ def draw_everything():
         elif sim.paused_sub_menu == "maps":
             pygame.draw.rect(screen, (35, 35, 45), maps_modal_rect, border_radius=12)
             pygame.draw.rect(screen, YELLOW, maps_modal_rect, 2, border_radius=12)
-            draw_text("LOAD FIELD", maps_modal_rect.x + 130, maps_modal_rect.y + 20, YELLOW)
+            draw_text("LOAD FIELD", maps_modal_rect.x + 160, maps_modal_rect.y + 20, YELLOW)
             for _text, _y in maps_blurbs:
                 draw_small(_text, maps_modal_rect.x + 32, _y, LIGHT_GRAY)
             for element in maps_ui:
@@ -2733,6 +2937,7 @@ def draw_everything():
 
     draw_confirm_dialog()
     draw_rename_dialog()
+    draw_code_dialog()
     draw_toast()
     pygame.display.flip()
 # =====================================================================
@@ -2806,6 +3011,11 @@ while running:
         # An open rename pop-up swallows all input until it's saved or cancelled
         if sim.rename_action is not None and event.type != pygame.QUIT:
             handle_rename_event(event)
+            continue
+
+        # Same for the Share / Import code pop-ups
+        if sim.code_dialog is not None and event.type != pygame.QUIT:
+            handle_code_dialog_event(event)
             continue
 
         # An open confirm pop-up swallows all input until answered
