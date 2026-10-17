@@ -1548,11 +1548,6 @@ rebuild_maps_ui()
 # Controls screen - a plain cheat sheet of what each key and mouse action
 # does, grouped by mode. The three intake keys are read from the saved
 # keybinds so the sheet stays right after the user remaps them.
-controls_modal_rect = pygame.Rect(0, 0, 600, 660)
-controls_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-btn_controls_back = UIButton(controls_modal_rect.x + 30, controls_modal_rect.bottom - 56, 540, 36,
-                             "Back to Pause Menu", action_callback=action_close_maps)
-
 def controls_sections():
     kb = sim.settings["keybinds"]
     k_in = pygame.key.name(kb["intake_in"]).upper()
@@ -1581,11 +1576,27 @@ def controls_sections():
             ("Ctrl+Z", "Undo"),
             ("Ctrl+Y / Ctrl+Shift+Z", "Redo"),
         ]),
+        ("STUDIO MODE", [
+            ("Pause > Studio", "Open Studio (same button goes back)"),
+            ("Click a box", "Type a number, then Enter to apply it"),
+            ("Next / Back", "Flip between the two Studio pages"),
+            ("Page 1", "Size, wheels, gears, mass, motor"),
+            ("Page 2", "Intake and outtake: on/off, size, capacity"),
+        ]),
         ("EVERYWHERE", [
             ("Esc", "Open or close the pause menu"),
             ("Pause > Settings", "Change drive style, intake keys and more"),
         ]),
     ]
+
+# The box is sized from what's in it, so adding a row never runs it off the
+# window or leaves a big empty gap above the Back button.
+_ctl_sections = controls_sections()
+_ctl_h = 62 + sum(22 + 20 * len(rows) + 12 for _t, rows in _ctl_sections) + 64
+controls_modal_rect = pygame.Rect(0, 0, 600, min(_ctl_h, WINDOW_HEIGHT - 20))
+controls_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+btn_controls_back = UIButton(controls_modal_rect.x + 30, controls_modal_rect.bottom - 56, 540, 36,
+                             "Back to Pause Menu", action_callback=action_close_maps)
 
 def draw_controls_screen():
     r = controls_modal_rect
