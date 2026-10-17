@@ -4,6 +4,8 @@ import pymunk.pygame_util
 import math
 import json
 import os
+import zlib
+import base64
 from ui import UIButton, UITextbox, ScrollView, UIDropdown, UISlider
 from blocking_bot import BlockingBot
 
@@ -766,6 +768,129 @@ def write_saved_fields_file():
         return True
     except OSError:
         return False
+
+#===Field share codes===
+# A field turned into one line of text so it can be pasted into a chat and
+# loaded on someone else's computer. The text is only ever read as data (JSON),
+# never run, and every number is checked on the way in, since a code can come
+# from anyone. The "VEXF1" tag is the format version, so codes made now keep
+# loading if the format grows later.
+FIELD_CODE_PREFIX = "VEXF1:"
+FIELD_CODE_MAX_CHARS = 20000        # a full field is well under 2000, so this is generous
+FIELD_CODE_MAX_BYTES = 200000       # cap on the unpacked size, so a tiny code can't unpack into a huge one
+FIELD_CODE_MAX_SHAPES = 150
+FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough")
+
+def field_to_code(entry):
+    def r1(v): return round(float(v), 1)
+    shapes = []
+    for sh in entry["shapes"]:
+        col = [int(c) for c in sh["color"]]
+        tail = [sh.get("body_type", "static"), r1(sh.get("mass", 1.0)),
+                round(float(sh.get("friction", 0.5)), 2), round(float(sh.get("elasticity", 0.0)), 2),
+                1 if sh.get("is_overpass", False) else 0]
+        if sh["type"] == "rect":
+            shapes.append(["r", r1(sh["x"]), r1(sh["y"]), r1(sh["w"]), r1(sh["h"]),
+                           r1(sh.get("angle", 0.0)), col] + tail)
+        else:
+            shapes.append(["c", r1(sh["x"]), r1(sh["y"]), r1(sh["radius"]), col] + tail)
+    payload = {"v": 1, "n": entry["name"],
+               "r": [r1(v) for v in entry["robot_start"]],
+               "b": [r1(v) for v in entry["blocker_start"]],
+               "h": [r1(v) for v in entry["home"]],
+               "d": r1(entry.get("defend_radius", blocker.DEFEND_ENGAGE_RADIUS_IN)),
+               "s": shapes}
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    packed = base64.urlsafe_b64encode(zlib.compress(raw, 9)).decode("ascii").rstrip("=")
+    return FIELD_CODE_PREFIX + packed
+
+def code_to_field(text):
+    # Returns a field entry like the ones in saved_fields, or raises
+    # ValueError with a short reason if the code isn't a good field.
+    def num(v, lo, hi, what):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            raise ValueError(f"{what} isn't a number")
+        if v < lo or v > hi:
+            raise ValueError(f"{what} is out of range")
+        return float(v)
+    def point(v, what):
+        if not isinstance(v, list) or len(v) != 2:
+            raise ValueError(f"{what} is broken")
+        return (num(v[0], 0, FIELD_INCHES, what), num(v[1], 0, FIELD_INCHES, what))
+
+    code = "".join(str(text).split())   # chat apps love adding spaces and line breaks
+    if not code.startswith(FIELD_CODE_PREFIX):
+        raise ValueError("That isn't a field code")
+    if len(code) > FIELD_CODE_MAX_CHARS:
+        raise ValueError("That code is too long")
+    body = code[len(FIELD_CODE_PREFIX):]
+    try:
+        packed = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+        d = zlib.decompressobj()
+        raw = d.decompress(packed, FIELD_CODE_MAX_BYTES)
+        too_big = bool(d.unconsumed_tail)
+        data = None if too_big else json.loads(raw.decode("utf-8"))
+    except (ValueError, zlib.error, UnicodeDecodeError):
+        raise ValueError("That code is damaged")
+    if too_big:
+        raise ValueError("That code is too big")
+    if not isinstance(data, dict) or data.get("v") != 1:
+        raise ValueError("That code is from a different version")
+
+    name = data.get("n")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("The field has no name")
+    name = name.strip()[:MAX_FIELD_NAME_LEN]
+
+    rs = data.get("r")
+    if not isinstance(rs, list) or len(rs) != 3:
+        raise ValueError("Robot start is broken")
+    robot_start = (num(rs[0], 0, FIELD_INCHES, "Robot start"), num(rs[1], 0, FIELD_INCHES, "Robot start"),
+                   num(rs[2], -720, 720, "Robot start") % 360.0)
+    blocker_start = point(data.get("b"), "Blocker start")
+    home = point(data.get("h"), "Blocker home")
+    defend_radius = num(data.get("d"), blocker.DEFEND_MIN_RADIUS_IN, FIELD_INCHES * 0.5, "Defend radius")
+
+    raw_shapes = data.get("s")
+    if not isinstance(raw_shapes, list) or len(raw_shapes) > FIELD_CODE_MAX_SHAPES:
+        raise ValueError("Too many shapes" if isinstance(raw_shapes, list) else "Shapes are broken")
+    shapes = []
+    for item in raw_shapes:
+        if not isinstance(item, list) or not item or item[0] not in ("r", "c"):
+            raise ValueError("A shape is broken")
+        is_rect = item[0] == "r"
+        if len(item) != (12 if is_rect else 10):
+            raise ValueError("A shape is broken")
+        i = 1
+        x = num(item[i], 0, FIELD_INCHES, "Shape position"); i += 1
+        y = num(item[i], 0, FIELD_INCHES, "Shape position"); i += 1
+        if is_rect:
+            w = num(item[i], 0.5, FIELD_INCHES, "Shape size"); i += 1
+            h = num(item[i], 0.5, FIELD_INCHES, "Shape size"); i += 1
+            angle = num(item[i], -720, 720, "Shape angle") % 360.0; i += 1
+        else:
+            radius = num(item[i], 0.5, FIELD_INCHES * 0.5, "Shape size"); i += 1
+        col = item[i]; i += 1
+        if (not isinstance(col, list) or len(col) != 3
+                or any(isinstance(c, bool) or not isinstance(c, int) or c < 0 or c > 255 for c in col)):
+            raise ValueError("A shape color is broken")
+        body_type = item[i]; i += 1
+        if body_type not in FIELD_CODE_BODY_TYPES:
+            raise ValueError("A shape type is broken")
+        mass = num(item[i], 0.1, 100, "Shape mass"); i += 1
+        friction = num(item[i], 0, 1, "Shape friction"); i += 1
+        elasticity = num(item[i], 0, 1, "Shape bounce"); i += 1
+        if item[i] not in (0, 1) or isinstance(item[i], bool):
+            raise ValueError("A shape flag is broken")
+        over = bool(item[i])
+        common = {"color": tuple(col), "body_type": body_type, "mass": mass,
+                  "friction": friction, "elasticity": elasticity, "is_overpass": over}
+        if is_rect:
+            shapes.append({"type": "rect", "x": x, "y": y, "w": w, "h": h, "angle": angle, **common})
+        else:
+            shapes.append({"type": "circ", "x": x, "y": y, "radius": radius, **common})
+    return {"name": name, "shapes": shapes, "robot_start": robot_start,
+            "blocker_start": blocker_start, "home": home, "defend_radius": defend_radius}
 
 def capture_current_field(name):
     shapes = []
