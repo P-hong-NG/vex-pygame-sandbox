@@ -684,6 +684,20 @@ PRACTICE_MAPS = [
             _piece(80, 22), _piece(120, 58), _piece(24, 96), _piece(110, 96), _piece(60, 130),
         ],
     },
+    {
+        # Weaving practice: a line of posts down the middle with one piece
+        # tucked on the far side of each gap, so the robot has to swing wide
+        # around a post to grab it. Posts are 32 inches apart.
+        "name": "Practice drive - slalom",
+        "blurb": "Weave 4 posts, 3 pieces to grab",
+        "robot_start": (14.0, 72.0, 0.0),
+        "blocker_start": (126.0, 126.0),
+        "home": (126.0, 126.0),
+        "shapes": [
+            _rect(30, 68, 8, 8), _rect(62, 68, 8, 8), _rect(94, 68, 8, 8), _rect(126, 68, 8, 8),
+            _piece(48, 92), _piece(80, 52), _piece(112, 92),
+        ],
+    },
 ]
 
 def load_field_entry(m):
@@ -1498,14 +1512,17 @@ maps_blurbs = []   # (text, y) for the description lines
 def rebuild_maps_ui():
     global maps_modal_rect, maps_ui, maps_blurbs
     entries = PRACTICE_MAPS + saved_fields
-    plus_y = 70 + len(entries) * MAP_ROW_H
+    # With 4 built-in maps and up to 8 saved fields the list can get tall, so
+    # the rows squeeze together a little when it would run off the window.
+    row_h = min(MAP_ROW_H, (WINDOW_HEIGHT - 20 - 176) // len(entries))
+    plus_y = 70 + len(entries) * row_h
     back_y = plus_y + 36 + 14
     maps_modal_rect = pygame.Rect(0, 0, 380, back_y + 36 + 20)
     maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     x0, y0 = maps_modal_rect.x + 30, maps_modal_rect.y
     maps_ui, maps_blurbs = [], []
     for i, e in enumerate(entries):
-        row_y = y0 + 70 + i * MAP_ROW_H
+        row_y = y0 + 70 + i * row_h
         is_saved = e in saved_fields
         # Saved fields get an Edit (rename) button and a small red X on the
         # right, so the name button is shorter to make room. Built-in maps
