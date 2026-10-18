@@ -370,6 +370,15 @@ So I thought of a Load Field system that works like the saved worlds in a game l
 - A short tutorial that lists everything the User can do in each mode (Ctrl+A, Ctrl+Z, resizing, changing properties, and so on)
 
 Status: undo only brings back the shapes for now, not the robot start, the Blocker start, or the Defend flag after loading a field. I will look at that when I add saving.
+## [October 16th, 2026] - Update on the Load Field system (images)
+
+Update on the Load Field system: I have added “Save current field” as a way for the user to save their fields and load them later, along with the option to edit a custom field (that the user made, not the pre-built one that comes with the simulator’s code file) to change its name. Though I haven't added this year Override field yet
+
+I have also added 2 new more pre-built fields that help the user practice their driving:
+
+<img src="images/oct16 - slalom practice map.png" width="400" alt="A practice map named Slalom (zig-zag) to practice sharp turns and steady driving">
+
+<img src="images/oct16 - serpentine practice map.png" width="400" alt="A practice map named serpentine that forces the user to drive in a snake-like pattern, a harder version of Slalom">
 
 ## [October 17th, 2026] - Letting users send each other fields
 
@@ -389,15 +398,21 @@ The VEXF1 at the front is the format version. If I add new shape properties late
 
 One more decision was the fallback. Copy and paste doesn’t work on every computer, so Share can also save the code to a text file, and Import can read it. However, on my personal laptop (Windows), Ctrl+C and Ctrl+V work perfectly.
 
+Heres the current look of the sharing and importing boxes:
+
+<img src="images/oct17 - sharing custom field.png" width="400" alt="Option to share the current field, generating a code that can be copied or downloaded to share to others">
+
+<img src="images/oct17 - importing custom field.png" width="400" alt="Option to paste (Ctrl+V) or upload a code file to import a custom field from outside">
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
 
 The robot has gone crazy!!
 
-<img src="images/infiniteee.png" alt="The robot has gone out of control" width="300">
+<img src="images/infiniteee.png" alt="The robot has gone out of control" width="400">
 
 I think it detected something
 
-<img src="images/detectedddd.png" alt="The simulator printing hundreds of Detected obstacles" width="300">
+<img src="images/detectedddd.png" alt="The simulator printing hundreds of Detected obstacles" width="400">
 
