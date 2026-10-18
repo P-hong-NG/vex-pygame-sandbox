@@ -6,7 +6,7 @@ import json
 import os
 import zlib
 import base64
-from ui import UIButton, UITextbox, ScrollView, UIDropdown, UISlider
+from ui import UIElement, UIButton, UITextbox, ScrollView, UIDropdown, UISlider
 from blocking_bot import BlockingBot
 
 pygame.init()
@@ -919,6 +919,7 @@ def action_save_current_field():
         show_toast("Couldn't save the field")
         return
     rebuild_maps_ui()
+    scroll_maps_to_bottom()   # so the new field is the one in view
 
 def delete_saved_field(e):
     saved_fields.remove(e)
@@ -1127,6 +1128,7 @@ def commit_import():
         return
     close_code_dialog()
     rebuild_maps_ui()
+    scroll_maps_to_bottom()
 
 def code_dialog_action(key):
     d = sim.code_dialog
@@ -1831,45 +1833,74 @@ pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_contro
 # saved ones) with a one-line description under it, then the + button that
 # saves the current field, then Back. Rebuilt whenever the list changes.
 MAP_ROW_H = 62
+MAP_VISIBLE_ROWS = 6      # the list is a fixed size: this many rows show, the rest scroll
 maps_modal_rect = pygame.Rect(0, 0, 440, 300)
-maps_ui = []
-maps_blurbs = []   # (text, y) for the description lines
+maps_ui = []              # the buttons that stay put under the list (Save, Import, Back)
+maps_list = ScrollView(0, 0, 400, 300)
+
+class UILabel(UIElement):
+    # Plain text that lives inside a ScrollView, so a field's description
+    # scrolls together with its row instead of staying behind.
+    def __init__(self, x, y, w, h, text, color=LIGHT_GRAY):
+        super().__init__(x, y, w, h)
+        self.text, self.color = text, color
+    def draw(self, surface):
+        if self.text:
+            draw_small(self.text, self.screen_rect.x, self.screen_rect.y, self.color)
+
+def scroll_maps_to_bottom():
+    maps_list.scroll_y = -maps_list.max_scroll
 
 def rebuild_maps_ui():
-    global maps_modal_rect, maps_ui, maps_blurbs
+    global maps_modal_rect, maps_ui, maps_list
     entries = PRACTICE_MAPS + saved_fields
-    # With 4 built-in maps and up to 8 saved fields the list can get tall, so
-    # the rows squeeze together a little when it would run off the window.
-    row_h = min(MAP_ROW_H, (WINDOW_HEIGHT - 20 - 176) // len(entries))
-    plus_y = 70 + len(entries) * row_h
-    back_y = plus_y + 36 + 14
-    maps_modal_rect = pygame.Rect(0, 0, 440, back_y + 36 + 20)
+    view_h = MAP_VISIBLE_ROWS * MAP_ROW_H + 8
+    bottom_h = 14 + 36 + 14 + 36 + 20          # gap, Save/Import row, gap, Back, margin
+    maps_modal_rect = pygame.Rect(0, 0, 440, 60 + view_h + bottom_h)
     maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     x0, y0 = maps_modal_rect.x + 30, maps_modal_rect.y
-    maps_ui, maps_blurbs = [], []
+
+    old_scroll = maps_list.scroll_y
+    maps_list = ScrollView(maps_modal_rect.x + 20, y0 + 60, 400, view_h)
     for i, e in enumerate(entries):
-        row_y = y0 + 70 + i * row_h
+        row_y = 8 + i * MAP_ROW_H           # positions inside the list, not the window
         is_saved = e in saved_fields
         # Saved fields get Share, Edit (rename) and a small red X on the
         # right, so the name button is shorter to make room. Built-in maps
         # can't be renamed or deleted.
-        maps_ui.append(UIButton(x0, row_y, 214 if is_saved else 380, 36, e["name"],
-                                action_callback=lambda m=e: ask_load_field_entry(m)))
+        maps_list.add_child(UIButton(10, row_y, 214 if is_saved else 380, 36, e["name"],
+                                     action_callback=lambda m=e: ask_load_field_entry(m)))
         if is_saved:
-            maps_ui.append(UIButton(x0 + 220, row_y, 60, 36, "Share",
-                                    action_callback=lambda m=e: start_share(m)))
-            maps_ui.append(UIButton(x0 + 286, row_y, 54, 36, "Edit",
-                                    action_callback=lambda m=e: start_rename(m)))
-            btn_x = UIButton(x0 + 346, row_y, 34, 36, "X",
+            maps_list.add_child(UIButton(230, row_y, 60, 36, "Share",
+                                         action_callback=lambda m=e: start_share(m)))
+            maps_list.add_child(UIButton(296, row_y, 54, 36, "Edit",
+                                         action_callback=lambda m=e: start_rename(m)))
+            btn_x = UIButton(356, row_y, 34, 36, "X",
                              action_callback=lambda m=e: ask_delete_saved_field(m))
             btn_x.default_color = RED
-            maps_ui.append(btn_x)
-        maps_blurbs.append((entry_blurb(e), row_y + 40))
+            maps_list.add_child(btn_x)
+        maps_list.add_child(UILabel(12, row_y + 40, 376, 16, entry_blurb(e)))
+    maps_list.add_child(UILabel(0, 8 + len(entries) * MAP_ROW_H, 1, 1, ""))   # breathing room under the last row
+    maps_list.scroll_speed = MAP_ROW_H // 2
+    maps_list.scroll_y = max(-maps_list.max_scroll, min(0, old_scroll))   # keep the place after a rename or delete
+
+    plus_y = 60 + view_h + 14
     btn_plus = UIButton(x0, y0 + plus_y, 185, 36, "+ Save current", action_callback=action_save_current_field)
     btn_plus.default_color = GREEN
-    maps_ui.append(btn_plus)
-    maps_ui.append(UIButton(x0 + 195, y0 + plus_y, 185, 36, "Import code", action_callback=start_import))
-    maps_ui.append(UIButton(x0, y0 + back_y, 380, 36, "Back to Pause Menu", action_callback=action_close_maps))
+    maps_ui = [btn_plus,
+               UIButton(x0 + 195, y0 + plus_y, 185, 36, "Import code", action_callback=start_import),
+               UIButton(x0, y0 + plus_y + 50, 380, 36, "Back to Pause Menu", action_callback=action_close_maps)]
+
+def draw_maps_scrollbar():
+    # A thin bar on the right edge of the list, only when there's more to scroll to
+    v = maps_list
+    if v.max_scroll <= 0:
+        return
+    track = pygame.Rect(v.screen_rect.right - 9, v.screen_rect.y + 10, 4, v.screen_rect.h - 20)
+    pygame.draw.rect(screen, (55, 55, 65), track, border_radius=2)
+    thumb_h = max(24, int(track.h * v.screen_rect.h / (v.screen_rect.h + v.max_scroll)))
+    thumb_y = track.y + int((track.h - thumb_h) * (-v.scroll_y / v.max_scroll))
+    pygame.draw.rect(screen, (150, 150, 160), pygame.Rect(track.x, thumb_y, 4, thumb_h), border_radius=2)
 
 load_saved_fields_file()
 rebuild_maps_ui()
@@ -2915,8 +2946,8 @@ def draw_everything():
             pygame.draw.rect(screen, (35, 35, 45), maps_modal_rect, border_radius=12)
             pygame.draw.rect(screen, YELLOW, maps_modal_rect, 2, border_radius=12)
             draw_text("LOAD FIELD", maps_modal_rect.x + 160, maps_modal_rect.y + 20, YELLOW)
-            for _text, _y in maps_blurbs:
-                draw_small(_text, maps_modal_rect.x + 32, _y, LIGHT_GRAY)
+            maps_list.draw(screen)
+            draw_maps_scrollbar()
             for element in maps_ui:
                 element.draw(screen)
 
@@ -3039,6 +3070,11 @@ while running:
                     for element in maps_ui:
                         if element.handle_event(event, mx, my):
                             break
+                    else:
+                        # Only clicks inside the list reach it, so rows scrolled
+                        # out of sight can't be pressed from outside it
+                        if maps_list.screen_rect.collidepoint(mx, my):
+                            maps_list.handle_event(event, mx, my)
 
                 elif sim.paused_sub_menu == "controls":
                     btn_controls_back.handle_event(event, mx, my)
@@ -3174,6 +3210,9 @@ while running:
             if sim.paused and sim.paused_sub_menu == "settings":
                 mx, my = pygame.mouse.get_pos()
                 settings_scrollview.handle_event(event, mx, my)
+            elif sim.paused and sim.paused_sub_menu == "maps":
+                mx, my = pygame.mouse.get_pos()
+                maps_list.handle_event(event, mx, my)
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             mx, my = event.pos
