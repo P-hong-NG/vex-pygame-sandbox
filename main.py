@@ -584,7 +584,7 @@ def ask_confirm(title, sub, yes_label, on_yes):
 def confirm_dialog_rects():
     sub_w = SMALL_FONT.size(sim.confirm_action["sub"])[0] if sim.confirm_action else 0
     box = pygame.Rect(0, 0, max(460, sub_w + 60), 190)
-    box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
+    box.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     cancel = pygame.Rect(box.x + 30, box.bottom - 66, 190, 42)
     yes = pygame.Rect(box.right - 220, box.bottom - 66, 190, 42)
     return box, cancel, yes
@@ -937,7 +937,7 @@ MAX_FIELD_NAME_LEN = 24   # about 185px in the list font, which fits the name bu
 
 def rename_dialog_rects():
     box = pygame.Rect(0, 0, 460, 210)
-    box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
+    box.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     field = pygame.Rect(box.x + 30, box.y + 70, box.w - 60, 38)
     cancel = pygame.Rect(box.x + 30, box.bottom - 62, 190, 42)
     save = pygame.Rect(box.right - 220, box.bottom - 62, 190, 42)
@@ -1077,7 +1077,7 @@ def close_code_dialog():
 def code_dialog_rects():
     d = sim.code_dialog
     box = pygame.Rect(0, 0, 580, 300)
-    box.center = (FIELD_PIXELS // 2, FIELD_PIXELS // 2)
+    box.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     area = pygame.Rect(box.x + 30, box.y + 66, box.w - 60, 120)
     if d["mode"] == "share":
         names = [("copy", "Copy code"), ("file", "Save to file"), ("close", "Close (Esc)")]
