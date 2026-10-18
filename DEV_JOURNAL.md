@@ -371,6 +371,24 @@ So I thought of a Load Field system that works like the saved worlds in a game l
 
 Status: undo only brings back the shapes for now, not the robot start, the Blocker start, or the Defend flag after loading a field. I will look at that when I add saving.
 
+## [October 17th, 2026] - Letting users send each other fields
+
+I wanted to add a way to share a custom field with a friend as a short text string (for example: the user builds a field, presses Share, and gets something like VEXF1:eNqtkk.... and then the friend can paste it into Import and the field shows up in their list. I wanted this because a field is only useful for practice if the people you practice with can have it too, and nobody is going to send each other a save file (that would be too much work rather than this simple copy-paste method)
+
+Here, I’ll explain how this works because “code” sounds like encryption, but it isn’t. There are no keys and no math equations. It’s just 3 steps to generate the “code”:
+
+1. Turn the field into a line of data (shape positions, sizes, colors, where the robot and the Blocker start).
+2. Squeeze it with zlib compression. It’s the same idea as a zip file, and it takes the 13-piece practice field from about 740 characters down to about 180.
+3. Turn the squeezed bytes into plain letters and numbers (base64), so it’s okay being pasted into a text message. The finished code is about 240 characters.
+
+Anyone can undo those steps, and that’s on purpose. I considered a more encrypted, complex approach but decided against it. A field layout isn’t secret; it’s meant to be shared so everyone can use it, so there’s nothing to protect. A key would also defeat the point, since the receiver would need it too, and then I’m back to the problem of how to share it. It would look secure but be useless. As long as the custom field is easy to share and doesn’t risk losing anything, it’s fine for me. 
+
+The part that needed real engineering was safety. Anyone can generate a code, so the sim can’t trust it. It only reads the code as plain data, never runs it, and checks every code before using it. A shape has to fit on the 144-inch field, and its size and mass have to be sensible, with a cap of 150 shapes. I also cap how big a code can unpack to, because a tiny code can unpack into something huge and freeze the sim, like a zip bomb. I tested various kinds of bad code, and each one gets refused with a short reason like “That code is damaged” (“...out of range”, “Shape type is broken”, “Field has no name”, “Code is too big”, etc.).
+
+The VEXF1 at the front is the format version. If I add new shape properties later, new codes can say VEXF2 and old codes keep loading. A code from a newer sim gets a clear “different version” message instead of crashing the sim.
+
+One more decision was the fallback. Copy and paste doesn’t work on every computer, so Share can also save the code to a text file, and Import can read it. However, on my personal laptop (Windows), Ctrl+C and Ctrl+V work perfectly.
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
