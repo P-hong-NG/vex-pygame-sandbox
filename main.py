@@ -918,8 +918,7 @@ def action_save_current_field():
         saved_fields.pop()
         show_toast("Couldn't save the field")
         return
-    rebuild_maps_ui()
-    scroll_maps_to_bottom()   # so the new field is the one in view
+    show_custom_tab_bottom()
 
 def delete_saved_field(e):
     saved_fields.remove(e)
@@ -1127,8 +1126,7 @@ def commit_import():
         show_toast("Couldn't save the field")
         return
     close_code_dialog()
-    rebuild_maps_ui()
-    scroll_maps_to_bottom()
+    show_custom_tab_bottom()
 
 def code_dialog_action(key):
     d = sim.code_dialog
@@ -1834,6 +1832,7 @@ pause_ui = [btn_pause_resume, btn_pause_studio, btn_pause_maps, btn_pause_contro
 # saves the current field, then Back. Rebuilt whenever the list changes.
 MAP_ROW_H = 62
 MAP_VISIBLE_ROWS = 6      # the list is a fixed size: this many rows show, the rest scroll
+maps_tab = "practice"     # which page of Load Field is showing: "practice" (built in) or "custom" (the user's)
 maps_modal_rect = pygame.Rect(0, 0, 440, 300)
 maps_ui = []              # the buttons that stay put under the list (Save, Import, Back)
 maps_list = ScrollView(0, 0, 400, 300)
@@ -1851,20 +1850,36 @@ class UILabel(UIElement):
 def scroll_maps_to_bottom():
     maps_list.scroll_y = -maps_list.max_scroll
 
+def set_maps_tab(tab):
+    global maps_tab
+    maps_tab = tab
+    maps_list.scroll_y = 0       # each page starts at its top
+    rebuild_maps_ui()
+
+def show_custom_tab_bottom():
+    # After saving or importing: jump to the Custom page, last row, so the
+    # new field is the one in view
+    global maps_tab
+    maps_tab = "custom"
+    rebuild_maps_ui()
+    scroll_maps_to_bottom()
+
 def rebuild_maps_ui():
     global maps_modal_rect, maps_ui, maps_list
-    entries = PRACTICE_MAPS + saved_fields
+    on_custom = maps_tab == "custom"
+    entries = saved_fields if on_custom else PRACTICE_MAPS
     view_h = MAP_VISIBLE_ROWS * MAP_ROW_H + 8
+    list_top = 94                              # title, then the two tabs, then the list
     bottom_h = 14 + 36 + 14 + 36 + 20          # gap, Save/Import row, gap, Back, margin
-    maps_modal_rect = pygame.Rect(0, 0, 440, 60 + view_h + bottom_h)
+    maps_modal_rect = pygame.Rect(0, 0, 440, list_top + view_h + bottom_h)
     maps_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     x0, y0 = maps_modal_rect.x + 30, maps_modal_rect.y
 
     old_scroll = maps_list.scroll_y
-    maps_list = ScrollView(maps_modal_rect.x + 20, y0 + 60, 400, view_h)
+    maps_list = ScrollView(maps_modal_rect.x + 20, y0 + list_top, 400, view_h)
     for i, e in enumerate(entries):
         row_y = 8 + i * MAP_ROW_H           # positions inside the list, not the window
-        is_saved = e in saved_fields
+        is_saved = on_custom
         # Saved fields get Share, Edit (rename) and a small red X on the
         # right, so the name button is shorter to make room. Built-in maps
         # can't be renamed or deleted.
@@ -1880,14 +1895,26 @@ def rebuild_maps_ui():
             btn_x.default_color = RED
             maps_list.add_child(btn_x)
         maps_list.add_child(UILabel(12, row_y + 40, 376, 16, entry_blurb(e)))
+    if on_custom and not entries:
+        for k, line in enumerate(("No saved fields yet.", "",
+                                  "+ Save current keeps the field you're on,",
+                                  "Import code adds one from a friend.")):
+            maps_list.add_child(UILabel(12, 30 + k * 20, 376, 16, line))
     maps_list.add_child(UILabel(0, 8 + len(entries) * MAP_ROW_H, 1, 1, ""))   # breathing room under the last row
     maps_list.scroll_speed = MAP_ROW_H // 2
     maps_list.scroll_y = max(-maps_list.max_scroll, min(0, old_scroll))   # keep the place after a rename or delete
 
-    plus_y = 60 + view_h + 14
+    plus_y = list_top + view_h + 14
+    # The active page's tab is green, same as the other pick-one buttons
+    tab_practice = UIButton(x0, y0 + 52, 185, 30, f"Practice ({len(PRACTICE_MAPS)})",
+                            action_callback=lambda: set_maps_tab("practice"))
+    tab_custom = UIButton(x0 + 195, y0 + 52, 185, 30, f"Custom ({len(saved_fields)}/{MAX_SAVED_FIELDS})",
+                          action_callback=lambda: set_maps_tab("custom"))
+    tab_practice.default_color = LIGHT_GRAY if on_custom else GREEN
+    tab_custom.default_color = GREEN if on_custom else LIGHT_GRAY
     btn_plus = UIButton(x0, y0 + plus_y, 185, 36, "+ Save current", action_callback=action_save_current_field)
     btn_plus.default_color = GREEN
-    maps_ui = [btn_plus,
+    maps_ui = [tab_practice, tab_custom, btn_plus,
                UIButton(x0 + 195, y0 + plus_y, 185, 36, "Import code", action_callback=start_import),
                UIButton(x0, y0 + plus_y + 50, 380, 36, "Back to Pause Menu", action_callback=action_close_maps)]
 
