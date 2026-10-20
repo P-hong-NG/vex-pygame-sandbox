@@ -36,8 +36,18 @@ class UIElement:
         # Blueprint method for child classes to draw themselves
         pass
 
+# How much a button brightens while the cursor is over it. Small on purpose -
+# it should read as "this is clickable", not make the button jump out.
+HOVER_BRIGHTEN = 0.18
+
+def brighten(color, amount=HOVER_BRIGHTEN):
+    # Slides each color channel part of the way toward white
+    return tuple(int(c + (255 - c) * amount) for c in color)
+
 class UIButton(UIElement):
-    def __init__(self, x, y, w, h, text, default_color=LIGHT_GRAY, hover_color=WHITE, text_color=BLACK, action_callback=None):
+    # hover_color is optional now: left empty, the button just brightens its
+    # own color a little, so green stays green and red stays red when hovered
+    def __init__(self, x, y, w, h, text, default_color=LIGHT_GRAY, hover_color=None, text_color=BLACK, action_callback=None):
         super().__init__(x, y, w, h)
         self.text = text
         self.default_color = default_color
@@ -62,9 +72,18 @@ class UIButton(UIElement):
     def draw(self, surface):
         # Do not draw anything if the button is hidden
         if not self.is_visible: return
+
+        # Hover is read from the cursor itself each frame, not only when a
+        # click or key event comes in, so the glow follows the mouse and also
+        # goes away as soon as it leaves
+        self.is_hovered = self.screen_rect.collidepoint(pygame.mouse.get_pos())
+        if self.is_hovered:
+            current_color = self.hover_color if self.hover_color is not None else brighten(self.default_color)
+        else:
+            current_color = self.default_color
         
         # Draw the button background and border
-        pygame.draw.rect(surface, self.default_color, self.screen_rect, border_radius=4)
+        pygame.draw.rect(surface, current_color, self.screen_rect, border_radius=4)
         pygame.draw.rect(surface, BLACK, self.screen_rect, 1, border_radius=4)
 
         # Center the text exactly in the middle of the button
