@@ -788,7 +788,7 @@ FIELD_CODE_PREFIX = "VEXF1:"
 FIELD_CODE_MAX_CHARS = 20000        # a full field is well under 2000, so this is generous
 FIELD_CODE_MAX_BYTES = 200000       # cap on the unpacked size, so a tiny code can't unpack into a huge one
 FIELD_CODE_MAX_SHAPES = 150
-FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough")
+FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough", "goal")
 
 def field_to_code(entry):
     def r1(v): return round(float(v), 1)
@@ -1770,11 +1770,11 @@ def update_turn(new_val):
     sim.settings["turn_scale"] = new_val
     save_settings()
 def update_add_shape(new_val):
-    sim.add_shape_type = "rect" if new_val == "Rectangle" else "circ"
+    sim.add_shape_type = {"Rectangle": "rect", "Circle": "circ", "Goal": "goal"}[new_val]
 
 speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplier:", 0.3, 1.5, sim.settings.get("speed_scale", 1.0), update_speed)
 turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
-shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle"], 0, update_add_shape)
+shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle", "Goal"], 0, update_add_shape)
 
 #Pause menu - ui.py
 def action_resume(): sim.paused = False
@@ -2193,6 +2193,10 @@ def action_add_shape():
     cx, cy = FIELD_INCHES / 2, FIELD_INCHES / 2
     if sim.add_shape_type == "rect":
         sim.shapes.append({"type": "rect", "x": cx - 6, "y": cy - 6, "w": 12, "h": 12, "angle": 0.0, "color": (150,150,150), "body_type": "static"})
+    elif sim.add_shape_type == "goal":
+        # A goal is a square zone the robot drives over. It has no physics at
+        # all, so nothing collides with it and the Blocker plans straight through.
+        sim.shapes.append({"type": "rect", "x": cx - 9, "y": cy - 9, "w": 18, "h": 18, "angle": 0.0, "color": (150,150,150), "body_type": "goal"})
     else:
         sim.shapes.append({"type": "circ", "x": cx, "y": cy, "radius": 6, "color": (150,150,150), "body_type": "dynamic"})
     sim.selected_shape_idx = len(sim.shapes) - 1
@@ -2205,6 +2209,9 @@ def toggle_physics_mode():
     if sim.selected_shape_idx is not None:
         s = sim.shapes[sim.selected_shape_idx]
         curr = s.get("body_type", "static")
+        if curr == "goal":
+            show_toast("A goal has no physics mode to change")
+            return
         # Cycle through: static -> passthrough -> dynamic -> static
         s["body_type"] = "passthrough" if curr == "static" else "dynamic" if curr == "passthrough" else "static"
         save_field_data()
@@ -2514,7 +2521,19 @@ def draw_everything():
             
                 current_phys = s.get("body_type", "static") #Defualting to static, can be changed
                 
-                surf.fill(s["color"])
+                if current_phys == "goal":
+                    # See-through tint, a solid border and a count badge, so a
+                    # goal never looks like a wall and the field shows through
+                    r, g, b = s["color"]
+                    surf.fill((r, g, b, 70))
+                    pygame.draw.rect(surf, (r, g, b), surf.get_rect(), 3)
+                    badge = SMALL_FONT.render(str(len(s.get("stack", []))), True, WHITE)
+                    bc = (surf.get_width() // 2, surf.get_height() // 2)
+                    pygame.draw.circle(surf, (30, 30, 36), bc, 12)
+                    pygame.draw.circle(surf, (r, g, b), bc, 12, 2)
+                    surf.blit(badge, (bc[0] - badge.get_width() // 2, bc[1] - badge.get_height() // 2))
+                else:
+                    surf.fill(s["color"])
                 rot = pygame.transform.rotate(surf, s["angle"])
                 rect = rot.get_rect(center=((s["x"] + s["w"]/2) * SCALE, FIELD_PIXELS - (s["y"] + s["h"]/2) * SCALE))
                 screen.blit(rot, rect)
@@ -2560,9 +2579,9 @@ def draw_everything():
                     pygame.draw.circle(screen, WHITE, (white_px_x, white_px_y), 5)
                     pygame.draw.circle(screen, BLACK, (white_px_x, white_px_y), 5, 1)
 
-        #Loop through the first time and draw Passthrough object
+        #Loop through the first time and draw Passthrough object (and goals, which also sit under everything)
         for i, s in enumerate(sim.shapes):
-            if s.get("body_type") == "passthrough":
+            if s.get("body_type") in ("passthrough", "goal"):
                 render_shape(i, s)
 
         #Loop through the second time and draw the rest
@@ -3021,6 +3040,9 @@ def draw_everything():
                     elif current_phys == "dynamic":
                         btn_phys_toggle.default_color = GREEN
                         btn_phys_toggle.text = "DYNAMIC (BALL)"
+                    elif current_phys == "goal":
+                        btn_phys_toggle.default_color = (110, 80, 160)
+                        btn_phys_toggle.text = "GOAL (ZONE)"
 
                     draw_small("Physics Mode", btn_phys_toggle.screen_rect.x, btn_phys_toggle.screen_rect.y - 16, LIGHT_GRAY)
                     btn_phys_toggle.draw(screen)
