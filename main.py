@@ -1271,7 +1271,7 @@ def duplicate_selected_shapes():
 
     new_idxs = []
     for i in source_idxs:
-        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape")}
+        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack")}
         if isinstance(copy_s.get("color"), list):
             copy_s["color"] = tuple(copy_s["color"])
         copy_s["x"] += dx
@@ -1554,29 +1554,37 @@ def update_physics(left_speed, right_speed, dt):
             spawn_x = bot.x - spawn_dist * math.cos(rad) #Opposite side
             spawn_y = bot.y - spawn_dist * math.sin(rad)
 
-            s = bot.inventory.pop(0)
+            # Scoring: if the piece would land inside a goal, it goes into
+            # that goal's stack instead of rolling out onto the floor
+            goal = goal_at(spawn_x, spawn_y)
+            if goal is not None:
+                place_in_goal(goal, bot.inventory.pop(0))
+                if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
+                    bot.outtake_state = "off"
+            else:
+                s = bot.inventory.pop(0)
 
-            s["stored"] = False
-            s["x"] = spawn_x
-            s["y"] = spawn_y
+                s["stored"] = False
+                s["x"] = spawn_x
+                s["y"] = spawn_y
             
-            # Re-position physics body
-            b = s["body"]
-            eject_speed = sim.settings.get("outtake_velocity", 15.0) * SCALE
+                # Re-position physics body
+                b = s["body"]
+                eject_speed = sim.settings.get("outtake_velocity", 15.0) * SCALE
             
-            b.position = (spawn_x * SCALE, spawn_y * SCALE)
-            # Apply ejection speed in the backward/opposite direction
-            b.velocity = (bot.body.velocity.x - eject_speed * math.cos(rad),
-                        bot.body.velocity.y - eject_speed * math.sin(rad))
+                b.position = (spawn_x * SCALE, spawn_y * SCALE)
+                # Apply ejection speed in the backward/opposite direction
+                b.velocity = (bot.body.velocity.x - eject_speed * math.cos(rad),
+                            bot.body.velocity.y - eject_speed * math.sin(rad))
             
-            # Re-add body to PyMunk space
-            space.add(b)
-            if "pymunk_shape" in s:
-                space.add(s["pymunk_shape"])
+                # Re-add body to PyMunk space
+                space.add(b)
+                if "pymunk_shape" in s:
+                    space.add(s["pymunk_shape"])
                 
-            # Reset state if in toggle mode
-            if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
-                bot.outtake_state = "off"
+                # Reset state if in toggle mode
+                if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
+                    bot.outtake_state = "off"
 
     #Updating blocker steering
     blocker.update(bot, dt)
@@ -1612,6 +1620,31 @@ def update_physics(left_speed, right_speed, dt):
                 s["y"] = b.position.y / SCALE  
                 s["angle"] = math.degrees(b.angle)
     
+def goal_at(x, y):
+    # The goal zone (if any) that covers a field point, in inches. Goals can
+    # be rotated, so the point is turned back into the goal's own frame.
+    for g in sim.shapes:
+        if g.get("body_type") != "goal":
+            continue
+        cx, cy = g["x"] + g["w"] / 2, g["y"] + g["h"] / 2
+        a = math.radians(g.get("angle", 0.0))
+        dx, dy = x - cx, y - cy
+        lx = dx * math.cos(a) + dy * math.sin(a)
+        ly = -dx * math.sin(a) + dy * math.cos(a)
+        if abs(lx) <= g["w"] / 2 and abs(ly) <= g["h"] / 2:
+            return g
+    return None
+
+def place_in_goal(goal, piece):
+    # The piece leaves the field for good and its color joins the goal's
+    # stack. The stack is a tuple that gets replaced, never edited, so
+    # copies of the goal (duplicate, undo) can't end up sharing one list.
+    goal["stack"] = tuple(goal.get("stack", ())) + (tuple(piece["color"]),)
+    for i, sh in enumerate(sim.shapes):
+        if sh is piece:
+            sim.shapes.pop(i)
+            break
+
 def create_field_boundaries():
     #Example: Segment(body type, starting point, end point, thickness)
     left_wall = pymunk.Segment(space.static_body, (0,0), (0,FIELD_PIXELS), 5)
@@ -2527,7 +2560,13 @@ def draw_everything():
                     r, g, b = s["color"]
                     surf.fill((r, g, b, 70))
                     pygame.draw.rect(surf, (r, g, b), surf.get_rect(), 3)
-                    badge = SMALL_FONT.render(str(len(s.get("stack", []))), True, WHITE)
+                    stack = s.get("stack", ())
+                    # One dot per piece, in the order they went in (first 8; the badge has the full count)
+                    for k, col in enumerate(stack[:8]):
+                        dx = (k - (min(len(stack), 8) - 1) / 2) * 13
+                        pygame.draw.circle(surf, col, (int(surf.get_width() / 2 + dx), int(surf.get_height() * 0.72)), 5)
+                        pygame.draw.circle(surf, (30, 30, 36), (int(surf.get_width() / 2 + dx), int(surf.get_height() * 0.72)), 5, 1)
+                    badge = SMALL_FONT.render(str(len(stack)), True, WHITE)
                     bc = (surf.get_width() // 2, surf.get_height() // 2)
                     pygame.draw.circle(surf, (30, 30, 36), bc, 12)
                     pygame.draw.circle(surf, (r, g, b), bc, 12, 2)
