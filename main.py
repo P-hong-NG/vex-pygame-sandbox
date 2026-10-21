@@ -223,6 +223,10 @@ DEFAULT_KEYBINDS = {
     "intake_in": pygame.K_e,
     "intake_out": pygame.K_f,
     "outtake_score": pygame.K_q,
+    "arcade_fwd": pygame.K_w, "arcade_back": pygame.K_s,
+    "arcade_left": pygame.K_a, "arcade_right": pygame.K_d,
+    "tank_left_fwd": pygame.K_i, "tank_left_back": pygame.K_k,
+    "tank_right_fwd": pygame.K_l, "tank_right_back": pygame.K_j,
 }
 
 class SimulatorState:
@@ -1415,15 +1419,17 @@ def get_inputs(dt):
         forward, turn, left, right = 0.0, 0.0, 0.0, 0.0
 
         if sim.settings["drive_mode"] in ("arcade","custom"):
-            if keys[pygame.K_w]: forward += 1.0
-            if keys[pygame.K_s]: forward -= 1.0
-            if keys[pygame.K_d]: turn -= 1.0
-            if keys[pygame.K_a]: turn += 1.0
+            kb = sim.settings["keybinds"]
+            if keys[kb["arcade_fwd"]]: forward += 1.0
+            if keys[kb["arcade_back"]]: forward -= 1.0
+            if keys[kb["arcade_right"]]: turn -= 1.0
+            if keys[kb["arcade_left"]]: turn += 1.0
         if sim.settings["drive_mode"] == "tank":
-            if keys[pygame.K_i]: left += 1.0
-            if keys[pygame.K_k]: left -= 1.0
-            if keys[pygame.K_j]: right -= 1.0
-            if keys[pygame.K_l]: right += 1.0
+            kb = sim.settings["keybinds"]
+            if keys[kb["tank_left_fwd"]]: left += 1.0
+            if keys[kb["tank_left_back"]]: left -= 1.0
+            if keys[kb["tank_right_back"]]: right -= 1.0
+            if keys[kb["tank_right_fwd"]]: right += 1.0
 
         if sim.settings["drive_mode"] == "tank":
             left_speed = max(-1.0, min(1.0, left)) * max_speed
@@ -1912,6 +1918,18 @@ rebuild_maps_ui()
 # The rows come from the KEYBIND_PAGE table, so adding a bindable action is
 # one line there.
 KEYBIND_PAGE = [
+    ("DRIVING (ARCADE AND CUSTOM)", [
+        ("arcade_fwd", "Forward"),
+        ("arcade_back", "Backward"),
+        ("arcade_left", "Turn left"),
+        ("arcade_right", "Turn right"),
+    ]),
+    ("DRIVING (TANK)", [
+        ("tank_left_fwd", "Left side forward"),
+        ("tank_left_back", "Left side back"),
+        ("tank_right_fwd", "Right side forward"),
+        ("tank_right_back", "Right side back"),
+    ]),
     ("INTAKE AND OUTTAKE", [
         ("intake_in", "Intake in"),
         ("intake_out", "Intake out"),
@@ -1923,8 +1941,6 @@ FIXED_KEYS = {
     pygame.K_ESCAPE: "pausing",
     pygame.K_v: "the Blocker debug view",
     pygame.K_n: "the Blocker navigation mode",
-    pygame.K_w: "driving", pygame.K_a: "driving", pygame.K_s: "driving", pygame.K_d: "driving",
-    pygame.K_i: "driving", pygame.K_j: "driving", pygame.K_k: "driving", pygame.K_l: "driving",
 }
 SETTINGS_ROW_H = 48
 SETTINGS_VISIBLE_H = 6 * SETTINGS_ROW_H
@@ -2037,15 +2053,16 @@ def draw_settings_page():
 # keybinds so the sheet stays right after the user remaps them.
 def controls_sections():
     kb = sim.settings["keybinds"]
+    kn = lambda a: key_label(kb[a])
     k_in = pygame.key.name(kb["intake_in"]).upper()
     k_out = pygame.key.name(kb["intake_out"]).upper()
     k_score = pygame.key.name(kb["outtake_score"]).upper()
     return [
         ("DRIVE MODE", [
-            ("W / S", "Forward / back (Arcade and Custom)"),
-            ("A / D", "Turn left / right (Arcade and Custom)"),
-            ("I / K", "Left side forward / back (Tank)"),
-            ("J / L", "Right side back / forward (Tank)"),
+            (f"{kn('arcade_fwd')} / {kn('arcade_back')}", "Forward / back (Arcade and Custom)"),
+            (f"{kn('arcade_left')} / {kn('arcade_right')}", "Turn left / right (Arcade and Custom)"),
+            (f"{kn('tank_left_fwd')} / {kn('tank_left_back')}", "Left side forward / back (Tank)"),
+            (f"{kn('tank_right_fwd')} / {kn('tank_right_back')}", "Right side forward / back (Tank)"),
             (f"{k_in} / {k_out}", "Intake in / out"),
             (k_score, "Outtake (score)"),
             ("V", "Cycle the Blocker's debug view"),
