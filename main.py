@@ -1323,11 +1323,19 @@ def rotate_selected_group(degrees):
         s["angle"] = (s.get("angle", 0.0) + degrees) % 360.0
     save_field_data()
 
+# Bottom to top. Drawing and clicking both follow this, so what you see on
+# top is what you grab. Within one layer, the shape added last is on top.
+SHAPE_LAYERS = ("passthrough", "static", "goal", "dynamic")
+
+def layer_rank(s):
+    b = s.get("body_type", "static")
+    return SHAPE_LAYERS.index(b) if b in SHAPE_LAYERS else 1
+
 def shape_index_at(fx, fy):
     # Topmost shape under a field-inch point, or None. Same check the
     # single-click select always used, just pulled out so group drag can
     # ask "did the click land on one of the selected shapes" too.
-    for i in reversed(range(len(sim.shapes))):
+    for i in sorted(range(len(sim.shapes)), key=lambda k: (layer_rank(sim.shapes[k]), k), reverse=True):
         s = sim.shapes[i]
         if s["type"] == "rect" and s["x"] <= fx <= s["x"] + s["w"] and s["y"] <= fy <= s["y"] + s["h"]:
             return i
@@ -2618,15 +2626,13 @@ def draw_everything():
                     pygame.draw.circle(screen, WHITE, (white_px_x, white_px_y), 5)
                     pygame.draw.circle(screen, BLACK, (white_px_x, white_px_y), 5, 1)
 
-        #Loop through the first time and draw Passthrough object (and goals, which also sit under everything)
-        for i, s in enumerate(sim.shapes):
-            if s.get("body_type") in ("passthrough", "goal"):
-                render_shape(i, s)
-
-        #Loop through the second time and draw the rest
-        for i, s in enumerate(sim.shapes):
-            if s.get("body_type", "static") in ("static", "dynamic"):
-                render_shape(i, s)
+        # Draw by layer, not by the order shapes were added: Passthrough sits
+        # under everything, then walls, then goals, then loose pieces. That
+        # way a goal placed over a wall always shows on top of it.
+        for layer in SHAPE_LAYERS:
+            for i, s in enumerate(sim.shapes):
+                if s.get("body_type", "static") == layer:
+                    render_shape(i, s)
 
     # Robot Layer
     if sim.current_mode != "studio":
