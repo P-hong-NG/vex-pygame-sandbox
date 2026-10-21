@@ -2476,6 +2476,43 @@ HUD_BAR_ALPHA = 170         # about 2/3 opaque
 HUD_BAR_HOVER_ALPHA = 30    # barely there under the mouse
 hud_bar_alpha = {}
 
+# Points for pieces sitting in goals, counted per color. Red and blue are
+# each side's own pieces. Yellow pieces are shared, and who gets them depends
+# on the toggles, which aren't in the sim yet, so they're shown as a count.
+SCORE_RED, SCORE_BLUE, SCORE_YELLOW = (255, 80, 80), (80, 80, 255), (255, 220, 0)
+POINTS_PER_PIECE = 5
+
+def goal_scores():
+    red = blue = yellow = 0
+    for g in sim.shapes:
+        if g.get("body_type") != "goal":
+            continue
+        for col in g.get("stack", ()):
+            if tuple(col) == SCORE_RED: red += 1
+            elif tuple(col) == SCORE_BLUE: blue += 1
+            elif tuple(col) == SCORE_YELLOW: yellow += 1
+    return red, blue, yellow
+
+def draw_score_bar():
+    # Only shows up on a field that has a goal, so ordinary practice maps
+    # don't get a score box they can't use
+    if not any(g.get("body_type") == "goal" for g in sim.shapes):
+        return
+    red, blue, yellow = goal_scores()
+    parts = [("SCORE", WHITE), (f"Red {red * POINTS_PER_PIECE}", SCORE_RED),
+             (f"Blue {blue * POINTS_PER_PIECE}", (130, 130, 255)),
+             (f"Yellow x{yellow}", SCORE_YELLOW)]
+    rect = pygame.Rect(10, 46, 395, 26)
+    draw_hud_bar("score", rect, "", WHITE)
+    x = rect.x + 8
+    for text, col in parts:
+        label = SMALL_FONT.render(text, True, col)
+        shadow = SMALL_FONT.render(text, True, (0, 0, 0))
+        y = rect.y + (rect.h - label.get_height()) // 2
+        screen.blit(shadow, (x + 1, y + 1))
+        screen.blit(label, (x, y))
+        x += label.get_width() + 22
+
 def draw_hud_bar(key, rect, text, text_color):
     mx, my = pygame.mouse.get_pos()
     target = HUD_BAR_HOVER_ALPHA if rect.collidepoint(mx, my) else HUD_BAR_ALPHA
@@ -2774,6 +2811,8 @@ def draw_everything():
 
     # See-through dark strip for text readability over bright field assets
     draw_hud_bar("status", pygame.Rect(10, 10, 395, 30), mode_label, status_color)
+    if sim.current_mode == "drive":
+        draw_score_bar()
     
     # Control Side UI Column Render Processing
     pygame.draw.rect(screen, (25, 25, 25), (FIELD_PIXELS, 0, UI_WIDTH, WINDOW_HEIGHT))
