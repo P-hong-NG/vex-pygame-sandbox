@@ -217,6 +217,14 @@ class Robot:
         max_rps = self.output_rpm / 60.0
         self.base_max_speed = self.wheel_circ * max_rps
 
+# Default key for each rebindable action. Settings fall back to these, and
+# "Reset keys" in Settings puts them back.
+DEFAULT_KEYBINDS = {
+    "intake_in": pygame.K_e,
+    "intake_out": pygame.K_f,
+    "outtake_score": pygame.K_q,
+}
+
 class SimulatorState:
     def __init__(self):
         self.current_mode = "drive" # drive / edit / studio
@@ -247,11 +255,7 @@ class SimulatorState:
             "blocker_style": "attack",
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
-            "keybinds": {
-                "intake_in": pygame.K_e,
-                "intake_out": pygame.K_f,
-                "outtake_score": pygame.K_q
-            }
+            "keybinds": dict(DEFAULT_KEYBINDS)
         }
         self.drive_config = {
             "forward_axis": 1, "turn_axis": 0, "left_axis": 1, "right_axis": 3,
@@ -1727,11 +1731,6 @@ modal_y = (WINDOW_HEIGHT - MODAL_H) // 2
 
 pause_modal_rect = pygame.Rect(modal_x, modal_y, MODAL_W, MODAL_H)
 
-#Settings & Keybinds Modal definitions
-SETTING_W, SETTING_H = 420, 360
-setting_x = (WINDOW_WIDTH - SETTING_W) // 2 
-setting_y = (WINDOW_HEIGHT - SETTING_H) // 2
-
 #Global buttons - ui.py
 def set_mode_drive():
     sim.current_mode = "drive"
@@ -1756,30 +1755,6 @@ btn_mode_edit = UIButton(FIELD_PIXELS + 160, 20, 120, 30, "Edit", action_callbac
 btn_page_switch = UIButton(FIELD_PIXELS + 280, 810, 50, 35, "Next", action_callback=toggle_page)
 
 global_nav_ui = [btn_mode_drive, btn_mode_edit, btn_page_switch]
-
-#Scrollview - ui.py
-settings_scrollview = ScrollView(setting_x, setting_y, SETTING_W, SETTING_H)
-def bind_in(): sim.remapping_key = "intake_in"
-def bind_out(): sim.remapping_key = "intake_out"
-def bind_score(): sim.remapping_key = "outtake_score"
-def toggle_mode(): 
-    sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
-    save_settings()
-def close_settings(): 
-    sim.remapping_key = None
-    sim.paused_sub_menu = "main"
-
-btn_in = UIButton(60, 40, 300, 40, "Intake In", action_callback=bind_in)
-btn_out = UIButton(60, 100, 300, 40, "Intake Out", action_callback=bind_out)
-btn_score = UIButton(60, 160, 300, 40, "Outtake Score", action_callback=bind_score)
-btn_mode = UIButton(60, 220, 300, 40, "Intake Mode", action_callback=toggle_mode)
-btn_back = UIButton(60, 400, 300, 40, "Back to Pause Menu", action_callback=close_settings)
-
-settings_scrollview.add_child(btn_in)
-settings_scrollview.add_child(btn_out)
-settings_scrollview.add_child(btn_score)
-settings_scrollview.add_child(btn_mode)
-settings_scrollview.add_child(btn_back)
 
 # Slider and Dropdown - ui.py
 def update_speed(new_val):
@@ -1918,9 +1893,8 @@ def rebuild_maps_ui():
                UIButton(x0 + 195, y0 + plus_y, 185, 36, "Import code", action_callback=start_import),
                UIButton(x0, y0 + plus_y + 50, 380, 36, "Back to Pause Menu", action_callback=action_close_maps)]
 
-def draw_maps_scrollbar():
-    # A thin bar on the right edge of the list, only when there's more to scroll to
-    v = maps_list
+def draw_list_scrollbar(v):
+    # A thin bar on the right edge of a ScrollView, only when there's more to scroll to
     if v.max_scroll <= 0:
         return
     track = pygame.Rect(v.screen_rect.right - 9, v.screen_rect.y + 10, 4, v.screen_rect.h - 20)
@@ -1931,6 +1905,132 @@ def draw_maps_scrollbar():
 
 load_saved_fields_file()
 rebuild_maps_ui()
+
+#===Settings & Keybinds page===
+# Same look as Load Field: a title, a fixed-size scrolling list, and the
+# buttons that matter (Reset, Back) pinned underneath so they never scroll away.
+# The rows come from the KEYBIND_PAGE table, so adding a bindable action is
+# one line there.
+KEYBIND_PAGE = [
+    ("INTAKE AND OUTTAKE", [
+        ("intake_in", "Intake in"),
+        ("intake_out", "Intake out"),
+        ("outtake_score", "Outtake score"),
+    ]),
+]
+# Keys that already mean something and can't be given to an action
+FIXED_KEYS = {
+    pygame.K_ESCAPE: "pausing",
+    pygame.K_v: "the Blocker debug view",
+    pygame.K_n: "the Blocker navigation mode",
+    pygame.K_w: "driving", pygame.K_a: "driving", pygame.K_s: "driving", pygame.K_d: "driving",
+    pygame.K_i: "driving", pygame.K_j: "driving", pygame.K_k: "driving", pygame.K_l: "driving",
+}
+SETTINGS_ROW_H = 48
+SETTINGS_VISIBLE_H = 6 * SETTINGS_ROW_H
+
+def key_label(k):
+    return pygame.key.name(k).upper() or f"KEY {k}"
+
+def action_name(action):
+    for _title, rows in KEYBIND_PAGE:
+        for a, label in rows:
+            if a == action:
+                return label
+    return action
+
+def start_remap(action):
+    sim.remapping_key = action
+
+def try_rebind(key):
+    # Returns True if the key was taken. A key that already does something
+    # is refused with a message, and the page keeps waiting for another one.
+    action = sim.remapping_key
+    if key in FIXED_KEYS:
+        show_toast(f"{key_label(key)} is already used for {FIXED_KEYS[key]}")
+        return False
+    for other, k in sim.settings["keybinds"].items():
+        if other != action and k == key:
+            show_toast(f"{key_label(key)} is already {action_name(other)}")
+            return False
+    sim.settings["keybinds"][action] = key
+    sim.remapping_key = None
+    save_settings()
+    return True
+
+def toggle_mode():
+    sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
+    save_settings()
+
+def reset_keybinds():
+    sim.settings["keybinds"] = dict(DEFAULT_KEYBINDS)
+    sim.remapping_key = None
+    save_settings()
+
+def close_settings():
+    sim.remapping_key = None
+    sim.paused_sub_menu = "main"
+
+settings_modal_rect = pygame.Rect(0, 0, 460, 56 + SETTINGS_VISIBLE_H + 8 + 14 + 36 + 10 + 36 + 20)
+settings_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+settings_list = ScrollView(settings_modal_rect.x + 20, settings_modal_rect.y + 56, 420, SETTINGS_VISIBLE_H + 8)
+settings_key_buttons = {}     # action name -> its button, so the draw code can show the current key
+settings_dynamic_labels = []  # (label, function giving its text) pairs refreshed every frame
+
+def build_settings_page():
+    y = 8
+    for title, rows in KEYBIND_PAGE:
+        settings_list.add_child(UILabel(14, y + 6, 380, 16, title, (140, 200, 255)))
+        y += 30
+        for action, label in rows:
+            settings_list.add_child(UILabel(14, y + 11, 200, 16, label, WHITE))
+            btn = UIButton(236, y, 160, 36, "", action_callback=lambda a=action: start_remap(a))
+            settings_key_buttons[action] = btn
+            settings_list.add_child(btn)
+            y += SETTINGS_ROW_H
+        y += 6
+    # How the intake and outtake keys act
+    settings_list.add_child(UILabel(14, y + 6, 380, 16, "KEY BEHAVIOR", (140, 200, 255)))
+    y += 30
+    settings_list.add_child(UILabel(14, y + 11, 200, 16, "Intake mode", WHITE))
+    settings_mode_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_mode)
+    settings_list.add_child(settings_mode_btn)
+    y += SETTINGS_ROW_H - 6
+    hint = UILabel(14, y, 390, 16, "", LIGHT_GRAY)
+    settings_list.add_child(hint)
+    settings_list.add_child(UILabel(0, y + 30, 1, 1, ""))   # breathing room at the bottom
+    settings_list.scroll_speed = SETTINGS_ROW_H // 2
+    return settings_mode_btn, hint
+
+settings_mode_btn, settings_mode_hint = build_settings_page()
+_sm_x = settings_modal_rect.x + 30
+_sm_y = settings_modal_rect.y + 56 + SETTINGS_VISIBLE_H + 8 + 14
+settings_ui = [
+    UIButton(_sm_x, _sm_y, 400, 36, "Reset keys to defaults", action_callback=reset_keybinds),
+    UIButton(_sm_x, _sm_y + 46, 400, 36, "Back to Pause Menu", action_callback=close_settings),
+]
+
+def draw_settings_page():
+    r = settings_modal_rect
+    pygame.draw.rect(screen, (35, 35, 45), r, border_radius=12)
+    pygame.draw.rect(screen, YELLOW, r, 2, border_radius=12)
+    title = "SETTINGS & KEYBINDS"
+    draw_text(title, r.centerx - FONT.size(title)[0] // 2, r.y + 20, YELLOW)
+    for action, btn in settings_key_buttons.items():
+        waiting = sim.remapping_key == action
+        btn.text = "Press a key..." if waiting else key_label(sim.settings["keybinds"][action])
+        btn.default_color = YELLOW if waiting else LIGHT_GRAY
+    mode = sim.settings["intake_control_mode"]
+    settings_mode_btn.text = mode.upper()
+    settings_mode_hint.text = ("Press once to start, again to stop" if mode == "toggle"
+                               else "Works only while the key is held down")
+    settings_list.draw(screen)
+    draw_list_scrollbar(settings_list)
+    if sim.remapping_key is not None:
+        msg = f"Press a key for '{action_name(sim.remapping_key)}'  (Esc cancels)"
+        draw_small(msg, r.centerx - SMALL_FONT.size(msg)[0] // 2, r.y + 44, (110, 220, 140))
+    for element in settings_ui:
+        element.draw(screen)
 
 # Controls screen - a plain cheat sheet of what each key and mouse action
 # does, grouped by mode. The three intake keys are read from the saved
@@ -2974,7 +3074,7 @@ def draw_everything():
             pygame.draw.rect(screen, YELLOW, maps_modal_rect, 2, border_radius=12)
             draw_text("LOAD FIELD", maps_modal_rect.x + 160, maps_modal_rect.y + 20, YELLOW)
             maps_list.draw(screen)
-            draw_maps_scrollbar()
+            draw_list_scrollbar(maps_list)
             for element in maps_ui:
                 element.draw(screen)
 
@@ -2982,16 +3082,7 @@ def draw_everything():
             draw_controls_screen()
 
         elif sim.paused_sub_menu == "settings":
-            k_in = pygame.key.name(sim.settings["keybinds"]["intake_in"]).upper()
-            k_out = pygame.key.name(sim.settings["keybinds"]["intake_out"]).upper()
-            k_score = pygame.key.name(sim.settings["keybinds"]["outtake_score"]).upper()
-            
-            btn_in.text = "Press Any Key..." if sim.remapping_key == "intake_in" else f"Intake In Key: {k_in}"
-            btn_out.text = "Press Any Key..." if sim.remapping_key == "intake_out" else f"Intake Out Key: {k_out}"
-            btn_score.text = "Press Any Key..." if sim.remapping_key == "outtake_score" else f"Outtake Score: {k_score}"
-            btn_mode.text = f"Intake Mode: {sim.settings['intake_control_mode'].upper()}"
-
-            settings_scrollview.draw(screen)
+            draw_settings_page()
 
     draw_confirm_dialog()
     draw_rename_dialog()
@@ -3107,7 +3198,12 @@ while running:
                     btn_controls_back.handle_event(event, mx, my)
 
                 elif sim.paused_sub_menu == "settings":
-                    settings_scrollview.handle_event(event, mx, my)
+                    for element in settings_ui:
+                        if element.handle_event(event, mx, my):
+                            break
+                    else:
+                        if settings_list.screen_rect.collidepoint(mx, my):
+                            settings_list.handle_event(event, mx, my)
             #Handling clicks when the game is NOT paused
             elif mx >= FIELD_PIXELS: 
                 handled = False
@@ -3236,7 +3332,7 @@ while running:
         elif event.type == pygame.MOUSEWHEEL:
             if sim.paused and sim.paused_sub_menu == "settings":
                 mx, my = pygame.mouse.get_pos()
-                settings_scrollview.handle_event(event, mx, my)
+                settings_list.handle_event(event, mx, my)
             elif sim.paused and sim.paused_sub_menu == "maps":
                 mx, my = pygame.mouse.get_pos()
                 maps_list.handle_event(event, mx, my)
@@ -3356,15 +3452,16 @@ while running:
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
                 sim.active_textbox = None
-                if sim.paused and sim.paused_sub_menu in ("settings", "maps", "controls"):
+                if sim.remapping_key is not None:
+                    # Esc while waiting for a key only cancels the rebind
+                    sim.remapping_key = None
+                elif sim.paused and sim.paused_sub_menu in ("settings", "maps", "controls"):
                     sim.paused_sub_menu = "main"
                 else:
                     sim.paused = not sim.paused
                     sim.paused_sub_menu = "main"
             elif sim.remapping_key is not None:
-                    sim.settings["keybinds"][sim.remapping_key] = event.key
-                    sim.remapping_key = None
-                    save_settings()
+                    try_rebind(event.key)
             elif sim.current_mode == "edit" and event.key == pygame.K_a and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
                 select_all_shapes()
             elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
