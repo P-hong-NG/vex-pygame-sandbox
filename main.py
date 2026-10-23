@@ -304,6 +304,17 @@ bot = Robot()
 sim = SimulatorState()
 
 blocker = BlockingBot(space, SCALE, FIELD_INCHES)
+blocker.start_angle = 0.0   # which way the Blocker faces at its start spot, in degrees
+
+def apply_blocker_start():
+    # Puts the Blocker on its saved start spot, facing its saved direction,
+    # and stops any movement it had
+    blocker.x, blocker.y = blocker.start_x, blocker.start_y
+    blocker.angle = blocker.start_angle
+    blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
+    blocker.body.angle = math.radians(blocker.angle)
+    blocker.body.velocity = (0, 0)
+    blocker.body.angular_velocity = 0
 bot.shape.collision_type = blocker.COLLISION_TYPE_PLAYER
 blocker.register_collision_handler()
 
@@ -381,15 +392,15 @@ def load_all_data():
                     _, x, y, ang = parts
                     bot.start_pose = (float(x), float(y), float(ang))
                     bot.x, bot.y, bot.angle = bot.start_pose
-                elif tag == "BLOCKER_START" and len(parts) == 3:
-                    _, x, y = parts
+                elif tag == "BLOCKER_START" and len(parts) in (3, 4):
+                    # The 4th number (facing) is missing in older files, so it defaults to 0
+                    x, y = parts[1], parts[2]
                     blocker.start_x, blocker.start_y = float(x), float(y)
-                    blocker.x, blocker.y = blocker.start_x, blocker.start_y
+                    blocker.start_angle = float(parts[3]) if len(parts) == 4 else 0.0
                     # Blocker's body already exists at this point (unlike
                     # bot's own load branch, which relies on a later reset
-                    # call) - sync it directly, same as blocker's own drag
-                    # handler already does
-                    blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
+                    # call), so it can be put on its start spot right away
+                    apply_blocker_start()
                 elif tag == "HOME_POINT" and len(parts) == 3:
                     _, hx, hy = parts
                     blocker.set_home_point(float(hx), float(hy))
@@ -723,8 +734,8 @@ def load_field_entry(m):
     bot.start_pose = m["robot_start"]
     bot.reset_to_start()
     blocker.start_x, blocker.start_y = m["blocker_start"]
-    blocker.x, blocker.y = blocker.start_x, blocker.start_y
-    blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
+    blocker.start_angle = m.get("blocker_angle", 0.0)
+    apply_blocker_start()
     blocker.set_home_point(*m["home"])
     stop_match()
     if "defend_radius" in m:
@@ -764,6 +775,7 @@ def load_saved_fields_file():
                 "name": e["name"], "shapes": shapes,
                 "robot_start": tuple(e["robot_start"]),
                 "blocker_start": tuple(e["blocker_start"]),
+                "blocker_angle": float(e.get("blocker_angle", 0.0)),
                 "home": tuple(e["home"]),
                 "defend_radius": float(e.get("defend_radius", blocker.DEFEND_ENGAGE_RADIUS_IN)),
             })
@@ -807,6 +819,7 @@ def field_to_code(entry):
     payload = {"v": 1, "n": entry["name"],
                "r": [r1(v) for v in entry["robot_start"]],
                "b": [r1(v) for v in entry["blocker_start"]],
+               "ba": r1(entry.get("blocker_angle", 0.0)),
                "h": [r1(v) for v in entry["home"]],
                "d": r1(entry.get("defend_radius", blocker.DEFEND_ENGAGE_RADIUS_IN)),
                "s": shapes}
@@ -858,6 +871,8 @@ def code_to_field(text):
     robot_start = (num(rs[0], 0, FIELD_INCHES, "Robot start"), num(rs[1], 0, FIELD_INCHES, "Robot start"),
                    num(rs[2], -720, 720, "Robot start") % 360.0)
     blocker_start = point(data.get("b"), "Blocker start")
+    # Codes made before the Blocker could face a direction don't have this
+    blocker_angle = num(data.get("ba", 0), -720, 720, "Blocker facing") % 360.0
     home = point(data.get("h"), "Blocker home")
     defend_radius = num(data.get("d"), blocker.DEFEND_MIN_RADIUS_IN, FIELD_INCHES * 0.5, "Defend radius")
 
@@ -900,7 +915,8 @@ def code_to_field(text):
         else:
             shapes.append({"type": "circ", "x": x, "y": y, "radius": radius, **common})
     return {"name": name, "shapes": shapes, "robot_start": robot_start,
-            "blocker_start": blocker_start, "home": home, "defend_radius": defend_radius}
+            "blocker_start": blocker_start, "blocker_angle": blocker_angle,
+            "home": home, "defend_radius": defend_radius}
 
 def capture_current_field(name):
     shapes = []
@@ -911,6 +927,7 @@ def capture_current_field(name):
     return {"name": name, "shapes": shapes,
             "robot_start": tuple(bot.start_pose),
             "blocker_start": (blocker.start_x, blocker.start_y),
+            "blocker_angle": blocker.start_angle,
             "home": (blocker.home_x, blocker.home_y),
             "defend_radius": blocker.defend_radius_in}
 
@@ -1386,7 +1403,7 @@ def save_field_data():
             elif s["type"] == "circ":
                 f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
-        f.write(f"BLOCKER_START {blocker.start_x} {blocker.start_y}\n")
+        f.write(f"BLOCKER_START {blocker.start_x} {blocker.start_y} {blocker.start_angle}\n")
         f.write(f"HOME_POINT {blocker.home_x} {blocker.home_y}\n")
         f.write(f"DEFEND_RADIUS {blocker.defend_radius_in}\n")
 
@@ -2433,6 +2450,14 @@ def upd_rx(val):
 def upd_ry(val): 
     try: bot.start_pose = (bot.start_pose[0], float(val), bot.start_pose[2]); save_field_data(); bot.reset_to_start()
     except: pass
+def upd_ba(val):
+    try:
+        blocker.start_angle = float(val) % 360.0
+        save_field_data()
+        apply_blocker_start()
+    except ValueError:
+        pass
+
 def upd_ra(val): 
     try: bot.start_pose = (bot.start_pose[0], bot.start_pose[1], float(val)); save_field_data(); bot.reset_to_start()
     except: pass
@@ -2441,6 +2466,7 @@ robot_start_y = shape_panel_y + 250
 box_rx = UITextbox(FIELD_PIXELS + 20, robot_start_y + 20, 80, 22, "Start X", "", upd_rx)
 box_ry = UITextbox(FIELD_PIXELS + 120, robot_start_y + 20, 80, 22, "Start Y", "", upd_ry)
 box_ra = UITextbox(FIELD_PIXELS + 220, robot_start_y + 20, 80, 22, "Start θ", "", upd_ra)
+box_ba = UITextbox(FIELD_PIXELS + 20, robot_start_y + 195, 80, 22, "Blocker θ", "", upd_ba)
 box_rlen = UITextbox(FIELD_PIXELS + 120, robot_start_y + 60, 80, 22, "Chassis L", "", update_rlen) # Reuses studio callback!
 box_rwid = UITextbox(FIELD_PIXELS + 20, robot_start_y + 60, 80, 22, "Chassis W", "", update_rwid) # Reuses studio callback!
 btn_rsave = UIButton(FIELD_PIXELS + 20, robot_start_y + 95, 130, 26, "Save Start", action_callback=lambda: save_field_data())
@@ -2456,7 +2482,7 @@ blocker_diff_dropdown_edit = UIDropdown(FIELD_PIXELS + 160, robot_start_y + 150,
 
 # Rendering list to loop through in draw_everything()
 edit_shape_txt = [box_sx, box_sy, box_sw, box_sh, box_sr, box_sa, box_sm, box_sf, box_se]
-edit_robot_ui = [box_rx, box_ry, box_ra, box_rlen, box_rwid, btn_rsave]
+edit_robot_ui = [box_rx, box_ry, box_ra, box_rlen, box_rwid, btn_rsave, box_ba]
 
 #Studio 2 - ui.py
 def toggle_outtake(): bot.has_outtake = not bot.has_outtake; save_settings()
@@ -3213,6 +3239,7 @@ def draw_everything():
                 if not box_rx.is_active: box_rx.value = f"{rx:.1f}"
                 if not box_ry.is_active: box_ry.value = f"{ry:.1f}"
                 if not box_ra.is_active: box_ra.value = f"{ra:.1f}"
+                if not box_ba.is_active: box_ba.value = f"{blocker.start_angle:.1f}"
                 if not box_rlen.is_active: box_rlen.value = f"{bot.length:.1f}"
                 if not box_rwid.is_active: box_rwid.value = f"{bot.track_width:.1f}"
                 for element in edit_robot_ui:
