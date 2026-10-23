@@ -726,6 +726,7 @@ def load_field_entry(m):
     blocker.x, blocker.y = blocker.start_x, blocker.start_y
     blocker.body.position = (blocker.x * SCALE, blocker.y * SCALE)
     blocker.set_home_point(*m["home"])
+    stop_match()
     if "defend_radius" in m:
         blocker.set_defend_radius(m["defend_radius"])
     save_field_data()
@@ -2160,6 +2161,66 @@ def draw_controls_screen():
     btn_controls_back.draw(screen)
 
 #Drive mode sidebar - ui.py
+# Match clock: a 15 second autonomous, then 1:45 of driver control, the
+# lengths used for Override. The last 10 seconds of driver control are the
+# endgame. When time runs out the robot stops taking driver input, so a
+# practice run ends the way a real match does.
+MATCH_AUTO_S = 15.0
+MATCH_DRIVER_S = 105.0
+MATCH_ENDGAME_S = 10.0
+match_phase = "idle"      # idle / auto / driver / over
+match_time = 0.0          # seconds since the match started
+
+def start_match():
+    global match_phase, match_time
+    match_phase, match_time = "auto", 0.0
+
+def stop_match():
+    global match_phase, match_time
+    match_phase, match_time = "idle", 0.0
+
+def action_toggle_match():
+    if match_phase in ("auto", "driver"):
+        stop_match()
+    else:
+        start_match()
+
+def update_match_clock(dt):
+    # Only called while the sim is actually running (Drive mode, not paused),
+    # so pausing freezes the clock
+    global match_phase, match_time
+    if match_phase not in ("auto", "driver"):
+        return
+    match_time += dt
+    if match_time >= MATCH_AUTO_S + MATCH_DRIVER_S:
+        match_phase = "over"
+        match_time = MATCH_AUTO_S + MATCH_DRIVER_S
+    elif match_time >= MATCH_AUTO_S:
+        match_phase = "driver"
+
+def match_clock_text():
+    # (text, color) for the clock bar, or None when no match is running
+    if match_phase == "idle":
+        return None
+    if match_phase == "over":
+        return "MATCH OVER", (255, 110, 110)
+    if match_phase == "auto":
+        left = MATCH_AUTO_S - match_time
+        label, col = "AUTO", CYAN
+    else:
+        left = MATCH_AUTO_S + MATCH_DRIVER_S - match_time
+        endgame = left <= MATCH_ENDGAME_S
+        label, col = ("ENDGAME", ORANGE) if endgame else ("DRIVER", GREEN)
+    left = max(0, math.ceil(left))
+    return f"{label}  {left // 60}:{left % 60:02d}", col
+
+def draw_match_clock():
+    info = match_clock_text()
+    if info is None:
+        return
+    rect = pygame.Rect(FIELD_PIXELS - 175, 10, 165, 30)
+    draw_hud_bar("clock", rect, info[0], info[1])
+
 def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
 def set_drive_arcade(): sim.settings["drive_mode"] = "arcade"; save_settings()
 def set_drive_custom(): sim.settings["drive_mode"] = "custom"; save_settings()
@@ -2221,11 +2282,12 @@ btn_reset = UIButton(FIELD_PIXELS + 20, 240, 130, 28, "Reset Robot", action_call
 btn_reset_center = UIButton(FIELD_PIXELS + 180, 240, 130, 28, "Reset Center", action_callback=action_reset_center)
 btn_auton = UIButton(FIELD_PIXELS + 20, 280, 290, 28, "Run Autonomous", action_callback=action_run_auton)
 
+btn_match = UIButton(FIELD_PIXELS + 20, 500, 290, 28, "Start Match", action_callback=action_toggle_match)
 btn_reset.default_color = (180, 60, 60) # Red
 btn_reset_center.default_color = (80, 80, 180) # Blue
 btn_auton.default_color = GREEN
 
-drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_blocker, blocker_diff_dropdown, blocker_style_dropdown]
+drive_ui = [btn_drive_tank, btn_drive_arcade, btn_drive_custom, btn_input_key, btn_input_ctrl, btn_reset, btn_reset_center, btn_auton, btn_match, btn_blocker, blocker_diff_dropdown, blocker_style_dropdown]
 
 #Edit 1 - ui.py
 def set_field_image(): sim.settings["field_source"] = "image"; save_settings()
@@ -2813,6 +2875,7 @@ def draw_everything():
     draw_hud_bar("status", pygame.Rect(10, 10, 395, 30), mode_label, status_color)
     if sim.current_mode == "drive":
         draw_score_bar()
+        draw_match_clock()
     
     # Control Side UI Column Render Processing
     pygame.draw.rect(screen, (25, 25, 25), (FIELD_PIXELS, 0, UI_WIDTH, WINDOW_HEIGHT))
@@ -2954,6 +3017,9 @@ def draw_everything():
             
             btn_auton.default_color = GREEN if not sim.auton_running else LIGHT_GRAY
             btn_auton.text = "Run Autonomous" if not sim.auton_running else "Running..."
+            running = match_phase in ("auto", "driver")
+            btn_match.text = "Stop Match" if running else ("Restart Match" if match_phase == "over" else "Start Match")
+            btn_match.default_color = (180, 60, 60) if running else (70, 140, 200)
 
             speed_slider.draw(screen)
             turn_slider.draw(screen)
@@ -3638,7 +3704,13 @@ while running:
             autonomous()
             sim.auton_running = False
         if not sim.auton_running:
-            l_speed, r_speed = get_inputs(dt)
+            update_match_clock(dt)
+            if match_phase == "over":
+                # Time's up: no more driving or scoring, the robot just coasts to a stop
+                l_speed, r_speed = 0.0, 0.0
+                bot.intake_state = bot.outtake_state = "off"
+            else:
+                l_speed, r_speed = get_inputs(dt)
             update_physics(l_speed, r_speed, dt)
 
     draw_everything()
