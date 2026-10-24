@@ -512,6 +512,30 @@ def snapshot_shapes():
         snap.append(d)
     return snap
 
+# The field as it was when Drive mode began (or a map was loaded), so every
+# match can start from the same layout. Playing moves and uses up pieces for
+# real, and without this the only way back to a fresh field was reloading it.
+match_field = None
+
+def remember_match_field():
+    global match_field
+    snap = []
+    for sh in snapshot_shapes():
+        # Held pieces, goal stacks and timers are leftovers of play, not layout
+        for k in ("stored", "travel_timer", "stack"):
+            sh.pop(k, None)
+        snap.append(sh)
+    match_field = snap
+
+def restore_match_field():
+    if match_field is None:
+        return
+    sim.shapes[:] = [dict(sh) for sh in match_field]
+    sim.selected_shape_idx = None
+    sim.multi_selected = []
+    bot.inventory.clear()   # whatever the robot held is back on the field
+    sync_custom_obstacles_to_physics()
+
 def gesture_in_progress():
     if (sim.dragging_shape or sim.resizing_shape or sim.dragging_group
             or sim.marquee_start is not None or sim.dragging_robot
@@ -742,6 +766,7 @@ def load_field_entry(m):
         blocker.set_defend_radius(m["defend_radius"])
     save_field_data()
     sync_custom_obstacles_to_physics()
+    remember_match_field()
     sim.paused = False
     sim.paused_sub_menu = "main"
 
@@ -1432,6 +1457,7 @@ load_all_data()
 bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
 blocker.set_difficulty(sim.settings.get("blocker_difficulty", "medium"))
 blocker.set_style(sim.settings.get("blocker_style", "attack"))
+remember_match_field()
 
 # =====================================================================
 # 4. PHYSICS & MOVEMENT ENGINE
@@ -1804,6 +1830,7 @@ def set_mode_drive():
     sim.active_textbox = None
     bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
     sync_custom_obstacles_to_physics()
+    remember_match_field()
 
 def set_mode_edit():
     sim.current_mode = "edit"
@@ -2191,6 +2218,7 @@ match_time = 0.0          # seconds since the match started
 def start_match():
     global match_phase, match_time
     match_phase, match_time = "auto", 0.0
+    restore_match_field()
     # A match begins with both robots on their start spots, facing their start
     # directions, and with nothing running. Whatever the last run left behind
     # (speed, a half-done intake) doesn't carry over.
