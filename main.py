@@ -2191,6 +2191,12 @@ match_time = 0.0          # seconds since the match started
 def start_match():
     global match_phase, match_time
     match_phase, match_time = "auto", 0.0
+    # A match begins with both robots on their start spots, facing their start
+    # directions, and with nothing running. Whatever the last run left behind
+    # (speed, a half-done intake) doesn't carry over.
+    bot.reset_to_start()
+    apply_blocker_start()
+    bot.intake_state = bot.outtake_state = "off"
 
 def stop_match():
     global match_phase, match_time
