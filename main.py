@@ -522,7 +522,7 @@ def remember_match_field():
     snap = []
     for sh in snapshot_shapes():
         # Held pieces, goal stacks and timers are leftovers of play, not layout
-        for k in ("stored", "travel_timer", "stack"):
+        for k in ("stored", "travel_timer", "stack", "left"):
             sh.pop(k, None)
         snap.append(sh)
     match_field = snap
@@ -826,7 +826,7 @@ FIELD_CODE_PREFIX = "VEXF1:"
 FIELD_CODE_MAX_CHARS = 20000        # a full field is well under 2000, so this is generous
 FIELD_CODE_MAX_BYTES = 200000       # cap on the unpacked size, so a tiny code can't unpack into a huge one
 FIELD_CODE_MAX_SHAPES = 150
-FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough", "goal")
+FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough", "goal", "loader")
 
 def field_to_code(entry):
     def r1(v): return round(float(v), 1)
@@ -1314,7 +1314,7 @@ def duplicate_selected_shapes():
 
     new_idxs = []
     for i in source_idxs:
-        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack")}
+        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack", "left")}
         if isinstance(copy_s.get("color"), list):
             copy_s["color"] = tuple(copy_s["color"])
         copy_s["x"] += dx
@@ -1368,7 +1368,7 @@ def rotate_selected_group(degrees):
 
 # Bottom to top. Drawing and clicking both follow this, so what you see on
 # top is what you grab. Within one layer, the shape added last is on top.
-SHAPE_LAYERS = ("passthrough", "static", "goal", "dynamic")
+SHAPE_LAYERS = ("passthrough", "static", "loader", "goal", "dynamic")
 
 def layer_rank(s):
     b = s.get("body_type", "static")
@@ -1672,6 +1672,11 @@ def update_physics(left_speed, right_speed, dt):
                 s["y"] = b.position.y / SCALE  
                 s["angle"] = math.degrees(b.angle)
     
+def loader_supply(loader):
+    # How many pieces a loader starts a match with. Stored in the shape's
+    # "mass" so loaders save and share without a format change.
+    return max(0, int(round(loader.get("mass", 0))))
+
 def goal_at(x, y):
     # The goal zone (if any) that covers a field point, in inches. Goals can
     # be rotated, so the point is turned back into the goal's own frame.
@@ -1856,11 +1861,11 @@ def update_turn(new_val):
     sim.settings["turn_scale"] = new_val
     save_settings()
 def update_add_shape(new_val):
-    sim.add_shape_type = {"Rectangle": "rect", "Circle": "circ", "Goal": "goal"}[new_val]
+    sim.add_shape_type = {"Rectangle": "rect", "Circle": "circ", "Goal": "goal", "Loader": "loader"}[new_val]
 
 speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplier:", 0.3, 1.5, sim.settings.get("speed_scale", 1.0), update_speed)
 turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
-shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle", "Goal"], 0, update_add_shape)
+shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle", "Goal", "Loader"], 0, update_add_shape)
 
 #Pause menu - ui.py
 def action_resume(): sim.paused = False
@@ -2351,6 +2356,11 @@ def action_add_shape():
         # A goal is a square zone the robot drives over. It has no physics at
         # all, so nothing collides with it and the Blocker plans straight through.
         sim.shapes.append({"type": "rect", "x": cx - 9, "y": cy - 9, "w": 18, "h": 18, "angle": 0.0, "color": (150,150,150), "body_type": "goal"})
+    elif sim.add_shape_type == "loader":
+        # Where a human player feeds pieces in. Like a goal it has no physics.
+        # Its "mass" number is how many pieces it holds (see loader_supply), which
+        # keeps loaders inside the existing save and share-code formats.
+        sim.shapes.append({"type": "rect", "x": cx - 7, "y": cy - 7, "w": 14, "h": 14, "angle": 0.0, "color": (150,150,150), "body_type": "loader", "mass": 6.0})
     else:
         sim.shapes.append({"type": "circ", "x": cx, "y": cy, "radius": 6, "color": (150,150,150), "body_type": "dynamic"})
     sim.selected_shape_idx = len(sim.shapes) - 1
@@ -2363,8 +2373,8 @@ def toggle_physics_mode():
     if sim.selected_shape_idx is not None:
         s = sim.shapes[sim.selected_shape_idx]
         curr = s.get("body_type", "static")
-        if curr == "goal":
-            show_toast("A goal has no physics mode to change")
+        if curr in ("goal", "loader"):
+            show_toast(f"A {curr} has no physics mode to change")
             return
         # Cycle through: static -> passthrough -> dynamic -> static
         s["body_type"] = "passthrough" if curr == "static" else "dynamic" if curr == "passthrough" else "static"
@@ -2721,7 +2731,21 @@ def draw_everything():
             
                 current_phys = s.get("body_type", "static") #Defualting to static, can be changed
                 
-                if current_phys == "goal":
+                if current_phys == "loader":
+                    # A tinted box with a double border and a square badge of
+                    # how many pieces are left, so it can't be mistaken for a goal
+                    r, g, b = s["color"]
+                    surf.fill((r, g, b, 55))
+                    pygame.draw.rect(surf, (r, g, b), surf.get_rect(), 3)
+                    pygame.draw.rect(surf, (r, g, b), surf.get_rect().inflate(-14, -14), 1)
+                    left = s.get("left", loader_supply(s))
+                    badge = SMALL_FONT.render(str(left), True, WHITE)
+                    bc = pygame.Rect(0, 0, max(24, badge.get_width() + 10), 22)
+                    bc.center = (surf.get_width() // 2, surf.get_height() // 2)
+                    pygame.draw.rect(surf, (30, 30, 36), bc, border_radius=4)
+                    pygame.draw.rect(surf, (r, g, b), bc, 2, border_radius=4)
+                    surf.blit(badge, (bc.centerx - badge.get_width() // 2, bc.centery - badge.get_height() // 2))
+                elif current_phys == "goal":
                     # See-through tint, a solid border and a count badge, so a
                     # goal never looks like a wall and the field shows through
                     r, g, b = s["color"]
@@ -3224,7 +3248,12 @@ def draw_everything():
                         for box in [box_sx, box_sy, box_sr]: box.draw(screen)
                         
                     if current_phys == "dynamic":
+                        box_sm.label = "Mass (lbs)"
                         if not box_sm.is_active: box_sm.value = f"{s.get('mass', 1.0):.1f}"
+                        box_sm.draw(screen)
+                    elif current_phys == "loader":
+                        box_sm.label = "Supply"
+                        if not box_sm.is_active: box_sm.value = f"{loader_supply(s)}"
                         box_sm.draw(screen)
 
                     if current_phys == "passthrough":
@@ -3253,6 +3282,9 @@ def draw_everything():
                     elif current_phys == "goal":
                         btn_phys_toggle.default_color = (110, 80, 160)
                         btn_phys_toggle.text = "GOAL (ZONE)"
+                    elif current_phys == "loader":
+                        btn_phys_toggle.default_color = (60, 130, 140)
+                        btn_phys_toggle.text = "LOADER (ZONE)"
 
                     draw_small("Physics Mode", btn_phys_toggle.screen_rect.x, btn_phys_toggle.screen_rect.y - 16, LIGHT_GRAY)
                     btn_phys_toggle.draw(screen)
