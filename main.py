@@ -223,6 +223,7 @@ DEFAULT_KEYBINDS = {
     "intake_in": pygame.K_e,
     "intake_out": pygame.K_f,
     "outtake_score": pygame.K_q,
+    "load_piece": pygame.K_g,
     "arcade_fwd": pygame.K_w, "arcade_back": pygame.K_s,
     "arcade_left": pygame.K_a, "arcade_right": pygame.K_d,
     "tank_left_fwd": pygame.K_i, "tank_left_back": pygame.K_k,
@@ -1677,6 +1678,50 @@ def loader_supply(loader):
     # "mass" so loaders save and share without a format change.
     return max(0, int(round(loader.get("mass", 0))))
 
+LOADER_REACH_IN = 36      # how close the robot has to be to a loader's center to be fed by it
+LOADER_PIECE_RADIUS = 3.5
+
+def load_piece():
+    # The human player drops one piece onto the nearest loader the robot is
+    # parked close to. The piece takes the loader's color and uses up one of
+    # its supply. Start Match refills every loader.
+    loaders = [g for g in sim.shapes if g.get("body_type") == "loader"]
+    near = []
+    for g in loaders:
+        cx, cy = g["x"] + g["w"] / 2, g["y"] + g["h"] / 2
+        d = math.hypot(bot.x - cx, bot.y - cy)
+        if d <= LOADER_REACH_IN:
+            near.append((d, g, cx, cy))
+    if not near:
+        show_toast("Park the robot next to a loader first" if loaders else "This field has no loader")
+        return
+    d, g, cx, cy = min(near, key=lambda t: t[0])
+    left = g.get("left", loader_supply(g))
+    if left <= 0:
+        show_toast("That loader is empty")
+        return
+    # One piece at a time: a second one dropped on top of the first would
+    # make the physics shove them apart hard
+    for s in sim.shapes:
+        if s.get("body_type") == "dynamic" and not s.get("stored", False):
+            if math.hypot(s["x"] - cx, s["y"] - cy) < LOADER_PIECE_RADIUS * 2:
+                show_toast("Take the piece out of the loader first")
+                return
+    g["left"] = left - 1
+    piece = {"type": "circ", "x": cx, "y": cy, "radius": LOADER_PIECE_RADIUS, "angle": 0.0,
+             "color": tuple(g["color"]), "body_type": "dynamic", "mass": 1.0,
+             "friction": 0.5, "elasticity": 0.0, "is_overpass": False}
+    sim.shapes.append(piece)
+    # Only the new piece gets a physics body, so pieces already rolling around aren't disturbed
+    rad_px = piece["radius"] * SCALE
+    body = pymunk.Body(piece["mass"], pymunk.moment_for_circle(piece["mass"], 0, rad_px), body_type=pymunk.Body.DYNAMIC)
+    body.position = (cx * SCALE, cy * SCALE)
+    shape = pymunk.Circle(body, rad_px)
+    shape.friction = piece["friction"]
+    shape.elasticity = piece["elasticity"]
+    space.add(body, shape)
+    piece["body"] = body
+
 def goal_at(x, y):
     # The goal zone (if any) that covers a field point, in inches. Goals can
     # be rotated, so the point is turned back into the goal's own frame.
@@ -2009,6 +2054,9 @@ rebuild_maps_ui()
 # The rows come from the KEYBIND_PAGE table, so adding a bindable action is
 # one line there.
 KEYBIND_PAGE = [
+    ("MATCH LOADS", [
+        ("load_piece", "Load a piece"),
+    ]),
     ("DRIVING (ARCADE AND CUSTOM)", [
         ("arcade_fwd", "Forward"),
         ("arcade_back", "Backward"),
@@ -2156,6 +2204,7 @@ def controls_sections():
             (f"{kn('tank_right_fwd')} / {kn('tank_right_back')}", "Right side forward / back (Tank)"),
             (f"{k_in} / {k_out}", "Intake in / out"),
             (k_score, "Outtake (score)"),
+            (kn("load_piece"), "Feed a piece from the nearest loader"),
             ("V", "Cycle the Blocker's debug view"),
             ("N", "Switch the Blocker's navigation mode"),
         ]),
@@ -3774,6 +3823,11 @@ while running:
                             
                 if not is_typing:
                     delete_selected_shapes()
+
+            # The human player feeding a piece, whichever intake mode is on
+            elif (sim.current_mode == "drive" and not sim.paused
+                    and event.key == sim.settings["keybinds"]["load_piece"]):
+                load_piece()
 
             # Toggle mode intake switching
             elif sim.current_mode == "drive" and not sim.paused and sim.settings["intake_control_mode"] == "toggle":
