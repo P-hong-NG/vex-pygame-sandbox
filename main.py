@@ -524,7 +524,7 @@ def remember_match_field():
     snap = []
     for sh in snapshot_shapes():
         # Held pieces, goal stacks and timers are leftovers of play, not layout
-        for k in ("stored", "travel_timer", "stack", "left", "tstate"):
+        for k in ("stored", "travel_timer", "stack", "left", "tstate", "touched"):
             sh.pop(k, None)
         snap.append(sh)
     match_field = snap
@@ -1316,7 +1316,7 @@ def duplicate_selected_shapes():
 
     new_idxs = []
     for i in source_idxs:
-        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack", "left", "tstate")}
+        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack", "left", "tstate", "touched")}
         if isinstance(copy_s.get("color"), list):
             copy_s["color"] = tuple(copy_s["color"])
         copy_s["x"] += dx
@@ -1679,6 +1679,38 @@ def loader_supply(loader):
     # "mass" so loaders save and share without a format change.
     return max(0, int(round(loader.get("mass", 0))))
 
+ALLIANCE_COLORS = {"red": (255, 80, 80), "blue": (80, 80, 255)}
+
+def robot_touches_zone(zone, rx, ry, reach):
+    # True if a robot centered at (rx, ry) comes within `reach` inches of a
+    # rectangular zone, turned the way the zone is turned
+    cx, cy = zone["x"] + zone["w"] / 2, zone["y"] + zone["h"] / 2
+    a = math.radians(zone.get("angle", 0.0))
+    dx, dy = rx - cx, ry - cy
+    lx = dx * math.cos(a) + dy * math.sin(a)
+    ly = -dx * math.sin(a) + dy * math.cos(a)
+    ox = max(abs(lx) - zone["w"] / 2, 0.0)
+    oy = max(abs(ly) - zone["h"] / 2, 0.0)
+    return math.hypot(ox, oy) <= reach
+
+def update_toggles():
+    # A toggle turns to the color of the robot that is touching it. If both
+    # robots are on it, nobody wins it and it stays as it was. "touched" is
+    # remembered so scoring can ignore a toggle someone is still holding.
+    mine = sim.settings.get("alliance", "red")
+    my_color = ALLIANCE_COLORS[mine]
+    their_color = ALLIANCE_COLORS["blue" if mine == "red" else "red"]
+    for t in sim.shapes:
+        if t.get("body_type") != "toggle":
+            continue
+        user_on = robot_touches_zone(t, bot.x, bot.y, bot.track_width / 2)
+        blocker_on = blocker.enabled and robot_touches_zone(t, blocker.x, blocker.y, blocker.track_width / 2)
+        t["touched"] = user_on or blocker_on
+        if user_on and not blocker_on:
+            t["tstate"] = my_color
+        elif blocker_on and not user_on:
+            t["tstate"] = their_color
+
 LOADER_REACH_IN = 36      # how close the robot has to be to a loader's center to be fed by it
 LOADER_PIECE_RADIUS = 3.5
 
@@ -1886,6 +1918,11 @@ def set_mode_drive():
 def set_mode_edit():
     sim.current_mode = "edit"
     sim.current_page = "edit 1"
+    # A flipped toggle goes back to the color chosen in the editor, so the
+    # color picked there is the one that shows while editing
+    for sh in sim.shapes:
+        sh.pop("tstate", None)
+        sh.pop("touched", None)
 
 def toggle_page():
     if sim.current_mode == "studio":
@@ -2812,6 +2849,9 @@ def draw_everything():
                     diamond = [(cx_, cy_ - d), (cx_ + d, cy_), (cx_, cy_ + d), (cx_ - d, cy_)]
                     pygame.draw.polygon(surf, (r, g, b), diamond)
                     pygame.draw.polygon(surf, (30, 30, 36), diamond, 2)
+                    if s.get("touched", False):
+                        # A robot is on it right now, so it wouldn't count for scoring yet
+                        pygame.draw.rect(surf, WHITE, surf.get_rect(), 3)
                 elif current_phys == "loader":
                     # A tinted box with a double border and a square badge of
                     # how many pieces are left, so it can't be mistaken for a goal
@@ -3887,6 +3927,8 @@ while running:
             sim.auton_running = False
         if not sim.auton_running:
             update_match_clock(dt)
+            if match_phase != "over":
+                update_toggles()
             if match_phase == "over":
                 # Time's up: no more driving or scoring, the robot just coasts to a stop
                 l_speed, r_speed = 0.0, 0.0
