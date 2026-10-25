@@ -260,6 +260,7 @@ class SimulatorState:
             "blocker_style": "attack",
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
+            "alliance": "red",        # which side the user's robot plays for (red / blue)
             "keybinds": dict(DEFAULT_KEYBINDS)
         }
         self.drive_config = {
@@ -523,7 +524,7 @@ def remember_match_field():
     snap = []
     for sh in snapshot_shapes():
         # Held pieces, goal stacks and timers are leftovers of play, not layout
-        for k in ("stored", "travel_timer", "stack", "left"):
+        for k in ("stored", "travel_timer", "stack", "left", "tstate"):
             sh.pop(k, None)
         snap.append(sh)
     match_field = snap
@@ -827,7 +828,7 @@ FIELD_CODE_PREFIX = "VEXF1:"
 FIELD_CODE_MAX_CHARS = 20000        # a full field is well under 2000, so this is generous
 FIELD_CODE_MAX_BYTES = 200000       # cap on the unpacked size, so a tiny code can't unpack into a huge one
 FIELD_CODE_MAX_SHAPES = 150
-FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough", "goal", "loader")
+FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough", "goal", "loader", "toggle")
 
 def field_to_code(entry):
     def r1(v): return round(float(v), 1)
@@ -1315,7 +1316,7 @@ def duplicate_selected_shapes():
 
     new_idxs = []
     for i in source_idxs:
-        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack", "left")}
+        copy_s = {k: v for k, v in sim.shapes[i].items() if k not in ("body", "pymunk_shape", "stack", "left", "tstate")}
         if isinstance(copy_s.get("color"), list):
             copy_s["color"] = tuple(copy_s["color"])
         copy_s["x"] += dx
@@ -1369,7 +1370,7 @@ def rotate_selected_group(degrees):
 
 # Bottom to top. Drawing and clicking both follow this, so what you see on
 # top is what you grab. Within one layer, the shape added last is on top.
-SHAPE_LAYERS = ("passthrough", "static", "loader", "goal", "dynamic")
+SHAPE_LAYERS = ("passthrough", "static", "toggle", "loader", "goal", "dynamic")
 
 def layer_rank(s):
     b = s.get("body_type", "static")
@@ -1906,11 +1907,11 @@ def update_turn(new_val):
     sim.settings["turn_scale"] = new_val
     save_settings()
 def update_add_shape(new_val):
-    sim.add_shape_type = {"Rectangle": "rect", "Circle": "circ", "Goal": "goal", "Loader": "loader"}[new_val]
+    sim.add_shape_type = {"Rectangle": "rect", "Circle": "circ", "Goal": "goal", "Loader": "loader", "Toggle": "toggle"}[new_val]
 
 speed_slider = UISlider(FIELD_PIXELS + 20, 170, 200, 6, "Robot's speed multiplier:", 0.3, 1.5, sim.settings.get("speed_scale", 1.0), update_speed)
 turn_slider = UISlider(FIELD_PIXELS + 20, 210, 200, 6, "Robot's turn multiplier:", 0.3, 1.5, sim.settings.get("turn_scale", 1.0), update_turn)
-shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle", "Goal", "Loader"], 0, update_add_shape)
+shape_dropdown = UIDropdown(FIELD_PIXELS + 20, 175, 140, 24, ["Rectangle", "Circle", "Goal", "Loader", "Toggle"], 0, update_add_shape)
 
 #Pause menu - ui.py
 def action_resume(): sim.paused = False
@@ -2113,6 +2114,10 @@ def try_rebind(key):
     save_settings()
     return True
 
+def toggle_alliance():
+    sim.settings["alliance"] = "blue" if sim.settings.get("alliance", "red") == "red" else "red"
+    save_settings()
+
 def toggle_mode():
     sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
     save_settings()
@@ -2153,6 +2158,15 @@ def build_settings_page():
     y += SETTINGS_ROW_H - 6
     hint = UILabel(14, y, 390, 16, "", LIGHT_GRAY)
     settings_list.add_child(hint)
+    y += 30
+    # Which side the user's robot plays for - decides whose color a toggle turns
+    settings_list.add_child(UILabel(14, y + 6, 380, 16, "MATCH", (140, 200, 255)))
+    y += 30
+    settings_list.add_child(UILabel(14, y + 11, 200, 16, "Your alliance", WHITE))
+    global settings_alliance_btn
+    settings_alliance_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_alliance)
+    settings_list.add_child(settings_alliance_btn)
+    y += SETTINGS_ROW_H
     settings_list.add_child(UILabel(0, y + 30, 1, 1, ""))   # breathing room at the bottom
     settings_list.scroll_speed = SETTINGS_ROW_H // 2
     return settings_mode_btn, hint
@@ -2177,6 +2191,9 @@ def draw_settings_page():
         btn.default_color = YELLOW if waiting else LIGHT_GRAY
     mode = sim.settings["intake_control_mode"]
     settings_mode_btn.text = mode.upper()
+    red_side = sim.settings.get("alliance", "red") == "red"
+    settings_alliance_btn.text = "RED" if red_side else "BLUE"
+    settings_alliance_btn.default_color = (210, 90, 90) if red_side else (100, 100, 230)
     settings_mode_hint.text = ("Press once to start, again to stop" if mode == "toggle"
                                else "Works only while the key is held down")
     settings_list.draw(screen)
@@ -2405,6 +2422,10 @@ def action_add_shape():
         # A goal is a square zone the robot drives over. It has no physics at
         # all, so nothing collides with it and the Blocker plans straight through.
         sim.shapes.append({"type": "rect", "x": cx - 9, "y": cy - 9, "w": 18, "h": 18, "angle": 0.0, "color": (150,150,150), "body_type": "goal"})
+    elif sim.add_shape_type == "toggle":
+        # A lever that belongs to whoever flipped it last. The color chosen
+        # here is who owns it at the start: gray for nobody, red or blue.
+        sim.shapes.append({"type": "rect", "x": cx - 7, "y": cy - 7, "w": 14, "h": 14, "angle": 0.0, "color": (150,150,150), "body_type": "toggle"})
     elif sim.add_shape_type == "loader":
         # Where a human player feeds pieces in. Like a goal it has no physics.
         # Its "mass" number is how many pieces it holds (see loader_supply), which
@@ -2422,7 +2443,7 @@ def toggle_physics_mode():
     if sim.selected_shape_idx is not None:
         s = sim.shapes[sim.selected_shape_idx]
         curr = s.get("body_type", "static")
-        if curr in ("goal", "loader"):
+        if curr in ("goal", "loader", "toggle"):
             show_toast(f"A {curr} has no physics mode to change")
             return
         # Cycle through: static -> passthrough -> dynamic -> static
@@ -2780,7 +2801,18 @@ def draw_everything():
             
                 current_phys = s.get("body_type", "static") #Defualting to static, can be changed
                 
-                if current_phys == "loader":
+                if current_phys == "toggle":
+                    # A tinted box with a solid diamond in the owner's color: gray
+                    # for nobody, red or blue once someone owns it
+                    r, g, b = s.get("tstate", s["color"])
+                    surf.fill((r, g, b, 45))
+                    pygame.draw.rect(surf, (r, g, b), surf.get_rect(), 3)
+                    cx_, cy_ = surf.get_width() // 2, surf.get_height() // 2
+                    d = min(surf.get_width(), surf.get_height()) // 3
+                    diamond = [(cx_, cy_ - d), (cx_ + d, cy_), (cx_, cy_ + d), (cx_ - d, cy_)]
+                    pygame.draw.polygon(surf, (r, g, b), diamond)
+                    pygame.draw.polygon(surf, (30, 30, 36), diamond, 2)
+                elif current_phys == "loader":
                     # A tinted box with a double border and a square badge of
                     # how many pieces are left, so it can't be mistaken for a goal
                     r, g, b = s["color"]
@@ -3331,6 +3363,9 @@ def draw_everything():
                     elif current_phys == "goal":
                         btn_phys_toggle.default_color = (110, 80, 160)
                         btn_phys_toggle.text = "GOAL (ZONE)"
+                    elif current_phys == "toggle":
+                        btn_phys_toggle.default_color = (150, 110, 60)
+                        btn_phys_toggle.text = "TOGGLE (ZONE)"
                     elif current_phys == "loader":
                         btn_phys_toggle.default_color = (60, 130, 140)
                         btn_phys_toggle.text = "LOADER (ZONE)"
