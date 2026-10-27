@@ -2715,32 +2715,72 @@ HUD_BAR_ALPHA = 170         # about 2/3 opaque
 HUD_BAR_HOVER_ALPHA = 30    # barely there under the mouse
 hud_bar_alpha = {}
 
-# Points for pieces sitting in goals, counted per color. Red and blue are
-# each side's own pieces. Yellow pieces are shared, and who gets them depends
-# on the toggles, which aren't in the sim yet, so they're shown as a count.
+# Points for pieces sitting in goals, following the Override rules: each
+# red or blue piece is worth 5 to its own alliance, and each yellow piece is
+# worth 10 to whoever owns it. A yellow piece is owned by the alliance its
+# goal's quadrant toggle is set to, but only while no robot is touching that
+# toggle. A goal belongs to the quadrant of the nearest toggle. A goal in the
+# middle of the field is the Midfield goal, which has its own rule.
+# These numbers and colors sit together so another game can change them.
 SCORE_RED, SCORE_BLUE, SCORE_YELLOW = (255, 80, 80), (80, 80, 255), (255, 220, 0)
 POINTS_PER_PIECE = 5
+POINTS_PER_YELLOW = 10
+MIDFIELD_HALF_IN = 24   # half the width of the field's center square (an estimate - the exact size comes from the field drawing)
+
+def in_midfield(x, y):
+    c = FIELD_INCHES / 2
+    return abs(x - c) <= MIDFIELD_HALF_IN and abs(y - c) <= MIDFIELD_HALF_IN
+
+def toggle_owner(toggle):
+    # "red" / "blue" if the toggle is set to a side and nobody is touching it, else None
+    if toggle.get("touched", False):
+        return None
+    col = tuple(toggle.get("tstate", toggle["color"]))
+    for name, c in ALLIANCE_COLORS.items():
+        if col == c:
+            return name
+    return None
+
+def goal_yellow_owner(goal):
+    # Who gets the yellow pieces in this goal: "red", "blue" or None
+    cx, cy = goal["x"] + goal["w"] / 2, goal["y"] + goal["h"] / 2
+    if in_midfield(cx, cy):
+        return None
+    toggles = [t for t in sim.shapes if t.get("body_type") == "toggle"]
+    if not toggles:
+        return None
+    nearest = min(toggles, key=lambda t: math.hypot(t["x"] + t["w"] / 2 - cx, t["y"] + t["h"] / 2 - cy))
+    return toggle_owner(nearest)
 
 def goal_scores():
-    red = blue = yellow = 0
+    # (red points, blue points, yellow pieces nobody owns right now)
+    pts = {"red": 0, "blue": 0}
+    open_yellow = 0
     for g in sim.shapes:
         if g.get("body_type") != "goal":
             continue
+        owner = None
+        owner_known = False
         for col in g.get("stack", ()):
-            if tuple(col) == SCORE_RED: red += 1
-            elif tuple(col) == SCORE_BLUE: blue += 1
-            elif tuple(col) == SCORE_YELLOW: yellow += 1
-    return red, blue, yellow
+            col = tuple(col)
+            if col == SCORE_RED: pts["red"] += POINTS_PER_PIECE
+            elif col == SCORE_BLUE: pts["blue"] += POINTS_PER_PIECE
+            elif col == SCORE_YELLOW:
+                if not owner_known:
+                    owner, owner_known = goal_yellow_owner(g), True
+                if owner is None: open_yellow += 1
+                else: pts[owner] += POINTS_PER_YELLOW
+    return pts["red"], pts["blue"], open_yellow
 
 def draw_score_bar():
     # Only shows up on a field that has a goal, so ordinary practice maps
     # don't get a score box they can't use
     if not any(g.get("body_type") == "goal" for g in sim.shapes):
         return
-    red, blue, yellow = goal_scores()
-    parts = [("SCORE", WHITE), (f"Red {red * POINTS_PER_PIECE}", SCORE_RED),
-             (f"Blue {blue * POINTS_PER_PIECE}", (130, 130, 255)),
-             (f"Yellow x{yellow}", SCORE_YELLOW)]
+    red, blue, open_yellow = goal_scores()
+    parts = [("SCORE", WHITE), (f"Red {red}", SCORE_RED), (f"Blue {blue}", (130, 130, 255))]
+    if open_yellow:
+        parts.append((f"Unclaimed yellow x{open_yellow}", SCORE_YELLOW))
     rect = pygame.Rect(10, 46, 395, 26)
     draw_hud_bar("score", rect, "", WHITE)
     x = rect.x + 8
