@@ -2726,10 +2726,27 @@ SCORE_RED, SCORE_BLUE, SCORE_YELLOW = (255, 80, 80), (80, 80, 255), (255, 220, 0
 POINTS_PER_PIECE = 5
 POINTS_PER_YELLOW = 10
 MIDFIELD_HALF_IN = 24   # half the width of the field's center square (an estimate - the exact size comes from the field drawing)
+POINTS_PER_MIDFIELD_ROBOT = 8
 
 def in_midfield(x, y):
     c = FIELD_INCHES / 2
     return abs(x - c) <= MIDFIELD_HALF_IN and abs(y - c) <= MIDFIELD_HALF_IN
+
+def midfield_robots():
+    # How many robots of each alliance are at least partly inside the
+    # Midfield square: (red, blue). The user's robot plays the chosen
+    # alliance and the Blocker plays the other one.
+    counts = {"red": 0, "blue": 0}
+    mine = sim.settings.get("alliance", "red")
+    theirs = "blue" if mine == "red" else "red"
+    c = FIELD_INCHES / 2
+    for side, r in ((mine, bot), (theirs, blocker if blocker.enabled else None)):
+        if r is None:
+            continue
+        reach = MIDFIELD_HALF_IN + max(r.length, r.track_width) / 2
+        if abs(r.x - c) <= reach and abs(r.y - c) <= reach:
+            counts[side] += 1
+    return counts["red"], counts["blue"]
 
 def toggle_owner(toggle):
     # "red" / "blue" if the toggle is set to a side and nobody is touching it, else None
@@ -2745,7 +2762,12 @@ def goal_yellow_owner(goal):
     # Who gets the yellow pieces in this goal: "red", "blue" or None
     cx, cy = goal["x"] + goal["w"] / 2, goal["y"] + goal["h"] / 2
     if in_midfield(cx, cy):
-        return None
+        # The Midfield goal is decided by who has more robots in the
+        # Midfield when the match ends, so it's "pending" until then
+        if match_phase != "over":
+            return "pending"
+        red_n, blue_n = midfield_robots()
+        return "red" if red_n > blue_n else "blue" if blue_n > red_n else None
     toggles = [t for t in sim.shapes if t.get("body_type") == "toggle"]
     if not toggles:
         return None
@@ -2753,9 +2775,9 @@ def goal_yellow_owner(goal):
     return toggle_owner(nearest)
 
 def goal_scores():
-    # (red points, blue points, yellow pieces nobody owns right now)
+    # (red points, blue points, yellow pieces nobody owns, Midfield yellow still to be decided)
     pts = {"red": 0, "blue": 0}
-    open_yellow = 0
+    open_yellow = pending_yellow = 0
     for g in sim.shapes:
         if g.get("body_type") != "goal":
             continue
@@ -2769,18 +2791,26 @@ def goal_scores():
                 if not owner_known:
                     owner, owner_known = goal_yellow_owner(g), True
                 if owner is None: open_yellow += 1
+                elif owner == "pending": pending_yellow += 1
                 else: pts[owner] += POINTS_PER_YELLOW
-    return pts["red"], pts["blue"], open_yellow
+    if match_phase == "over":
+        # Robots that end the match in the Midfield score for their alliance
+        red_n, blue_n = midfield_robots()
+        pts["red"] += red_n * POINTS_PER_MIDFIELD_ROBOT
+        pts["blue"] += blue_n * POINTS_PER_MIDFIELD_ROBOT
+    return pts["red"], pts["blue"], open_yellow, pending_yellow
 
 def draw_score_bar():
     # Only shows up on a field that has a goal, so ordinary practice maps
     # don't get a score box they can't use
     if not any(g.get("body_type") == "goal" for g in sim.shapes):
         return
-    red, blue, open_yellow = goal_scores()
+    red, blue, open_yellow, pending_yellow = goal_scores()
     parts = [("SCORE", WHITE), (f"Red {red}", SCORE_RED), (f"Blue {blue}", (130, 130, 255))]
     if open_yellow:
         parts.append((f"Unclaimed yellow x{open_yellow}", SCORE_YELLOW))
+    if pending_yellow:
+        parts.append((f"Midfield yellow x{pending_yellow} (at end)", SCORE_YELLOW))
     rect = pygame.Rect(10, 46, 395, 26)
     draw_hud_bar("score", rect, "", WHITE)
     x = rect.x + 8
