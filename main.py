@@ -370,13 +370,17 @@ def load_all_data():
                     elas_val = float(parts[12]) if len(parts) >= 13 else 0.0
                     is_over = bool(int(parts[13])) if len(parts) >= 14 else False
                     _, x, y, w, h, ang, r, g, b = parts[:9]
-                    sim.shapes.append({"type": "rect", "x": float(x), "y": float(y), 
-                                       "w": float(w), "h": float(h), 
-                                       "angle": float(ang), 
-                                       "color": (int(r), int(g), int(b)),
-                                       "body_type": b_type, "mass": m_val,
-                                       "friction": fric_val, "elasticity": elas_val,
-                                       "is_overpass": is_over})
+                    rect_shape = {"type": "rect", "x": float(x), "y": float(y),
+                                  "w": float(w), "h": float(h),
+                                  "angle": float(ang),
+                                  "color": (int(r), int(g), int(b)),
+                                  "body_type": b_type, "mass": m_val,
+                                  "friction": fric_val, "elasticity": elas_val,
+                                  "is_overpass": is_over}
+                    # Older files have no 15th value, which means the default (back)
+                    if len(parts) >= 15 and parts[14] in GOAL_SCORE_MODES:
+                        rect_shape["score_from"] = parts[14]
+                    sim.shapes.append(rect_shape)
                 elif tag == "CIRC" and len(parts) >= 7:
                     b_type = parts[7] if len(parts) >= 8 else "dynamic"
                     m_val = float(parts[8]) if len(parts) >= 9 else 1.0
@@ -828,6 +832,15 @@ FIELD_CODE_PREFIX = "VEXF1:"
 FIELD_CODE_MAX_CHARS = 20000        # a full field is well under 2000, so this is generous
 FIELD_CODE_MAX_BYTES = 200000       # cap on the unpacked size, so a tiny code can't unpack into a huge one
 FIELD_CODE_MAX_SHAPES = 150
+# Which side of the robot can score into a goal: the back (the outtake), the
+# front (the intake running backwards), or both. Some games let the intake
+# score into a low goal, others only the outtake into a high one.
+GOAL_SCORE_MODES = ("back", "front", "both")
+
+def goal_score_from(g):
+    m = g.get("score_from", "back")
+    return m if m in GOAL_SCORE_MODES else "back"
+
 FIELD_CODE_BODY_TYPES = ("static", "dynamic", "passthrough", "goal", "loader", "toggle")
 
 def field_to_code(entry):
@@ -839,8 +852,13 @@ def field_to_code(entry):
                 round(float(sh.get("friction", 0.5)), 2), round(float(sh.get("elasticity", 0.0)), 2),
                 1 if sh.get("is_overpass", False) else 0]
         if sh["type"] == "rect":
-            shapes.append(["r", r1(sh["x"]), r1(sh["y"]), r1(sh["w"]), r1(sh["h"]),
-                           r1(sh.get("angle", 0.0)), col] + tail)
+            item = ["r", r1(sh["x"]), r1(sh["y"]), r1(sh["w"]), r1(sh["h"]),
+                    r1(sh.get("angle", 0.0)), col] + tail
+            # Only goals that differ from the default carry the extra value,
+            # so codes for every other field stay exactly as they were
+            if sh.get("body_type") == "goal" and goal_score_from(sh) != "back":
+                item.append(goal_score_from(sh))
+            shapes.append(item)
         else:
             shapes.append(["c", r1(sh["x"]), r1(sh["y"]), r1(sh["radius"]), col] + tail)
     payload = {"v": 1, "n": entry["name"],
@@ -911,7 +929,7 @@ def code_to_field(text):
         if not isinstance(item, list) or not item or item[0] not in ("r", "c"):
             raise ValueError("A shape is broken")
         is_rect = item[0] == "r"
-        if len(item) != (12 if is_rect else 10):
+        if len(item) not in ((12, 13) if is_rect else (10,)):
             raise ValueError("A shape is broken")
         i = 1
         x = num(item[i], 0, FIELD_INCHES, "Shape position"); i += 1
@@ -938,6 +956,11 @@ def code_to_field(text):
         common = {"color": tuple(col), "body_type": body_type, "mass": mass,
                   "friction": friction, "elasticity": elasticity, "is_overpass": over}
         if is_rect:
+            if len(item) == 13:
+                if item[12] not in GOAL_SCORE_MODES:
+                    raise ValueError("A goal setting is broken")
+                if body_type == "goal":
+                    common["score_from"] = item[12]
             shapes.append({"type": "rect", "x": x, "y": y, "w": w, "h": h, "angle": angle, **common})
         else:
             shapes.append({"type": "circ", "x": x, "y": y, "radius": radius, **common})
@@ -1426,7 +1449,7 @@ def save_field_data():
             elas_val = s.get("elasticity", 0.0)
             is_over = 1 if s.get("is_overpass", False) else 0
             if s["type"] == "rect":
-                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
+                f.write(f"RECT {s['x']} {s['y']} {s['w']} {s['h']} {s['angle']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}" + (f" {goal_score_from(s)}" if b_type == "goal" else "") + "\n")
             elif s["type"] == "circ":
                 f.write(f"CIRC {s['x']} {s['y']} {s['radius']} {s['color'][0]} {s['color'][1]} {s['color'][2]} {b_type} {mass_val} {fric_val} {elas_val} {is_over}\n")
         f.write(f"ROBOT_START {bot.start_pose[0]} {bot.start_pose[1]} {bot.start_pose[2]}\n")
@@ -2492,6 +2515,10 @@ def toggle_layer_height():
         if s.get("body_type") == "passthrough":
             s["is_overpass"] = not s.get("is_overpass", False)
             save_field_data()
+        elif s.get("body_type") == "goal":
+            i = GOAL_SCORE_MODES.index(goal_score_from(s))
+            s["score_from"] = GOAL_SCORE_MODES[(i + 1) % len(GOAL_SCORE_MODES)]
+            save_field_data()
 
 btn_field_img = UIButton(FIELD_PIXELS + 20, 85, 120, 26, "Image", action_callback=set_field_image)
 btn_field_cust = UIButton(FIELD_PIXELS + 160, 85, 120, 26, "Custom", action_callback=set_field_custom)
@@ -3473,6 +3500,11 @@ def draw_everything():
                     elif current_phys == "goal":
                         btn_phys_toggle.default_color = (110, 80, 160)
                         btn_phys_toggle.text = "GOAL (ZONE)"
+                        mode = goal_score_from(s)
+                        btn_layer_toggle.default_color = (110, 80, 160)
+                        btn_layer_toggle.text = {"back": "BACK", "front": "FRONT", "both": "BOTH"}[mode]
+                        draw_small("Score From", btn_layer_toggle.screen_rect.x, btn_layer_toggle.screen_rect.y - 16, LIGHT_GRAY)
+                        btn_layer_toggle.draw(screen)
                     elif current_phys == "toggle":
                         btn_phys_toggle.default_color = (150, 110, 60)
                         btn_phys_toggle.text = "TOGGLE (ZONE)"
