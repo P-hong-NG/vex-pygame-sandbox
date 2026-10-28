@@ -1598,27 +1598,36 @@ def update_physics(left_speed, right_speed, dt):
         spawn_x = bot.x + spawn_dist * math.cos(rad)
         spawn_y = bot.y + spawn_dist * math.sin(rad)
 
-        s = bot.inventory.pop()
+        # Scoring from the front: if the piece would land in a goal that
+        # accepts front scoring, it goes into the stack, same as the back
+        # outtake does for the goals that accept that
+        goal = goal_at(spawn_x, spawn_y)
+        if goal is not None and goal_score_from(goal) in ("front", "both"):
+            place_in_goal(goal, bot.inventory.pop())
+            if sim.settings.get("intake_control_mode") == "toggle":
+                bot.intake_state = "off"
+        else:
+            s = bot.inventory.pop()
 
-        s["stored"] = False
-        s["x"] = spawn_x
-        s["y"] = spawn_y
+            s["stored"] = False
+            s["x"] = spawn_x
+            s["y"] = spawn_y
         
-        #Re-position physics body
-        b = s["body"]
-        eject_speed = sim.settings.get("intake_rev_velocity") * SCALE
+            #Re-position physics body
+            b = s["body"]
+            eject_speed = sim.settings.get("intake_rev_velocity") * SCALE
         
-        b.position = (spawn_x * SCALE, spawn_y * SCALE)
-        b.velocity = (bot.body.velocity.x + eject_speed * math.cos(rad),
-                      bot.body.velocity.y + eject_speed * math.sin(rad))
+            b.position = (spawn_x * SCALE, spawn_y * SCALE)
+            b.velocity = (bot.body.velocity.x + eject_speed * math.cos(rad),
+                          bot.body.velocity.y + eject_speed * math.sin(rad))
         
-        #Re-add body & shape to space
-        space.add(b)
-        if "pymunk_shape" in s:
-            space.add(s["pymunk_shape"])
+            #Re-add body & shape to space
+            space.add(b)
+            if "pymunk_shape" in s:
+                space.add(s["pymunk_shape"])
                 
-        if sim.settings.get("intake_control_mode") == "toggle":
-            bot.intake_state = "off"
+            if sim.settings.get("intake_control_mode") == "toggle":
+                bot.intake_state = "off"
 
     elif bot.has_outtake and bot.outtake_state == "out" and len(bot.inventory) > 0:
         cur_item = bot.inventory[0]
@@ -1634,7 +1643,7 @@ def update_physics(left_speed, right_speed, dt):
             # Scoring: if the piece would land inside a goal, it goes into
             # that goal's stack instead of rolling out onto the floor
             goal = goal_at(spawn_x, spawn_y)
-            if goal is not None:
+            if goal is not None and goal_score_from(goal) in ("back", "both"):
                 place_in_goal(goal, bot.inventory.pop(0))
                 if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
                     bot.outtake_state = "off"
