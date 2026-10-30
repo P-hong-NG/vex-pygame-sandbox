@@ -427,9 +427,28 @@ Heres the current look of the sharing and importing boxes:
 - More practice maps that each train one skill
 - Still planning the first-time tutorial that shows what each mode can do
 
-[Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
+## [October 22nd, 2026] - A match clock, and a heading for the Blocker
 
-Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
+===The Problem=== Up to now, Drive mode just never ended. That is great for messing around, but it doesn’t feel like a match, and the user is practicing for a real match. There is no pressure, no autonomous period, and no “the buzzer went off, hands off the controller” moment. I also noticed the Blocker always started pointing at the same angle, while in a real match each robot starts facing a specific direction.
+
+===What I Built===
+- A match clock in the top right of the field: AUTO (cyan) for 15 seconds, then DRIVER (green) for 105 seconds, so 2:00 total. The last 10 seconds switch to ENDGAME (orange), and the clock ends on MATCH OVER (red). All the lengths are constants at the top of the clock code, so a future game with different timing is a one-line change
+- One button in the Drive sidebar that changes with the situation: Start Match, then Stop Match while it runs, then Restart Match once it is over
+- Pausing the game freezes the clock, because it only counts while the sim is actually running
+- When the match is over, the driver controls stop working. I tested this by holding the forward key after the buzzer: the robot didn’t move, and driving worked again as soon as a new match started
+- Loading a different field resets the clock, so a leftover “MATCH OVER” never follows the user onto a new map
+- A start heading for the Blocker, set in Edit mode with a number box in the Edit sidebar’s robot settings. It is saved with the field file, with saved fields, and inside the share code
+<img src="images/oct22 - game timer.png" width="400" alt="Drive mode showing the match clock in the top right and the Restart Match button in the sidebar">
+
+===A Decision About Share Codes=== The Blocker’s heading had to travel inside the share code from October 17, or a friend would import the field and the Blocker would face the wrong way. I made it an optional item in the code instead of changing the version to VEXF2. Code without it still loads fine (the Blocker just gets the default heading), so every shared code keeps working. A new version only makes sense when old codes would break, and these don’t.
+
+===What is Not Done===
+- The Blocker is not tied to the clock yet. It keeps driving after MATCH OVER, which looks odd when the user’s robot has stopped
+- Starting a match doesn’t put the field back to how it was loaded. If the user scored pieces in the last match, they are still scored.
+
+## [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
+
+Disclaimer: I took these images on various dates, so I can’t give you the exact date, sorry!
 
 The robot has gone crazy!!
 
