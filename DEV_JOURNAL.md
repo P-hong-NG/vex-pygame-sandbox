@@ -404,6 +404,29 @@ Heres the current look of the sharing and importing boxes:
 
 <img src="images/oct17 - importing custom field.png" width="400" alt="Option to paste (Ctrl+V) or upload a code file to import a custom field from outside">
 
+## [October 19th, 2026] - Splitting Load Field into Practice and Custom tabs
+
+===The Problem=== The Load Field screen kept growing (up to 4 built-in practice maps now); the user can save their own fields on top of that, and the official Override field is still planned. Those two kinds of maps don’t even need the same buttons: a built-in map should never be renamed or deleted, while a saved one should be shareable, renamable, and deletable. Putting them in one list meant either showing buttons that don’t work on half the rows, or hiding them and making the list confusing.
+
+===What I Built/Added===
+- Two tabs at the top of Load Field: Practice (4) for the maps that come with the sim, and Custom (1/8) for the fields the user saved. The number on the Custom tab shows how full it is, so the user finds out about the limit before hitting it
+- The screen opens on Practice (pre-built ones), since that is what most people would want
+- Only Custom rows get the Share, Edit, and X buttons. Practice rows are just the map name and a one-line description (e.g., “Weave 4 posts, 3 pieces to grab”, etc.)
+- “+ Save current” works from either tab. If the user presses it while on Practice, it jumps to the Custom tab so they can see the field they just saved instead of wondering where it went
+- Switching tabs puts the list back at the top, and the mouse wheel scrolls a long list
+- The cap stays at 8 saved fields for now, and a message slides in (“Field list is full (8 saved)”) when the user hits it
+
+<img src=" images/oct19 - new load field layout.png" width="400" alt= "Load Field screen with a Practice tab (4 maps) and a Custom tab (1 of 8 saved), listing the easy, medium, serpentine and slalom practice maps">
+
+===A Small Thing Along the Way=== While I was in there, I noticed the buttons gave no sign the mouse was over them, which makes a menu feel dead and un-interactive. So every button now gets a little lighter when the mouse is over it. I put that inside the shared button class in ui.py, so every button in the game got it, not just the Load Field ones. A button with its own hover color still uses that one (just a lower hex value). 
+
+===Why Tabs=== The other option was one long list with “Built-in” and “Saved” headings. But every new practice map (and the Override field) would push the user’s own fields further down the page, and they would have to scroll past maps they don’t own to find theirs. Tabs keep each list short and the user’s own fields in one predictable place. The trade-off is one extra click to see the other list, and I think that’s fine.
+
+===What is Next===
+- The official Override field will go in the Practice tab once I have the layout
+- More practice maps that each train one skill
+- Still planning the first-time tutorial that shows what each mode can do
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
