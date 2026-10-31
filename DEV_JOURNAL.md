@@ -339,7 +339,7 @@ These are some of the things I have added over the last few days to make Edit mo
 - A small red message that slides in when an action can’t be done, like “No more undo” so the User knows that the button is working or can’t
 - A see-through box for the status bar and the selection hint, which fades even more when the mouse goes over it so the User can still see and grab what is behind it
 
-<img src="images/oct12 - deletion all confirmation.png" width="400" alt="Pop-up asking if the User want to delete everything on screen after Cltr + A and Backspace">
+<img src="images/oct12 - deletion all comfirmation.png" width="400" alt="Pop-up asking if the User want to delete everything on screen after Cltr + A and Backspace">
 
 <img src="images/oct12 - multi-select & duplicate.png" width="400" alt="User able to Ctrl + D to duplicate selected objetc(s)">
 
@@ -444,7 +444,31 @@ Heres the current look of the sharing and importing boxes:
 
 ===What is Not Done===
 - The Blocker is not tied to the clock yet. It keeps driving after MATCH OVER, which looks odd when the user’s robot has stopped
-- Starting a match doesn’t put the field back to how it was loaded. If the user scored pieces in the last match, they are still scored.
+- Starting a match doesn’t put the field back to how it was loaded. If the user scored pieces in the last match, they still show as scored.
+
+[October 24th, 2026] - Brainstorming for the match loads and building it
+
+===The Problem=== In a real match, a robot doesn’t only pick up what is already on the field; a teammate also feeds new pieces in at a loading spot. Right now, the sim has no way to do that. So there can’t be the “drive to the loader, grab one, drive back and score” loop that some teams want.
+
+===What I Built===
+- A new Loader option in the Add Shape dropdown, next to Rectangle, Circle, and Goal. It is drawn as a gray box with a double border and a round badge showing how many pieces it has left
+- A Supply box in the Edit sidebar, so the user decides how many pieces each loader holds (6 by default)
+- In Drive mode, the user parks the robot within 36 inches of a loader and presses G (rebindable on the keybinds page). One piece drops on the loader, in the loader’s color, and the supply badge counts down by one. Then the user just intakes it like any other piece
+- Pressing G from the wrong spot gives a message instead of failing silently: “Park the robot next to a loader first”, “This field has no loader", or “That loader is empty”
+- Start Match refills every loader, so each match starts with a full supply
+- 
+<img src="images/oct24 - loader and goal object.png" width="400" alt="Edit mode showing a gray Loader box with a round supply badge next to a blue Goal box with a square badge counting its stacked pieces">
+
+===Choices I Made===
+- Loaders have no physics body. Like the goals, a loader is a zone, so the robot can drive right over it. The piece it drops is the only thing with a body, and I only add a body for that one new piece, so nothing already rolling around on the field gets bumped
+- One piece at a time. If the first piece is still sitting on the loader, G says, “Take the piece out of the loader first”. Two pieces dropped on the same spot would get shoved apart hard by the physics, which would look like a bug
+The supply is stored in a number that already existed. A loader’s piece count lives in the same “mass” slot that other shapes use for weight, so loaders save, load, and travel inside share codes without changing the file format or the VEXF1 version. The trade-off is that the name “mass” is a bit misleading for a loader, so I left a comment explaining it
+- The user presses a key instead of it happening automatically. I wanted the driver to control the timing, because in a real match you have to wait at the loader and then leave, and that waiting is part of the practice
+
+===What is Not Done===
+
+The human player is instant. A real one takes a moment and isn’t always accurate, so a short delay could come later
+A loader gives pieces of only one color. It can’t mix colors yet
 
 ## [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
