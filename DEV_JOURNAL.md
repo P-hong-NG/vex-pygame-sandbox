@@ -470,6 +470,34 @@ The supply is stored in a number that already existed. A loader’s piece count 
 The human player is instant. A real one takes a moment and isn’t always accurate, so a short delay could come later
 A loader gives pieces of only one color. It can’t mix colors yet
 
+[October 25th, 2026] - Adding the toggles for this year's game (Override)
+
+===The Problem=== This year’s field has toggles that a robot flips by driving onto them. Goals and loaders both only react to the user’s bot, but a toggle could react to both (Blocker and user). The sim had nothing that could change color on its own, and it had no idea which side the user was playing on, so there was no way to say, “this goal/zone is mine”.
+
+===What I Built===
+- A new Toggle option in Add Shape. It is a tinted box with a solid diamond in the owner’s color. The color the user picks in Edit mode is the starting owner (gray means nobody owns it yet)
+- In Drive mode, when the user’s robot touches a toggle, it turns to the user’s alliance color. When the Blocker touches it, it turns to the other color. It stays that way after the robot drives off
+- If both robots are touching it at the same time, nobody wins it, and it stays as it was
+- A toggle shows a white border while a robot is still touching it
+- A new alliance row in Settings (red or blue) so the user picks which side they play. That is the only thing that decides whose color a toggle turns to
+- Switching to Edit mode puts every toggle back to the color chosen in the editor, so the user always edits the starting layout and not whatever state the last match left behind. Start Match does the same reset
+- Toggles save in field files and share codes like the other shapes, and the live “who flipped it” state is never saved or copied (same rule as the goal stacks and loader supply)
+  
+<img src="images/oct25 - toggle.png" width="400" alt="Drive mode with a toggle at the bottom of the field showing a blue diamond after being flipped">
+
+===Choices I Made===
+- A toggle has no physics body. The robot drives straight over it, like a goal or a loader. A solid toggle would make the robot bump into it instead of driving onto it
+- “Touching” means any part of the robot, not just its center. The check measures from the edge of the toggle to the robot’s center, compares that with half the robot’s width, and accounts for the toggle’s rotation. So a toggle that is turned 45 degrees still flips when a corner of the robot brushes it, and one that the robot only grazes with the center far away doesn’t
+- Both touching means no change. The other option was giving it to whoever got there first, but that comes down to a few frames of timing and would feel random. Nothing happening is easier to understand
+- The Blocker only flips toggles when it is turned on. With the Blocker off, it isn’t on the field, so it can’t own anything
+
+I tested it by moving the robots by hand: the user touching it as red turned it red, driving away left it red, switching the alliance to blue and touching again turned it blue, the Blocker alone turned it to the opposite color, and both at once left it unchanged.
+
+===What is Not Done===
+
+Toggles don’t affect the score yet. That is the next part, since the score will depend on who owns which toggle
+Flipping is instant. A real robot may need its mechanism in the right spot, but I’m not simulating that
+
 ## [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: I took these images on various dates, so I can’t give you the exact date, sorry!
