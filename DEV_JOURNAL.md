@@ -3,6 +3,31 @@ For instructions on how to use and improve the simulator, go to "TUNING_GUIDE.md
 
 Engineering Log: Architectural Design Decisions
 
+## Origins (Dec 2025 – Mar 2026) - The first version, during the Push Back season
+
+This simulator did not start as a big project. It started as a personal experiment: could I copy basic V5 driving in Python? Our team had limited time on the practice field, so it was easy to see why a version I could run anywhere would be useful. The first version used Pygame only, with no physics library.
+
+- **Dec 14, 2025:** a red square that moved with WASD on a white screen
+
+<img src="images/origin - dec14 red square.png" width="300" alt="The first prototype, a red square on a white background that moves with the WASD keys">
+
+- **Jan 3, 2026:** I added a grid and a few shapes so I could read positions off the screen. When I later added the 6 by 6 tile grid, my teammates started using the tiles to estimate distances right away. That was when I knew it couldn't just look like the field, it had to behave like it
+
+<img src="images/origin - jan3 grid and shapes.png" width="300" alt="The red square on a grid with gray rectangles added to the field">
+
+- **Jan 27, 2026:** I swapped the white background for a cropped picture of the Push Back field. I started documenting the work properly that day
+
+Over the next iterations, the problems I hit decided what I built next:
+- **No sense of position.** Everything was in pixels, so distances meant nothing. I set (0, 0) at the robot's starting spot and measured everything in inches, and added an Edit mode where shapes could be dragged onto the field
+- **Lost fields.** Every custom field disappeared when the program closed. That led to my first save file (`custom_field.txt`), so fields were kept between runs
+- **One way to drive.** I added tank, arcade, and custom drive, a rotation setting for angled field pieces, and a robot start position with a heading, so "Reset Robot" always went back to the same spot
+- **Turning the wrong way.** The math was right but the robot on screen rotated the opposite way, so it didn't go straight in the direction it faced. Fixing that one flipped sign was the moment it felt like a real robot, not a game. While debugging, I also noticed any game controller could work, so people could practice at home
+- **Too much code.** As features piled up, the file grew past 1,100 lines. I merged repeated code into reusable pieces and cut it down to about 484 lines
+- 
+<img src="images/origin - push back field in edit mode.png" width="500" alt="Edit mode in an early version, with the Push Back field built from shapes and a sidebar with drive type, input, and robot start settings">
+
+What this version could not do: there was no collision physics. The robot only stopped at the edge of the field, and it drove straight through everything else. That is why I rebuilt the movement with Pymunk in July (see the July 18 entry below).
+
 ## [July 18, 2026] - Shifting to PyMunk Rigid-Body Physics (This is transferred from the "README.md" to clean up the README space)
 
 ===The Problem=== In the legacy version of the simulator, the robot chassis boundaries were locked using manual coordinate clamping (bot.x = max(...)). This created a major bug where the corners of the chassis would clip straight into the walls. When driving into a barrier at an angle, the corner would get stuck and slide upward instead of showing realistic physics behavior—like taking the impact force at that specific angle and swinging the robot around to face the wall flatly.
