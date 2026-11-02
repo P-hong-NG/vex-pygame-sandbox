@@ -17,27 +17,27 @@ _No Drifting: It completely bypasses the drifting bug. The moment the driver rel
 
 ## [July 23, 2026] - Planning and sketching for the next steps of the simulator
 
-===Personal Comments and an Unexpected Problem=== Now that the simulator has gotten the basic physics, like ball collisions, non-movable walls, realistic friction and energy loss upon impact, objects having mass and momentum (how hard to accelerate), it can be used as a practice simulator for driving and maneuvering around the current year's game layout. But a new problem came: this simulator would be great for last year's game when the idea for the simulator started -"Push-Back" requires a lot of defending and movement for de-scores, along with a "perfect" auton-run to ensure control - but this year (according to my personal judgment) requires a lot more tactics and robot percision which depends more on the actual robot design. The current simulator doesn't have many abilities to create a "mock" practice run, like picking and dropping pins, rolling bars, and having other bots compete for the middle spot; I realized that the simulator would need to be more customizable to match the yearly game changes. Thus, I brainstormed sketches for a better (more control and options) simulator that would feel like an actual game so that a new team, which doesn't have someone to understand the code, can still use the sim to its full potential.
+===Personal Comments and an Unexpected Problem=== Now that the simulator has gotten the basic physics, like ball collisions, non-movable walls, realistic friction and energy loss upon impact, objects having mass and momentum (how hard to accelerate), it can be used as a practice simulator for driving and maneuvering around the current year's game layout. But a new problem came: this simulator would be great for last year's game when the idea for the simulator started -"Push-Back" requires a lot of defending and movement for de-scores, along with a "perfect" auton-run to ensure control - but this year (according to my personal judgment) requires a lot more tactics and robot precision which depends more on the actual robot design. The current simulator doesn't have many abilities to create a "mock" practice run, like picking and dropping pins, rolling bars, and having other bots compete for the middle spot; I realized that the simulator would need to be more customizable to match the yearly game changes. Thus, I brainstormed sketches for a better (more control and options) simulator that would feel like an actual game so that a new team, which doesn't have someone to understand the code, can still use the sim to its full potential.
 
 ===Sketches for future simulator (that would be turned into a "game" rather than "sim")===
 Sketch of the paused screen and different screens that would happen depending on what option is chosen (Keybinds, Overall Settings, Robot Design-now called Studio Mode)
-![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/afd79e4021666a3b664198f5896ab660910e8dd5/IMG_0195.jpg)
+![image_alt](images/IMG_0195.jpg)
 
 Sketch of a more detailed layout and structure of "Keybinds" (ideas for a keyboard- and controller-compatible game along with some keybinds to have)
-![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/dd6c058dfd9f22bd5e53ea2fec6e1ee00698421c/IMG_0197.jpg)
+![image_alt](images/IMG_0197.jpg)
 
 Sketch of a more detailed layout and structure of the "Overall Settings" modal (ideas of what functions and variables the user can change)
-![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/d7ab179650111b97a2593270ebadf6675414c9da/IMG_0198.jpg)
+![image_alt](images/IMG_0198.jpg)
 
 Sketch of a more detailed layout of the Robot Design workplace (now called Studio)
-![image_alt](https://github.com/P-hong-NG/vex-pygame-sandbox/blob/4571122aca437c7c972d15693da3109c3dfdc10e/IMG_0200.jpg)
+![image_alt](images/IMG_0200.jpg)
 Includes future plans and a working-in-progress function: The ability to add different layers to the robot that would behave differently to the environment, depending on which layer that part of the bot is on (bottom, middle, or top)
 
 This is what I, for now, intend to work on over the next few days, and I will be following those sketches pretty closely (orrr not, just have to see :) )
 
-## [July 27, 2026] - Designing and brainstorming process for Intake/Outake system in Drive mode
+## [July 27, 2026] - Designing and brainstorming process for Intake/Outtake system in Drive mode
 
-===The "problem"=== When designing the collection mechanics for the intake and outtake systems, I needed to determine how game elements (rings/triballs/blocks/ect.) interact with the front intake zone during Drive Mode. Two routes came up:
+===The "problem"=== When designing the collection mechanics for the intake and outtake systems, I needed to determine how game elements (rings/triballs/blocks/etc.) interact with the front intake zone during Drive Mode. Two routes came up:
 
 _Approach A: Passive collision detection
 +How it works: The instant a dynamic game piece enters the intake bounding box, the physics engine automatically despawns it from the field and appends it to the robot's inventory list.
@@ -95,7 +95,7 @@ I did some brainstorming with my AI "co-dev" to figure out how actual game devs 
 
 The UIElement class: Everything is an object now. We created a base class that keeps track of a local_rect (inside a menu, based on the screen_rect) and a screen_rect (base one)
 
-Seperating UI classes to a new ui.py file: I moved all this new UI logic into its own completely independent file. Now main.py can just focus on the robot physics and game loops without being cluttered by hundreds of lines of menu math.
+Separating UI classes to a new ui.py file: I moved all this new UI logic into its own completely independent file. Now main.py can just focus on the robot physics and game loops without being cluttered by hundreds of lines of menu math.
 
 The ScrollView class: Where the scrolling happens. It acts as a parent container that holds a list of UI elements/children. When you scroll the mouse wheel, it automatically shifts the Y-coordinates of all its children and uses Pygame's set_clip() function to hide anything that is not inside the set range.
 
@@ -339,9 +339,9 @@ These are some of the things I have added over the last few days to make Edit mo
 - A small red message that slides in when an action can’t be done, like “No more undo” so the User knows that the button is working or can’t
 - A see-through box for the status bar and the selection hint, which fades even more when the mouse goes over it so the User can still see and grab what is behind it
 
-<img src="images/oct12 - deletion all comfirmation.png" width="400" alt="Pop-up asking if the User want to delete everything on screen after Cltr + A and Backspace">
+<img src="images/oct12 - deletion all confirmation.png" width="400" alt="Pop-up asking if the User want to delete everything on screen after Ctrl + A and Backspace">
 
-<img src="images/oct12 - multi-select & duplicate.png" width="400" alt="User able to Ctrl + D to duplicate selected objetc(s)">
+<img src="images/oct12 - multi-select & duplicate.png" width="400" alt="User able to Ctrl + D to duplicate selected object(s)">
 
 <img src="images/oct12 - multi-select dragbox.png" width="400" alt="User able to hold-drag across the field to multi-select objects">
 
@@ -360,7 +360,7 @@ So I thought of a Load Field system that works like the saved worlds in a game l
 
 <img src="images/oct12 - Load Field button.png" width="400" alt="Pause menu with the new Load Field button">
 
-<img src="images/oct12 - pre-made field options.png" width="400" alt="Load Field screen listing the two practice fields with comfirmation to replace everything">
+<img src="images/oct12 - pre-made field options.png" width="400" alt="Load Field screen listing the two practice fields with confirmation to replace everything">
 
 ===What is Next===
 - An “Add your own field” button at the end of the list, with a plus like in other games. When the User adds one, it shows up in the list, and the plus button moves down below it
@@ -406,21 +406,21 @@ Heres the current look of the sharing and importing boxes:
 
 ## [October 19th, 2026] - Splitting Load Field into Practice and Custom tabs
 
-===The Problem=== The Load Field screen kept growing (up to 4 built-in practice maps now); the user can save their own fields on top of that, and the official Override field is still planned. Those two kinds of maps don’t even need the same buttons: a built-in map should never be renamed or deleted, while a saved one should be shareable, renamable, and deletable. Putting them in one list meant either showing buttons that don’t work on half the rows, or hiding them and making the list confusing.
+===The Problem=== The Load Field screen kept growing. There are 4 built-in practice maps now, the user can save their own fields on top of that, and the official Override field is still coming. Those two kinds of maps don't even need the same buttons: a built-in map should never be renamed or deleted, while a saved one should be shareable, renamable, and deletable. Putting them in one list meant either showing buttons that don't work on half the rows, or hiding them and making the list confusing.
 
-===What I Built/Added===
-- Two tabs at the top of Load Field: Practice (4) for the maps that come with the sim, and Custom (1/8) for the fields the user saved. The number on the Custom tab shows how full it is, so the user finds out about the limit before hitting it
-- The screen opens on Practice (pre-built ones), since that is what most people would want
-- Only Custom rows get the Share, Edit, and X buttons. Practice rows are just the map name and a one-line description (e.g., “Weave 4 posts, 3 pieces to grab”, etc.)
-- “+ Save current” works from either tab. If the user presses it while on Practice, it jumps to the Custom tab so they can see the field they just saved instead of wondering where it went
+===What I Built===
+- Two tabs at the top of Load Field: **Practice (4)** for the maps that come with the sim, and **Custom (1/8)** for the fields the user saved. The number on the Custom tab shows how full it is, so the user finds out about the limit before hitting it
+- The screen opens on Practice, since that is what a new user wants first
+- Only Custom rows get the Share, Edit, and X buttons. Practice rows are just the map name and a one-line description (like "Weave 4 posts, 3 pieces to grab")
+- "+ Save current" works from either tab. If the user presses it while on Practice, it jumps to the Custom tab so they can see the field they just saved instead of wondering where it went
 - Switching tabs puts the list back at the top, and the mouse wheel scrolls a long list
-- The cap stays at 8 saved fields for now, and a message slides in (“Field list is full (8 saved)”) when the user hits it
+- The cap stays at 8 saved fields for now, and a message slides in ("Field list is full (8 saved)") when the user hits it
 
-<img src=" images/oct19 - new load field layout.png" width="400" alt= "Load Field screen with a Practice tab (4 maps) and a Custom tab (1 of 8 saved), listing the easy, medium, serpentine and slalom practice maps">
+<img src="images/oct19 - load field tabs.png" width="400" alt="Load Field screen with a Practice tab (4 maps) and a Custom tab (1 of 8 saved), listing the easy, medium, serpentine and slalom practice maps">
 
-===A Small Thing Along the Way=== While I was in there, I noticed the buttons gave no sign the mouse was over them, which makes a menu feel dead and un-interactive. So every button now gets a little lighter when the mouse is over it. I put that inside the shared button class in ui.py, so every button in the game got it, not just the Load Field ones. A button with its own hover color still uses that one (just a lower hex value). 
+===A Small Thing Along the Way=== While I was in there, I noticed buttons gave no sign that the mouse was on them, which makes a menu feel dead. So every button now gets a little lighter when the mouse is over it. I put that inside the shared button class in ui.py, so every button in the game got it for free, not just the Load Field ones. A button that was given its own hover color still uses that one, and a hidden button doesn't react at all. I tested it by moving the mouse over three differently colored buttons: only the one under the mouse changed, and it went back to normal when the mouse left.
 
-===Why Tabs=== The other option was one long list with “Built-in” and “Saved” headings. But every new practice map (and the Override field) would push the user’s own fields further down the page, and they would have to scroll past maps they don’t own to find theirs. Tabs keep each list short and the user’s own fields in one predictable place. The trade-off is one extra click to see the other list, and I think that’s fine.
+===Why Tabs=== The other option was one long list with "Built-in" and "Saved" headings. But every new practice map (and the Override field) would push the user's own fields further down the page, and they would have to scroll past maps they don't own to find theirs. Tabs keep each list short and the user's own fields in one predictable place. The trade-off is one extra click to see the other list, and I think that's fine.
 
 ===What is Next===
 - The official Override field will go in the Practice tab once I have the layout
@@ -429,78 +429,77 @@ Heres the current look of the sharing and importing boxes:
 
 ## [October 22nd, 2026] - A match clock, and a heading for the Blocker
 
-===The Problem=== Up to now, Drive mode just never ended. That is great for messing around, but it doesn’t feel like a match, and the user is practicing for a real match. There is no pressure, no autonomous period, and no “the buzzer went off, hands off the controller” moment. I also noticed the Blocker always started pointing at the same angle, while in a real match each robot starts facing a specific direction.
+===The Problem=== Up to now, Drive mode just never ended. That is great for messing around, but it doesn't feel like a match, and a real match is what the user is practicing for. There is no pressure, no autonomous period, and no "the buzzer went off, hands off the controller" moment. I also noticed the Blocker always started pointing at the same angle, while in a real match each robot starts facing a specific direction.
 
 ===What I Built===
-- A match clock in the top right of the field: AUTO (cyan) for 15 seconds, then DRIVER (green) for 105 seconds, so 2:00 total. The last 10 seconds switch to ENDGAME (orange), and the clock ends on MATCH OVER (red). All the lengths are constants at the top of the clock code, so a future game with different timing is a one-line change
-- One button in the Drive sidebar that changes with the situation: Start Match, then Stop Match while it runs, then Restart Match once it is over
+- A match clock in the top right of the field: **AUTO** (cyan) for 15 seconds, then **DRIVER** (green) for 105 seconds, so 2:00 total. The last 10 seconds switch to **ENDGAME** (orange), and the clock ends on **MATCH OVER** (red). All the lengths are constants at the top of the clock code, so a future game with different timing is a one-line change
+- One button in the Drive sidebar that changes with the situation: **Start Match**, then **Stop Match** while it runs, then **Restart Match** once it is over
 - Pausing the game freezes the clock, because it only counts while the sim is actually running
-- When the match is over, the driver controls stop working. I tested this by holding the forward key after the buzzer: the robot didn’t move, and driving worked again as soon as a new match started
-- Loading a different field resets the clock, so a leftover “MATCH OVER” never follows the user onto a new map
-- A start heading for the Blocker, set in Edit mode with a number box in the Edit sidebar’s robot settings. It is saved with the field file, with saved fields, and inside the share code
-<img src="images/oct22 - game timer.png" width="400" alt="Drive mode showing the match clock in the top right and the Restart Match button in the sidebar">
+- When the match is over, the driver controls stop working. I tested this by holding the forward key after the buzzer: the robot didn't move, and driving worked again as soon as a new match started
+- Loading a different field resets the clock, so a leftover "MATCH OVER" never follows the user onto a new map
+- A start heading for the Blocker, set in Edit mode with a number box in the Edit sidebar's robot settings. It is saved with the field file, with saved fields, and inside the share code
 
-===A Decision About Share Codes=== The Blocker’s heading had to travel inside the share code from October 17, or a friend would import the field and the Blocker would face the wrong way. I made it an optional item in the code instead of changing the version to VEXF2. Code without it still loads fine (the Blocker just gets the default heading), so every shared code keeps working. A new version only makes sense when old codes would break, and these don’t.
+<img src="images/oct22 - match clock and restart.png" width="400" alt="Drive mode showing the match clock in the top right and the Restart Match button in the sidebar">
+
+===A Decision About Share Codes=== The Blocker's heading had to travel inside the share code from October 17, or a friend would import the field and the Blocker would face the wrong way. I made it an optional item in the code instead of changing the version to VEXF2. A code without it still loads fine (the Blocker just gets the default heading), so every code that was already shared keeps working. A new version only makes sense when old codes would break, and these don't.
 
 ===What is Not Done===
-- The Blocker is not tied to the clock yet. It keeps driving after MATCH OVER, which looks odd when the user’s robot has stopped
-- Starting a match doesn’t put the field back to how it was loaded. If the user scored pieces in the last match, they still show as scored.
+- The Blocker is not tied to the clock yet. It keeps driving after MATCH OVER, which looks odd when the user's robot has stopped
+- Starting a match doesn't put the field back to how it was loaded. If the user scored pieces in the last match, they are still scored. That is the next thing I want to fix
 
-[October 24th, 2026] - Brainstorming for the match loads and building it
+## [October 24th, 2026] - Match loads: a Loader object so a human player can feed the robot
 
-===The Problem=== In a real match, a robot doesn’t only pick up what is already on the field; a teammate also feeds new pieces in at a loading spot. Right now, the sim has no way to do that. So there can’t be the “drive to the loader, grab one, drive back and score” loop that some teams want.
+===The Problem=== In a real match, a robot doesn't only pick up what is already on the field. A teammate (the "human player") also feeds new pieces in at a loading spot, and a whole strategy gets built around parking next to it. The sim had no way to do that. Once the pieces on the field were gone, they were gone, and the user couldn't practice the "drive to the loader, grab one, drive back and score" loop at all.
 
 ===What I Built===
-- A new Loader option in the Add Shape dropdown, next to Rectangle, Circle, and Goal. It is drawn as a gray box with a double border and a round badge showing how many pieces it has left
-- A Supply box in the Edit sidebar, so the user decides how many pieces each loader holds (6 by default)
-- In Drive mode, the user parks the robot within 36 inches of a loader and presses G (rebindable on the keybinds page). One piece drops on the loader, in the loader’s color, and the supply badge counts down by one. Then the user just intakes it like any other piece
-- Pressing G from the wrong spot gives a message instead of failing silently: “Park the robot next to a loader first”, “This field has no loader", or “That loader is empty”
-- Start Match refills every loader, so each match starts with a full supply
-- 
-<img src="images/oct24 - loader and goal object.png" width="400" alt="Edit mode showing a gray Loader box with a round supply badge next to a blue Goal box with a square badge counting its stacked pieces">
+- A new **Loader** option in the Add Shape dropdown, next to Rectangle, Circle, and Goal. It is drawn as a gray box with a double border and a round badge showing how many pieces it has left
+- A **Supply** box in the Edit sidebar, so the user decides how many pieces each loader holds (6 by default)
+- In Drive mode, the user parks the robot within 36 inches of a loader and presses **G** (rebindable on the keybinds page). One piece drops on the loader, in the loader's color, and the supply badge counts down by one. Then the user just intakes it like any other piece
+- Pressing G from the wrong spot gives a message instead of failing silently: "Park the robot next to a loader first", "This field has no loader", or "That loader is empty"
+- **Start Match** refills every loader, so each match starts with a full supply
+
+<img src="images/oct24 - loader and goal in edit mode.png" width="400" alt="Edit mode showing a gray Loader box with a round supply badge next to a blue Goal box with a square badge counting its stacked pieces">
 
 ===Choices I Made===
-- Loaders have no physics body. Like the goals, a loader is a zone, so the robot can drive right over it. The piece it drops is the only thing with a body, and I only add a body for that one new piece, so nothing already rolling around on the field gets bumped
-- One piece at a time. If the first piece is still sitting on the loader, G says, “Take the piece out of the loader first”. Two pieces dropped on the same spot would get shoved apart hard by the physics, which would look like a bug
-The supply is stored in a number that already existed. A loader’s piece count lives in the same “mass” slot that other shapes use for weight, so loaders save, load, and travel inside share codes without changing the file format or the VEXF1 version. The trade-off is that the name “mass” is a bit misleading for a loader, so I left a comment explaining it
-- The user presses a key instead of it happening automatically. I wanted the driver to control the timing, because in a real match you have to wait at the loader and then leave, and that waiting is part of the practice
+- **Loaders have no physics body.** Like the goals, a loader is a zone, so the robot can drive right over it. The piece it drops is the only thing with a body, and I only add a body for that one new piece, so nothing already rolling around on the field gets bumped
+- **One piece at a time.** If the first piece is still sitting on the loader, G says "Take the piece out of the loader first". Two pieces dropped on the same spot would get shoved apart hard by the physics, which would look like a bug
+- **The supply is stored in a number that already existed.** A loader's piece count lives in the same "mass" slot that other shapes use for weight, so loaders save, load, and travel inside share codes without changing the file format or the VEXF1 version. The trade-off is that the name "mass" is a bit misleading for a loader, so I left a comment explaining it
+- **The user presses a key instead of it happening automatically.** I wanted the driver to control the timing, because in a real match you have to wait at the loader and then leave, and that waiting is part of the practice
 
 ===What is Not Done===
+- The human player is instant. A real one takes a moment and isn't always accurate, so a short delay could come later
+- A loader gives pieces of one color only. It can't mix colors yet
 
-The human player is instant. A real one takes a moment and isn’t always accurate, so a short delay could come later
-A loader gives pieces of only one color. It can’t mix colors yet
+## [October 25th, 2026] - Toggles: a zone that belongs to whoever touched it last
 
-[October 25th, 2026] - Adding the toggles for this year's game (Override)
-
-===The Problem=== This year’s field has toggles that a robot flips by driving onto them. Goals and loaders both only react to the user’s bot, but a toggle could react to both (Blocker and user). The sim had nothing that could change color on its own, and it had no idea which side the user was playing on, so there was no way to say, “this goal/zone is mine”.
+===The Problem=== The field this year has levers (I'm calling them toggles) that a robot flips by driving onto them, and whoever flipped one last owns it. Goals and loaders were both things the robot uses on purpose, but a toggle is different: it reacts to where the robot is, and it reacts to the Blocker too. The sim had nothing that could change color on its own, and the sim had no idea which side the user was playing on, so there was no way to say "this one is mine".
 
 ===What I Built===
-- A new Toggle option in Add Shape. It is a tinted box with a solid diamond in the owner’s color. The color the user picks in Edit mode is the starting owner (gray means nobody owns it yet)
-- In Drive mode, when the user’s robot touches a toggle, it turns to the user’s alliance color. When the Blocker touches it, it turns to the other color. It stays that way after the robot drives off
-- If both robots are touching it at the same time, nobody wins it, and it stays as it was
+- A new **Toggle** option in Add Shape. It is a tinted box with a solid diamond in the owner's color. The color the user picks in Edit mode is the **starting owner** (gray means nobody owns it yet)
+- In Drive mode, when the user's robot touches a toggle, it turns to the user's alliance color. When the Blocker touches it, it turns to the other color. It stays that way after the robot drives off
+- If both robots are touching it at the same time, nobody wins it and it stays as it was
 - A toggle shows a white border while a robot is still touching it
-- A new alliance row in Settings (red or blue) so the user picks which side they play. That is the only thing that decides whose color a toggle turns to
+- A new **alliance** row in Settings (red or blue) so the user picks which side they play. That is the only thing that decides whose color a toggle turns to
 - Switching to Edit mode puts every toggle back to the color chosen in the editor, so the user always edits the starting layout and not whatever state the last match left behind. Start Match does the same reset
-- Toggles save in field files and share codes like the other shapes, and the live “who flipped it” state is never saved or copied (same rule as the goal stacks and loader supply)
-  
-<img src="images/oct25 - toggle.png" width="400" alt="Drive mode with a toggle at the bottom of the field showing a blue diamond after being flipped">
+- Toggles save in field files and share codes like the other shapes, and the live "who flipped it" state is never saved or copied (same rule as the goal stacks and loader supply)
+
+<img src="images/oct25 - toggle on the field.png" width="400" alt="Drive mode with a toggle at the bottom of the field showing a blue diamond after being flipped">
 
 ===Choices I Made===
-- A toggle has no physics body. The robot drives straight over it, like a goal or a loader. A solid toggle would make the robot bump into it instead of driving onto it
-- “Touching” means any part of the robot, not just its center. The check measures from the edge of the toggle to the robot’s center, compares that with half the robot’s width, and accounts for the toggle’s rotation. So a toggle that is turned 45 degrees still flips when a corner of the robot brushes it, and one that the robot only grazes with the center far away doesn’t
-- Both touching means no change. The other option was giving it to whoever got there first, but that comes down to a few frames of timing and would feel random. Nothing happening is easier to understand
-- The Blocker only flips toggles when it is turned on. With the Blocker off, it isn’t on the field, so it can’t own anything
+- **A toggle has no physics body.** The robot drives straight over it, like a goal or a loader. A solid toggle would make the robot bump into it instead of driving onto it
+- **"Touching" means any part of the robot, not just its center.** The check measures from the edge of the toggle out to the robot's center and compares that with half the robot's width, and it takes the toggle's rotation into account. So a toggle that is turned 45 degrees still flips when a corner of the robot brushes it, and one that the robot only grazes with the center far away doesn't
+- **Both touching means no change.** The other option was giving it to whoever got there first, but that comes down to a few frames of timing and would feel random. Nothing happening is easier to understand
+- **The Blocker only flips toggles when it is turned on.** With the Blocker off it isn't on the field, so it can't own anything
 
-I tested it by moving the robots by hand: the user touching it as red turned it red, driving away left it red, switching the alliance to blue and touching again turned it blue, the Blocker alone turned it to the opposite color, and both at once left it unchanged.
+I tested it by moving the robots by hand: the user touching as red turned it red, driving away left it red, switching the alliance to blue and touching again turned it blue, the Blocker alone turned it to the opposite color, and both at once left it unchanged.
 
 ===What is Not Done===
+- Toggles don't do anything for the score yet. That is the next part, since the score will depend on who owns which toggle
+- Flipping is instant. A real robot may need its mechanism in the right spot, but I'm not simulating that
 
-Toggles don’t affect the score yet. That is the next part, since the score will depend on who owns which toggle
-Flipping is instant. A real robot may need its mechanism in the right spot, but I’m not simulating that
+[Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
-## [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
-
-Disclaimer: I took these images on various dates, so I can’t give you the exact date, sorry!
+Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
 
 The robot has gone crazy!!
 
@@ -509,4 +508,3 @@ The robot has gone crazy!!
 I think it detected something
 
 <img src="images/detectedddd.png" alt="The simulator printing hundreds of Detected obstacles" width="400">
-
