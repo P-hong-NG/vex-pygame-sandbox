@@ -1538,6 +1538,8 @@ def get_inputs(dt):
 
 #Run 60 times a second, do all the collisions, calculations, and visual updates
 def update_physics(left_speed, right_speed, dt):
+    global descore_cooldown
+    descore_cooldown = max(0.0, descore_cooldown - dt)
     bot.current_speed = (left_speed + right_speed) / 2.0 #Linear Velocity or average forward speed
     turn_multiplier = 40.0 * sim.settings.get("turn_scale", 1.0)
     omega = ((left_speed - right_speed) / bot.track_width)*turn_multiplier  #Difference 
@@ -1571,26 +1573,33 @@ def update_physics(left_speed, right_speed, dt):
         intake_cx = bot.x + intake_center_dist * math.cos(rad)
         intake_cy = bot.y + intake_center_dist * math.sin(rad)
 
-        #Check collision with dynamic shapes
-        for s in list(sim.shapes):
-            if s.get("body_type") == "dynamic" and "body" in s and not s.get("stored",False):
-                dx = abs(s["x"] - intake_cx)
-                dy = abs(s["y"] - intake_cy)
+        # Over a goal that allows it, the intake takes its top piece out
+        # instead of picking things up off the floor
+        goal = goal_at(intake_cx, intake_cy)
+        if goal is not None and goal.get("stack") and goal_score_from(goal) in ("front", "both"):
+            if descore_cooldown <= 0.0:
+                descore_from(goal)
+        else:
+            #Check collision with dynamic shapes
+            for s in list(sim.shapes):
+                if s.get("body_type") == "dynamic" and "body" in s and not s.get("stored",False):
+                    dx = abs(s["x"] - intake_cx)
+                    dy = abs(s["y"] - intake_cy)
                 
-                reach = (bot.intake_length / 2) + 2.0
-                if dx < reach and dy < reach:
-                    #Collect item means remove from PyMunk space (temporarily)
-                    space.remove(s["body"])
-                    for shape_ref in list(space.shapes):
-                        if shape_ref.body == s["body"]:
-                            space.remove(shape_ref)      
-                            s["pymunk_shape"] = shape_ref
-                    #Store in inventory 
-                    s["stored"] = True
-                    s["travel_timer"] = bot.timer_delay if bot.delay_flag else 0.0
-                    bot.inventory.append(s)
-                    break
-    
+                    reach = (bot.intake_length / 2) + 2.0
+                    if dx < reach and dy < reach:
+                        #Collect item means remove from PyMunk space (temporarily)
+                        space.remove(s["body"])
+                        for shape_ref in list(space.shapes):
+                            if shape_ref.body == s["body"]:
+                                space.remove(shape_ref)      
+                                s["pymunk_shape"] = shape_ref
+                        #Store in inventory 
+                        s["stored"] = True
+                        s["travel_timer"] = bot.timer_delay if bot.delay_flag else 0.0
+                        bot.inventory.append(s)
+                        break
+
     elif bot.has_intake and bot.intake_state == "out" and len(bot.inventory) > 0:
         rad = math.radians(bot.angle)
         stick_out = max(0.0, bot.intake_length - bot.intake_offset)
@@ -1773,19 +1782,46 @@ def load_piece():
                 show_toast("Take the piece out of the loader first")
                 return
     g["left"] = left - 1
-    piece = {"type": "circ", "x": cx, "y": cy, "radius": LOADER_PIECE_RADIUS, "angle": 0.0,
-             "color": tuple(g["color"]), "body_type": "dynamic", "mass": 1.0,
+    spawn_piece(cx, cy, g["color"])
+
+def spawn_piece(x, y, color):
+    # A new loose piece with its own physics body. Only this one body is
+    # added, so pieces already rolling around aren't disturbed.
+    piece = {"type": "circ", "x": x, "y": y, "radius": LOADER_PIECE_RADIUS, "angle": 0.0,
+             "color": tuple(color), "body_type": "dynamic", "mass": 1.0,
              "friction": 0.5, "elasticity": 0.0, "is_overpass": False}
     sim.shapes.append(piece)
-    # Only the new piece gets a physics body, so pieces already rolling around aren't disturbed
     rad_px = piece["radius"] * SCALE
     body = pymunk.Body(piece["mass"], pymunk.moment_for_circle(piece["mass"], 0, rad_px), body_type=pymunk.Body.DYNAMIC)
-    body.position = (cx * SCALE, cy * SCALE)
+    body.position = (x * SCALE, y * SCALE)
     shape = pymunk.Circle(body, rad_px)
     shape.friction = piece["friction"]
     shape.elasticity = piece["elasticity"]
     space.add(body, shape)
     piece["body"] = body
+    return piece
+
+# Descoring: running the intake in over a goal takes its top piece back out,
+# one every half second. Only goals the front can score into allow it - if
+# the front can put pieces in, it can take them out.
+DESCORE_INTERVAL_S = 0.5
+descore_cooldown = 0.0
+
+def descore_from(goal):
+    global descore_cooldown
+    stack = tuple(goal.get("stack", ()))
+    piece = spawn_piece(goal["x"] + goal["w"] / 2, goal["y"] + goal["h"] / 2, stack[-1])
+    goal["stack"] = stack[:-1]
+    # Straight into the robot's bag, the same way picking one up does
+    space.remove(piece["body"])
+    for shape_ref in list(space.shapes):
+        if shape_ref.body == piece["body"]:
+            space.remove(shape_ref)
+            piece["pymunk_shape"] = shape_ref
+    piece["stored"] = True
+    piece["travel_timer"] = bot.timer_delay if bot.delay_flag else 0.0
+    bot.inventory.append(piece)
+    descore_cooldown = DESCORE_INTERVAL_S
 
 def goal_at(x, y):
     # The goal zone (if any) that covers a field point, in inches. Goals can
@@ -1923,6 +1959,10 @@ try:
 except:
     field_img = pygame.Surface((FIELD_PIXELS, FIELD_PIXELS))
     field_img.fill(DARK)
+    # The field picture isn't included in the download, so "image" would just
+    # be a blank dark screen. Use the grid field instead.
+    if sim.settings.get("field_source") == "image":
+        sim.settings["field_source"] = "custom"
 
 # Property inputs panel definitions
 shape_panel_y = 255
@@ -3667,6 +3707,11 @@ if pygame.joystick.get_count() > 0:
     joystick = pygame.joystick.Joystick(0); joystick.init()
     
 create_field_boundaries() #Create physical boundaries around fields using PyMunk
+# First launch: nothing has been saved yet, so open on the easy practice map
+# instead of an empty field. After this, custom_field.txt exists and the user's
+# own field is what loads.
+if not sim.shapes and not os.path.exists(FIELD_FILE):
+    load_field_entry(PRACTICE_MAPS[0])
 sync_custom_obstacles_to_physics()
 
 running = True
@@ -4051,5 +4096,3 @@ while running:
     draw_everything()
 
 pygame.quit()
-
-print(blocker.get_summary())
