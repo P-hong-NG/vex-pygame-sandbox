@@ -1681,8 +1681,14 @@ def update_physics(left_speed, right_speed, dt):
                 if sim.settings.get("outtake_control_mode", "toggle") == "toggle":
                     bot.outtake_state = "off"
 
-    #Updating blocker steering
-    blocker.update(bot, dt)
+    #Updating blocker steering. Once the match is over the Blocker stops dead,
+    #same as the player's robot, so it can't keep pushing after the buzzer
+    if match_phase == "over":
+        if blocker.enabled:
+            blocker.body.velocity = (0, 0)
+            blocker.body.angular_velocity = 0
+    else:
+        blocker.update(bot, dt)
         
     #Divide the calculated movement into small chunks to prevent clipping into walls at high speed
     for _ in range(10):
