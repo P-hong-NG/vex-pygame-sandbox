@@ -73,7 +73,7 @@ Press Share on a saved field and you get something like `VEXF1:eNqtkk...`. It is
 
 - The official Override field layout is not in the sim yet. It needs exact measurements. The midfield zone size is my estimate.
 - Pushing power is not matched to real robots yet. It needs real-world measurements.
-- The Blocker is not tied to the match clock yet, so it keeps driving after the match ends.
+- The Blocker stops when the match ends, but it is not started by the match clock. If you turn it on, it drives right away, even before you press start on a match.
 
 ## How it was made
 
