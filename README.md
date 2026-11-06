@@ -4,6 +4,10 @@ A driving simulator for VEX V5 robots, written in Python (Pygame + Pymunk). Driv
 
 I built it because our robotics room has one practice field. This lets a whole team practice driving, test drivetrain ideas, and run scrimmages without waiting for it.
 
+<img src="images/demo.gif" alt="A 12-second demo: the robot collects three pieces while the Blocker chases it, flips a toggle, and scores 15 points in a goal" width="800">
+
+A 12-second clip from the sim itself. The driving is scripted (a small program presses the same keys a person would), so it shows what the sim can do, not a human run.
+
 <img src="images/drivePreview3 - debugging interface.png" alt="Drive mode with the Blocker's LiDAR rays and path grid drawn on the field" width="700">
 
 ## Try it in 2 minutes
