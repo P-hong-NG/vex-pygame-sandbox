@@ -522,6 +522,28 @@ I tested it by moving the robots by hand: the user touching as red turned it red
 - Toggles don't do anything for the score yet. That is the next part, since the score will depend on who owns which toggle
 - Flipping is instant. A real robot may need its mechanism in the right spot, but I'm not simulating that
 
+[November 4th–5th, 2026] - Taking pieces back out of goals, a better first launch, and a Blocker that respects the buzzer
+
+===The Problem=== Three things bothered me when I looked at the sim like a stranger would. First, once a piece went into a goal, it was gone for good, even though a real match has robots pulling pieces back out. Second, someone who downloads the sim for the first time sees a robot on an empty dark screen because the sim looks for a field picture file that only I have. Third, from the October 22 notes: when the match clock hits MATCH OVER, my robot stops but the Blocker keeps driving.
+
+===What I Built===
+
++ Descoring. Holding the intake in over a goal that can be scored from that side takes the top piece off the stack and puts it in the robot’s bag. It repeats every half second while the intake stays on. The goal’s stack gets shorter and the score drops with it
++ A real first launch. If the field picture is missing, the sim uses the grid field instead. If nothing has been saved yet, it opens on “Practice drive - easy" so there are blocks and pieces to drive into right away. After the first launch, the saved field loads as usual
++ The Blocker stops at MATCH OVER. Its movement and turning are set to zero once the match is over, the same as the user’s robot, and it drives normally again when a new match starts. I ran a headless match to check: it moved during the match, sat at the same spot for 110 frames after the buzzer, and drove off again after a restart
++ A short demo GIF at the top of the README, recorded by a script that drives the robot with the same keys a person would press
+
+===Choices I Made===
+
++ Pieces come out one at a time, not all at once. Taking a whole stack in one frame would make descoring free. The half-second wait gives defending a goal some cost
++ The first-launch field is a practice map, not a blank grid. The first thing a new person sees should be something to do, not something to figure out
++ The Blocker is held still instead of being turned off. Turning it off would remove it from the field, which looks like it vanished. Holding it still keeps it where it ended
+
+===What is Not Done===
+
++ The Blocker is still not started by the match clock. If it is turned on, it drives right away, even before Start Match is pressed
++ There is no waiting time at the end of a match for pieces to settle before the score is counted
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
