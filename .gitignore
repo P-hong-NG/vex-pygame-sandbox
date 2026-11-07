@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Files the sim creates on your computer while you use it
+settings.json
+custom_field.txt
+custom_drive.txt
+saved_fields.json
+field_code.txt
+
+# Computer clutter
+.DS_Store
+Thumbs.db
