@@ -694,6 +694,58 @@ def _piece(x, y, r=3.5, color=(255, 80, 80)):
     return {"type": "circ", "x": x, "y": y, "radius": r, "color": color,
             "body_type": "dynamic", "mass": 1.0, "friction": 0.5, "elasticity": 0.0, "is_overpass": False}
 
+#===Override field (2026-27) - built from the official Appendix A drawing===
+# The drawing is 140.4 inches wall to wall and the sim field is 144, so the
+# element spots were moved onto the sim's 24 inch tile lines (24, 48, 72, 96,
+# 120). That is a shift of under half an inch. Sizes are kept as drawn.
+# The sim's origin is the bottom-left corner, same as the drawing, so the
+# field below reads like the drawing does: red on the left, blue on the right.
+def _goal_pair(cx, cy, color=(150, 150, 150)):
+    # A goal is two shapes: a solid base the robot can't drive through
+    # (5.6 in, the drawing's 5.61) and the slightly bigger goal zone on top
+    # that catches pieces. Both are centered on the same point.
+    return [_rect(cx - 2.8, cy - 2.8, 5.6, 5.6, color=color),
+            _rect(cx - 2.9, cy - 2.9, 5.8, 5.8, color=(150, 150, 150), body="goal")]
+
+def _loader(x, y, color):
+    # 3.7 x 4 in, pushed up against the side wall, holding 6 pieces
+    sh = _rect(x, y, 3.7, 4.0, color=color, body="loader")
+    sh["mass"] = 6.0
+    return sh
+
+def _toggle(x, y, w, h):
+    # Centered on the wall's midpoint, with about 3 in reaching onto the field
+    return _rect(x, y, w, h, body="toggle")
+
+def _override_shapes():
+    red, blue, yellow = (255, 80, 80), (80, 80, 255), (255, 220, 0)
+    shapes = []
+    # Goals: 2 red, 2 blue, 4 short neutral, and the center (midfield) goal
+    for cx, cy in ((24, 48), (48, 24)):
+        shapes += _goal_pair(cx, cy, red)
+    for cx, cy in ((96, 120), (120, 96)):
+        shapes += _goal_pair(cx, cy, blue)
+    for cx, cy in ((48, 120), (24, 96), (120, 48), (96, 24), (72, 72)):
+        shapes += _goal_pair(cx, cy)
+    # Loaders: red pair on the left wall, blue pair on the right
+    shapes += [_loader(0.0, 10.0, red), _loader(0.0, 130.0, red),
+               _loader(140.3, 10.0, blue), _loader(140.3, 130.0, blue)]
+    # Toggles: one in the middle of each wall
+    shapes += [_toggle(59, -1, 26, 4), _toggle(59, 141, 26, 4),
+               _toggle(-1, 59, 4, 26), _toggle(141, 59, 4, 26)]
+    # Pieces: yellows sit on tile line crossings or touching a wall, and
+    # every piece is centered on a tile line
+    r = 1.6
+    for x, y in ((72, 48), (48, 72)):
+        shapes.append(_piece(x, y, r, red))
+    for x, y in ((72, 96), (96, 72)):
+        shapes.append(_piece(x, y, r, blue))
+    for x, y in ((24, 24), (48, 48), (96, 96), (120, 120),
+                 (48, r), (96, r), (48, 144 - r), (96, 144 - r),
+                 (r, 48), (r, 96), (144 - r, 48), (144 - r, 96)):
+        shapes.append(_piece(x, y, r, yellow))
+    return shapes
+
 # Gaps between obstacles are kept at 24 inches or more so a normal sized bot
 # can always get through - these are for practice, not for getting stuck.
 PRACTICE_MAPS = [
@@ -749,6 +801,19 @@ PRACTICE_MAPS = [
             _rect(30, 68, 8, 8), _rect(62, 68, 8, 8), _rect(94, 68, 8, 8), _rect(126, 68, 8, 8),
             _piece(48, 92), _piece(80, 52), _piece(112, 92),
         ],
+    },
+    {
+        # Draft of the 2026-27 Override field. The goal, loader and toggle
+        # spots come from the official drawing. The 16 pieces are a practice
+        # layout of my own, not the official starting setup.
+        "name": "Override Test",
+        "blurb": "Draft Override field: 9 goals, 4 loaders, 4 toggles",
+        "robot_start": (10.0, 120.0, 0.0),
+        "blocker_start": (72.0, 123.0),
+        "blocker_angle": 270.0,
+        "home": (130.0, 124.0),
+        "defend_radius": 13.2,
+        "shapes": _override_shapes(),
     },
 ]
 
