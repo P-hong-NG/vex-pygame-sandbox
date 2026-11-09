@@ -91,12 +91,49 @@ class UIButton(UIElement):
         text_rect = text_surf.get_rect(center=self.screen_rect.center)
         surface.blit(text_surf, text_rect)
 
+#===Clipboard for the sidebar number boxes===
+# Uses the computer's clipboard when pygame can reach it. If it can't (it
+# doesn't work on every computer), copy and paste still work between boxes
+# inside the sim through a small clipboard of its own.
+_inner_clipboard = ""
+TEXTBOX_ALLOWED = "0123456789.-"
+TEXTBOX_MAX_LEN = 12
+# Holding Backspace works like a phone: one character right away, a short
+# pause, then one more every fraction of a second until it is let go
+BACKSPACE_HOLD_DELAY_MS = 450
+BACKSPACE_REPEAT_MS = 60
+
+def clipboard_put(text):
+    global _inner_clipboard
+    _inner_clipboard = text
+    try:
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
+        pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8"))
+    except Exception:
+        pass
+
+def clipboard_get():
+    try:
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
+        raw = pygame.scrap.get(pygame.SCRAP_TEXT)
+        if raw:
+            return raw.decode("utf-8", "ignore").replace("\x00", "")
+    except Exception:
+        pass
+    return _inner_clipboard
+
 class UITextbox(UIElement):
     def __init__(self, x, y, w, h, label, initial_value="", on_change_callback=None):
         super().__init__(x, y, w, h)
         self.label = label
         self.value = str(initial_value)
         self.is_active = False
+        # True after Ctrl+A: the next typing, paste or Backspace replaces everything
+        self.select_all = False
+        # When the held Backspace deletes its next character (None = not held)
+        self._backspace_next_ms = None
         # Runs when the user hits the enter key
         self.on_change_callback = on_change_callback 
 
@@ -108,25 +145,70 @@ class UITextbox(UIElement):
                 return True
             else:
                 # Clicked outside so stop typing
-                self.is_active = False 
+                self.is_active = False
+                self.select_all = False
+                self._backspace_next_ms = None
 
         # Handle keyboard typing only if the box is currently active
         elif event.type == pygame.KEYDOWN and self.is_active:
+            ctrl = event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)
             if event.key == pygame.K_RETURN:
                 self.is_active = False
+                self.select_all = False
+                self._backspace_next_ms = None
                 # Save the new value when enter is pressed
                 if self.on_change_callback:
                     self.on_change_callback(self.value) 
+            elif ctrl and event.key == pygame.K_a:
+                self.select_all = True
+            elif ctrl and event.key == pygame.K_c:
+                clipboard_put(self.value)
+            elif ctrl and event.key == pygame.K_x:
+                clipboard_put(self.value)
+                self.value = ""
+                self.select_all = False
+            elif ctrl and event.key == pygame.K_v:
+                # Keep only number characters, so pasting "12.5 in" gives 12.5
+                pasted = "".join(c for c in (clipboard_get() or "") if c in TEXTBOX_ALLOWED)
+                base = "" if self.select_all else self.value
+                self.value = (base + pasted)[:TEXTBOX_MAX_LEN]
+                self.select_all = False
+            elif ctrl and event.key == pygame.K_BACKSPACE:
+                # Ctrl+Backspace clears the box. The values are short numbers,
+                # so "delete a word" and "delete everything" are the same thing
+                self.value = ""
+                self.select_all = False
             elif event.key == pygame.K_BACKSPACE:
-                self.value = self.value[:-1]
-            elif event.unicode.isdigit() or event.unicode in ".-":
-                self.value += event.unicode
+                self.value = "" if self.select_all else self.value[:-1]
+                self.select_all = False
+                # Start the hold timer. _repeat_backspace() takes it from here
+                self._backspace_next_ms = pygame.time.get_ticks() + BACKSPACE_HOLD_DELAY_MS
+            elif not ctrl and (event.unicode.isdigit() or event.unicode in ".-") and event.unicode:
+                self.value = (("" if self.select_all else self.value) + event.unicode)[:TEXTBOX_MAX_LEN]
+                self.select_all = False
             return True
         return False
+
+    def _repeat_backspace(self):
+        # Runs once per frame (from draw). While Backspace stays down and the
+        # box is still being typed in, deletes one more character each time
+        # the repeat interval passes. Letting go, or leaving the box, stops it.
+        if self._backspace_next_ms is None:
+            return
+        if not self.is_active or not pygame.key.get_pressed()[pygame.K_BACKSPACE]:
+            self._backspace_next_ms = None
+            return
+        now = pygame.time.get_ticks()
+        if now >= self._backspace_next_ms:
+            # A slow frame can owe more than one character
+            owed = 1 + (now - self._backspace_next_ms) // BACKSPACE_REPEAT_MS
+            self.value = self.value[:max(0, len(self.value) - owed)]
+            self._backspace_next_ms += owed * BACKSPACE_REPEAT_MS
 
     def draw(self, surface):
         # Do not draw anything if the textbox is hidden
         if not self.is_visible: return
+        self._repeat_backspace()
 
         # Make the background white if typing or gray if idle
         bg_color = WHITE if self.is_active else LIGHT_GRAY
@@ -139,6 +221,11 @@ class UITextbox(UIElement):
 
         # Draw the actual typed letters inside the box
         value_surf = UI_FONT.render(self.value, True, BLACK)
+        if self.is_active and self.select_all and self.value:
+            # Blue band behind the text while it is all selected
+            band = pygame.Rect(self.screen_rect.x + 3, self.screen_rect.y + 2,
+                               value_surf.get_width() + 2, value_surf.get_height() + 1)
+            pygame.draw.rect(surface, (160, 195, 255), band)
         surface.blit(value_surf, (self.screen_rect.x + 4, self.screen_rect.y + 3))
 
 class ScrollView(UIElement):
