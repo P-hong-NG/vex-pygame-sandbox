@@ -1544,6 +1544,9 @@ def save_settings():
         print(f"Error saving settings: {e}")
 # Initial data payload configuration setup
 load_all_data()
+# The field file only sets the robot's saved start numbers. This moves the
+# robot itself there, otherwise it sits in the middle until Reset is pressed.
+bot.reset_to_start()
 bot.calculate_max_speed(sim.settings.get("motor_cartridge", "green"))
 blocker.set_difficulty(sim.settings.get("blocker_difficulty", "medium"))
 blocker.set_style(sim.settings.get("blocker_style", "attack"))
