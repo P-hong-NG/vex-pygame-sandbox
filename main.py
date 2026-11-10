@@ -2875,16 +2875,19 @@ hud_bar_alpha = {}
 SCORE_RED, SCORE_BLUE, SCORE_YELLOW = (255, 80, 80), (80, 80, 255), (255, 220, 0)
 POINTS_PER_PIECE = 5
 POINTS_PER_YELLOW = 10
-MIDFIELD_HALF_IN = 24   # half the width of the field's center square (an estimate - the exact size comes from the field drawing)
+MIDFIELD_HALF_IN = 24   # how far each point of the center diamond reaches from the field's center. The official drawing puts the points on the tile line crossings, one 24 in tile away
 POINTS_PER_MIDFIELD_ROBOT = 8
 
 def in_midfield(x, y):
+    # The Midfield is a diamond (a square turned 45 degrees), like the tape
+    # lines on the real field. A spot is inside when its distance from the
+    # center, counted straight across plus straight up, is within the reach
     c = FIELD_INCHES / 2
-    return abs(x - c) <= MIDFIELD_HALF_IN and abs(y - c) <= MIDFIELD_HALF_IN
+    return abs(x - c) + abs(y - c) <= MIDFIELD_HALF_IN
 
 def midfield_robots():
     # How many robots of each alliance are at least partly inside the
-    # Midfield square: (red, blue). The user's robot plays the chosen
+    # Midfield diamond: (red, blue). The user's robot plays the chosen
     # alliance and the Blocker plays the other one.
     counts = {"red": 0, "blue": 0}
     mine = sim.settings.get("alliance", "red")
@@ -2893,8 +2896,14 @@ def midfield_robots():
     for side, r in ((mine, bot), (theirs, blocker if blocker.enabled else None)):
         if r is None:
             continue
-        reach = MIDFIELD_HALF_IN + max(r.length, r.track_width) / 2
-        if abs(r.x - c) <= reach and abs(r.y - c) <= reach:
+        # The robot is treated as a square with half-size "half". Sliding that
+        # square around the diamond's edge gives an eight-sided zone for the
+        # robot's center: no farther than the diamond's reach plus "half"
+        # either way across, and plus "2 x half" for across and up together
+        half = max(r.length, r.track_width) / 2
+        dx, dy = abs(r.x - c), abs(r.y - c)
+        if (dx <= MIDFIELD_HALF_IN + half and dy <= MIDFIELD_HALF_IN + half
+                and dx + dy <= MIDFIELD_HALF_IN + 2 * half):
             counts[side] += 1
     return counts["red"], counts["blue"]
 
