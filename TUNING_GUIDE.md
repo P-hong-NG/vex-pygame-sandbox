@@ -64,6 +64,6 @@ Example: to make Medium a little meaner, raise its `lead_time` from 0.30 to 0.40
 
 - `MATCH_AUTO_S = 15.0`, `MATCH_DRIVER_S = 105.0`, `MATCH_ENDGAME_S = 10.0`: the match is 15 seconds of auto, then 105 of driver, and the last 10 show as endgame. Change them for a game with different timing
 - `POINTS_PER_PIECE = 5`, `POINTS_PER_YELLOW = 10`, `POINTS_PER_MIDFIELD_ROBOT = 8`: the score values for the Override game
-- `MIDFIELD_HALF_IN = 24`: half the width of the center zone. This is an estimate until the official field measurements are added
+- `MIDFIELD_HALF_IN = 24`: how far each point of the center diamond reaches from the middle of the field. 24 matches the official drawing, where the points sit on the tile line crossings. A bigger number makes the zone bigger
 - `LOADER_REACH_IN = 36`: how close the robot has to park to a loader before **G** works
 - `DESCORE_INTERVAL_S = 0.5`: how many seconds between each piece the intake takes back out of a goal
