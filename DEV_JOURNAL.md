@@ -522,7 +522,7 @@ I tested it by moving the robots by hand: the user touching as red turned it red
 - Toggles don't do anything for the score yet. That is the next part, since the score will depend on who owns which toggle
 - Flipping is instant. A real robot may need its mechanism in the right spot, but I'm not simulating that
 
-[November 4th–5th, 2026] - Taking pieces back out of goals, a better first launch, and a Blocker that respects the buzzer
+## [November 4th–5th, 2026] - Taking pieces back out of goals, a better first launch, and a Blocker that respects the buzzer
 
 ===The Problem=== Three things bothered me when I looked at the sim like a stranger would. First, once a piece went into a goal, it was gone for good, even though a real match has robots pulling pieces back out. Second, someone who downloads the sim for the first time sees a robot on an empty dark screen because the sim looks for a field picture file that only I have. Third, from the October 22 notes: when the match clock hits MATCH OVER, my robot stops but the Blocker keeps driving.
 
