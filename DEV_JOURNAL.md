@@ -544,6 +544,34 @@ I tested it by moving the robots by hand: the user touching as red turned it red
 + The Blocker is still not started by the match clock. If it is turned on, it drives right away, even before Start Match is pressed
 + There is no waiting time at the end of a match for pieces to settle before the score is counted
 
+## [November 7th–9th, 2026] - Building this year's field from the official drawing, and the bugs I found while playing on it
+
+===The Problem=== The sim had practice maps, but not this year's actual field. The game manual's Appendix A gives drawings of the field, the goal, the loader and the toggle, so I could finally build the real thing. While I tested my first version I also kept running into small annoyances, and I wrote them all down so I could fix them one at a time. One of them was a real bug: the sim had a wrong idea of how big the middle zone is.
+
+===What I Built===
+- **An "Override Test" practice map.** 9 goals (2 red, 2 blue, 4 short neutral and the center one), 4 loaders on the side walls, and 4 toggles at the middle of each wall. I built it by hand in Edit mode, shared it as a field code, then lined everything up with the drawing
+- **The robot now opens on its saved start spot.** Before, the sim always opened with the robot in the middle of the field, even on a map with its own start spot
+- **Number boxes in the Edit sidebar got copy, paste, select all and hold-to-delete.** Ctrl+A selects the number, Ctrl+C / X / V copy, cut and paste, Ctrl+Backspace clears the box, and holding Backspace deletes slowly like when texting
+- **The Midfield is now a diamond.** The robot at the center scores 8 for its side at match end, and one 1 inch past the edge scores nothing
+
+===Choices I Made===
+- **I moved the drawing's spots onto the sim's 24 inch tile lines.** The drawing is 140.4 inches wall to wall and the sim field is 144. Shifting every spot by under half an inch was better than shrinking or stretching every object, because the sizes stay exactly as drawn
+- **A goal is two shapes.** A solid base (5.6 inches, the drawing says 5.61) that the robot can't drive through, and a slightly bigger zone on top that catches pieces. Both sit on the same center point
+- **The goals are plain squares for now.** In the drawing the corners are cut off at 45 degrees, but that only removes about a tenth of the area, so it wasn't worth a new shape type
+- **I caught my own mistake with red and blue.** My first hand-built version had the alliance colors the opposite way around from the drawing. I fixed it so red is on the left like the drawing, which is also where the robot starts
+- **The 16 pieces are my own practice layout.** The drawings only show where the goals, loaders and toggles go, not where the pieces start, so I did not pretend it was official
+- **Pieces are circles about 3.2 inches across.** From above, the pin and the cup in the drawings are both about 3.16 inches wide, so a circle with a 1.6 inch radius matches them
+- **The hold-to-delete timer lives inside the text box.** Turning on key repeat for the whole sim would make every held key fire over and over, including the drive keys
+- **Pasting only keeps number characters.** Pasting "12.5 in" gives 12.5, and a box holds at most 12 characters so a bad paste can't run off the edge
+- **The Midfield zone was twice too big.** I zoomed into the drawing and saw the tape forms a diamond with its four points on tile line crossings, one tile from the center. My square let a robot sit in a corner, nowhere near the tape, and still score the 8 points. The robot is still checked as a square, so a turned robot can count a little early at the diamond's points
+
+===What is Not Done===
+- Zooming in Edit mode. Moving a small object like an Override pin is hard without it
+- Selecting several objects only lets me move them. Changing color, size or rotation for the whole group needs rules first, like what "set color" means for a goal that has a solid base under it
+- The Midfield diamond is not drawn on the field, so a player can't see the zone
+- Pieces fed from a loader are still the older size (7 inches across), so they look huge next to the 3.2 inch pins on this map. Cups are not in yet
+- The Blocker is still not started by the match clock
+
 [Game dev having fun] - This end part would be where I show the "fun" and "interesting" bugs I came across while working on this project (that I ABSOLUTELY love!!!), so have some fun while going through it from now on
 
 Disclaimer: These are images that I have taken on various dates, so I can’t give you the exact date, sorry!
