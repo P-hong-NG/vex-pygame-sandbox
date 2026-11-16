@@ -3,6 +3,18 @@ For instructions on how to use and improve the simulator, go to "TUNING_GUIDE.md
 
 Engineering Log: Architectural Design Decisions
 
+## Highlights (the quick read)
+
+The full journal is long. If you only have a few minutes, these entries show how I found problems and made decisions:
+
+- **Aug 30**: a blind spot in the Blocker's rays: the front sensor started too far out, so a thin obstacle right in front of the Blocker was never seen. Each ray now starts at its own distance instead of one number for all of them
+- **Sep 8**: a Blocker that kept changing its mind: it swapped targets and flipped between "stuck" and "not stuck" over tiny wobbles. It now commits to a target, and needs a bigger bar to say "not stuck" than to say "stuck"
+- **Sep 11**: the wall bug: facing a wide wall with only the two outer rays clear, averaging them made the Blocker stand still. Now it picks the one opening with the most room and commits to it
+- **Sep 20**: a map for the Blocker and Sep 22: wiring it in: I compared two ways of planning routes and picked a grid with A*, because every obstacle can be edited and a grid does not go stale when one moves. The rays still win up close, and the grid plans the longer route
+- **Oct 17**: sharing fields as a short code: a field becomes a text code a friend can paste in. The sim never runs a code, only reads it as data, and checks every size and count first
+- **Oct 22**: a match clock: 15 seconds of auto, 105 of driver, then MATCH OVER, so practice feels like a real match
+- **Nov 7 to 9**: building this year's field: I built the Override field from the official drawing, and found the sim's center zone was a square twice the size of the real diamond
+
 ## Origins (Dec 2025 – Mar 2026) - The first version, during the Push Back season
 
 This simulator did not start as a big project. It started as a personal experiment: could I copy basic V5 driving in Python? Our team had limited time on the practice field, so it was easy to see why a version I could run anywhere would be useful. The first version used Pygame only, with no physics library.
