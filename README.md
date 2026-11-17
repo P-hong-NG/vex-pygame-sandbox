@@ -58,6 +58,36 @@ The Blocker was the hardest part, and I learned most of what I did from fixing i
 - **It plans with a grid and A\*.** The field is turned into 6-inch cells every few frames, and A\* finds a route. I picked a grid over a visibility graph because every object on the field can be moved in Edit mode, and a grid just rebuilds itself from whatever is there.
 - **Difficulty is more than speed.** Easy turns slowly and stops 10 inches away. Hard predicts further ahead and drives right into the player. Each time, its speed is also randomly set within 10% of the player’s own average speed, so it feels like a person and not a script.
 
+A simplified view of what the Blocker does at each moment:
+
+```mermaid
+flowchart TD
+    A["Pick what to chase: the player, a home spot, or a guess of where the player is going"] --> B{"Rays: is anything close?"}
+    B -->|Yes| C["Steer toward the open rays"]
+    B -->|No| D["Drive toward the target"]
+    C --> E{"Stuck for about 2 seconds?"}
+    D --> E
+    E -->|No| F["Keep going"]
+    E -->|Yes| G{"Can it see a spot the player already drove through?"}
+    G -->|Yes| H["Head to that breadcrumb"]
+    G -->|No| I["Follow an A* route over the 6 inch grid"]
+```
+
+There is also an "A\* leads" mode (press N in Drive mode) where the route takes over as soon as the rays show nothing close, so you can compare the two.
+
+## Key decisions
+
+Choices I had to make while building this, and why I went the way I did. Each one has a full entry in [DEV_JOURNAL.md](DEV_JOURNAL.md).
+
+| Choice | I picked | I passed on | Why |
+| --- | --- | --- | --- |
+| Planning routes | A grid with A\* | A graph of obstacle corners | Every object can be moved in Edit mode. A grid rebuilds itself from whatever is on the field, but a corner graph goes out of date the moment something moves |
+| Who steers | Rays for what is close, the route for the bigger picture | Planning every step from the grid | Rays react fast to something that just showed up. The grid answers "which way should I be heading overall" |
+| Changing its mind | Stick with one breadcrumb, and ask for more progress to leave "stuck" than to enter it | Picking the closest breadcrumb again every frame | It flipped back and forth over tiny wobbles and got nowhere |
+| Sharing fields | A compressed text code that gets checked before use | Encrypting it with a key | A field is not a secret, and a key would make sharing harder. The sim only reads a code as data, never runs it, and checks every size and count first |
+| Taking pieces out of goals | One piece every half second | The whole stack at once | Taking a stack in one frame would make descoring free |
+| A toggle both robots touch | It stays as it was | Giving it to whoever arrived first | Arrival order comes down to a few frames and would feel random |
+
 ## Share codes
 
 Press Share on a saved field and you get something like `VEXF1:eNqtkk...`. It is the field data, compressed and turned into plain text, so you can paste it into a message. It is not encrypted, because a field layout isn’t secret. The sim treats every code as untrusted: it never runs it, and it checks every shape, size, and count before using it, so it refuses bad or oversized code with a short reason instead of freezing the sim.
