@@ -102,8 +102,10 @@ Press Share on a saved field and you get something like `VEXF1:eNqtkk...`. It is
 
 ## Known limits
 
-- The Override Test map follows the official drawing for the goals, loaders, and toggles, but its 16 pieces are my own layout, not the official starting setup. Pieces fed from a loader are still the older, bigger size, and there are no cups.
+- The Override Test map follows the official drawing for the goals, loaders, and toggles, but its 16 pieces are my own layout, not the official starting setup. There are no cups yet.
 - Pushing power is not matched to real robots yet. It needs real-world measurements.
+- Edit mode has no zoom, which makes small objects like the Override pieces hard to place by hand. With several objects selected you can only move them, not change their color, size, or angle.
+- The Midfield diamond is scored but not drawn on the field, so you can't see the zone.
 - The Blocker stops when the match ends, but it is not started by the match clock. If you turn it on, it drives right away, even before you press start on a match.
 
 ## How it was made
