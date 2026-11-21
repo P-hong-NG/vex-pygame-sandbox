@@ -1827,7 +1827,25 @@ def update_toggles():
             t["tstate"] = their_color
 
 LOADER_REACH_IN = 36      # how close the robot has to be to a loader's center to be fed by it
-LOADER_PIECE_RADIUS = 3.5
+LOADER_PIECE_RADIUS = 3.5   # only used when the field gives no other hint about piece size
+_last_scored_radius = None  # size of the last piece that went into a goal
+
+def piece_radius():
+    # New pieces (from a loader, or taken back out of a goal) should be the
+    # same size as the field's own pieces. Override pins are about 3.2 in
+    # across, the older blocks are 7 in, and the loader shouldn't hand out
+    # the wrong one. The size comes from the pieces lying on the field right
+    # now. Once they have all been scored there is nothing left to look at,
+    # so the size of the last piece that went into a goal is used instead.
+    global _last_scored_radius
+    radii = sorted(s["radius"] for s in sim.shapes
+                   if s["type"] == "circ" and s.get("body_type") == "dynamic"
+                   and not s.get("stored", False)
+                   and tuple(s["color"]) in (SCORE_RED, SCORE_BLUE, SCORE_YELLOW))
+    if radii:
+        _last_scored_radius = None   # live pieces are the better guide
+        return radii[len(radii) // 2]
+    return _last_scored_radius or LOADER_PIECE_RADIUS
 
 def load_piece():
     # The human player drops one piece onto the nearest loader the robot is
@@ -1852,7 +1870,7 @@ def load_piece():
     # make the physics shove them apart hard
     for s in sim.shapes:
         if s.get("body_type") == "dynamic" and not s.get("stored", False):
-            if math.hypot(s["x"] - cx, s["y"] - cy) < LOADER_PIECE_RADIUS * 2:
+            if math.hypot(s["x"] - cx, s["y"] - cy) < piece_radius() * 2:
                 show_toast("Take the piece out of the loader first")
                 return
     g["left"] = left - 1
@@ -1861,7 +1879,7 @@ def load_piece():
 def spawn_piece(x, y, color):
     # A new loose piece with its own physics body. Only this one body is
     # added, so pieces already rolling around aren't disturbed.
-    piece = {"type": "circ", "x": x, "y": y, "radius": LOADER_PIECE_RADIUS, "angle": 0.0,
+    piece = {"type": "circ", "x": x, "y": y, "radius": piece_radius(), "angle": 0.0,
              "color": tuple(color), "body_type": "dynamic", "mass": 1.0,
              "friction": 0.5, "elasticity": 0.0, "is_overpass": False}
     sim.shapes.append(piece)
@@ -1917,6 +1935,8 @@ def place_in_goal(goal, piece):
     # stack. The stack is a tuple that gets replaced, never edited, so
     # copies of the goal (duplicate, undo) can't end up sharing one list.
     goal["stack"] = tuple(goal.get("stack", ())) + (tuple(piece["color"]),)
+    global _last_scored_radius
+    _last_scored_radius = piece["radius"]
     for i, sh in enumerate(sim.shapes):
         if sh is piece:
             sim.shapes.pop(i)
