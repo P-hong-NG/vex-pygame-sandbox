@@ -3074,6 +3074,21 @@ def draw_everything():
     
     pygame.draw.rect(screen, (50, 50, 60), (0, 0, FIELD_PIXELS, FIELD_PIXELS), 5) #Drawing a border around the field (5px)
     
+    # Midfield zone: the diamond the match-end midfield points are scored in.
+    # Drawn under the objects so it never hides anything, and a little
+    # stronger and yellow while a robot is inside it
+    if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
+        mid = FIELD_INCHES / 2
+        reach = MIDFIELD_HALF_IN
+        pts = [(int((mid + dx) * SCALE), int(FIELD_PIXELS - (mid + dy) * SCALE))
+               for dx, dy in ((reach, 0), (0, reach), (-reach, 0), (0, -reach))]
+        occupied = sum(midfield_robots()) > 0
+        zone = pygame.Surface((FIELD_PIXELS, FIELD_PIXELS), pygame.SRCALPHA)
+        tint = (255, 200, 0) if occupied else (90, 90, 110)
+        pygame.draw.polygon(zone, (*tint, 55 if occupied else 28), pts)
+        pygame.draw.polygon(zone, (*tint, 200 if occupied else 120), pts, 2)
+        screen.blit(zone, (0, 0))
+
     # Elements Layer
     if sim.settings["field_source"] == "custom" and sim.current_mode != "studio":
 
