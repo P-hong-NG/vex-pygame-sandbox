@@ -44,7 +44,7 @@ Built and tested with pygame 2.6.1 and pymunk 7.3.1. Pymunk 6 and 7 use differen
 **VEX V5 Override (2026-27) support**
 - Goals that stack pieces and score by color, with a choice of front, back, or both-sided scoring
 - Loaders that a human player feeds (press **G** next to one), toggles that turn to whoever touched them last, and descoring with the intake
-- Scoring that includes yellow pieces and robots in the midfield, which is a diamond like the tape on the real field
+- Scoring that includes yellow pieces and robots in the midfield, which is a diamond like the tape on the real field. The diamond is drawn on the field and turns yellow while a robot is counting as inside it
 - An **Override Test** practice map with the goals, loaders, and toggles placed from the official field drawing
 
 <img src="images/editPreview3.png" alt="Edit mode with movable objects, the robot, the Blocker, and its Defend area" width="340"> <img src="images/studioPreview3 - page 1.png" alt="Studio mode where the robot's size, wheels, gears and motor are changed" width="340">
@@ -105,7 +105,6 @@ Press Share on a saved field and you get something like `VEXF1:eNqtkk...`. It is
 - The Override Test map follows the official drawing for the goals, loaders, and toggles, but its 16 pieces are my own layout, not the official starting setup. There are no cups yet.
 - Pushing power is not matched to real robots yet. It needs real-world measurements.
 - Edit mode has no zoom, which makes small objects like the Override pieces hard to place by hand. With several objects selected you can only move them, not change their color, size, or angle.
-- The Midfield diamond is scored but not drawn on the field, so you can't see the zone.
 - The Blocker stops when the match ends, but it is not started by the match clock. If you turn it on, it drives right away, even before you press start on a match.
 
 ## How it was made
