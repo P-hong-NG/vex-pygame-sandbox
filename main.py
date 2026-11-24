@@ -1422,6 +1422,49 @@ def duplicate_selected_shapes():
     sync_custom_obstacles_to_physics()
     return True
 
+NUDGE_STEP_IN = 1.0         # one arrow press
+NUDGE_BIG_STEP_IN = 6.0     # Shift + arrow: one grid cell
+
+def nudge_selected_shapes(dx, dy):
+    # Arrow keys for the last inch of lining things up, which a mouse drag
+    # can't do. Moves the one selected shape or the whole box-selected group
+    # by the same amount, and stops the group at the field edge as one piece
+    # (so a row of pins squeezed against a wall keeps its spacing).
+    if sim.multi_selected:
+        idxs = list(sim.multi_selected)
+    elif sim.selected_shape_idx is not None:
+        idxs = [sim.selected_shape_idx]
+    else:
+        return False
+
+    # Same axis-aligned edges the box-select uses
+    left = bottom = float("inf")
+    right = top = float("-inf")
+    for i in idxs:
+        s = sim.shapes[i]
+        if s["type"] == "rect":
+            sl, sr, sb, st = s["x"], s["x"] + s["w"], s["y"], s["y"] + s["h"]
+        else:
+            sl, sr, sb, st = s["x"] - s["radius"], s["x"] + s["radius"], s["y"] - s["radius"], s["y"] + s["radius"]
+        left, right = min(left, sl), max(right, sr)
+        bottom, top = min(bottom, sb), max(top, st)
+
+    field = blocker.field_inches
+    # Clamp the step, not the position: a shape already hanging off the edge
+    # (old saved field) can still be nudged back in without being yanked
+    dx = max(-left, min(field - right, dx)) if dx else 0.0
+    dy = max(-bottom, min(field - top, dy)) if dy else 0.0
+    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+        show_toast("At the edge of the field")
+        return False
+
+    for i in idxs:
+        sim.shapes[i]["x"] += dx
+        sim.shapes[i]["y"] += dy
+    save_field_data()
+    sync_custom_obstacles_to_physics()
+    return True
+
 def rotate_selected_group(degrees):
     # Spins every multi-selected shape around the middle of the group, so the
     # layout turns as one piece instead of each shape twisting in place. A
@@ -2435,6 +2478,7 @@ def controls_sections():
             ("Ring dot", "Drag to resize the Blocker's defend zone"),
             ("Ctrl+A", "Select all shapes"),
             ("Ctrl+D", "Duplicate the selection"),
+            ("Arrow keys", "Nudge the selection 1 in (Shift: 6 in)"),
             ("R / Shift+R", "Rotate a group 15 degrees each way"),
             ("Backspace", "Delete the selection"),
             ("Ctrl+Z", "Undo"),
@@ -3313,7 +3357,7 @@ def draw_everything():
     if sim.current_mode == "edit" and sim.multi_selected:
         # Light blue text on a see-through dark bar, same look as the status
         # bar up top, so it reads on the light default field and on images.
-        hint_text = f"{len(sim.multi_selected)} selected - R rotate (Shift+R reverse), Ctrl+D copy, Backspace delete, Ctrl+Z undo, Ctrl+Y redo"
+        hint_text = f"{len(sim.multi_selected)} selected - Arrows nudge, R rotate, Ctrl+D copy, Backspace delete, Ctrl+Z/Y undo/redo"
         hint_bar = pygame.Rect(10, 88, SMALL_FONT.size(hint_text)[0] + 16, SMALL_FONT.get_height() + 8)
         draw_hud_bar("selection_hint", hint_bar, hint_text, (140, 200, 255))
 
@@ -4155,6 +4199,15 @@ while running:
             elif sim.current_mode == "edit" and event.key == pygame.K_d and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
                 if not duplicate_selected_shapes():
                     show_toast("Select a shape to duplicate first")
+            elif (sim.current_mode == "edit" and not gesture_in_progress()
+                    and (sim.selected_shape_idx is not None or sim.multi_selected)
+                    and event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN)):
+                # Arrow keys nudge 1 in, Shift + arrow nudges one grid cell.
+                # Up is +y here, same as the field (y grows upward).
+                step = NUDGE_BIG_STEP_IN if event.mod & pygame.KMOD_SHIFT else NUDGE_STEP_IN
+                nudge_selected_shapes(
+                    step * ((event.key == pygame.K_RIGHT) - (event.key == pygame.K_LEFT)),
+                    step * ((event.key == pygame.K_UP) - (event.key == pygame.K_DOWN)))
             elif sim.current_mode == "edit" and sim.multi_selected and event.key == pygame.K_r and not gesture_in_progress():
                 # R turns the group 15 degrees counter-clockwise, Shift+R the other way
                 rotate_selected_group(-GROUP_ROTATE_STEP_DEG if event.mod & pygame.KMOD_SHIFT else GROUP_ROTATE_STEP_DEG)
