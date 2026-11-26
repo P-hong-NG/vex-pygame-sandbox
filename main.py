@@ -254,13 +254,14 @@ class SimulatorState:
             "intake_rev_velocity": 30.0, #Reverse intake ejection speed
             "outtake_velocity": 15.0, 
             "field_source": "image",    
-            "drive_mode": "tank",     
+            "drive_mode": "arcade",   # the team robot drives arcade: left stick forward, right stick turn
             "motor_cartridge": "green", #(red, green, blue)
             "blocker_difficulty": "medium",
             "blocker_style": "attack",
             "intake_control_mode": "toggle",#Hold or toggle
             "outtake_control_mode": "toggle", #Hold or toggle
             "alliance": "red",        # which side the user's robot plays for (red / blue)
+            "drive_curve": "linear",  # linear or cubic, how stick movement turns into power (controller only)
             "keybinds": dict(DEFAULT_KEYBINDS)
         }
         self.drive_config = {
@@ -1598,53 +1599,109 @@ remember_match_field()
 # =====================================================================
 # 4. PHYSICS & MOVEMENT ENGINE
 # =====================================================================
+#===Gamepad (Controller input mode)===
+# Axis and button numbers are what pygame reports for a real V5 Controller
+# plugged in over USB (checked by pushing every stick and button). Sticks are
+# axes where up is negative. If another gamepad numbers things differently,
+# this table is the only place to change.
+# The default buttons follow the team robot's driver code (main.cpp, opcontrol),
+# so practicing here builds the same habits: A grabs, X releases, R1 scores and
+# L2 goes to the match loader. The robot has no intake or outtake as such, so
+# A and X stand in for them here. L1, R2 and Y (the shifter) have no match yet.
+GAMEPAD = {
+    "left_x": 0, "left_y": 1, "right_x": 2, "right_y": 3,
+    "intake_in": 1,        # A  (robot: grab toggle)
+    "intake_out": 3,       # X  (robot: release toggle)
+    "outtake_score": 5,    # R1 (robot: score and release)
+    "load_piece": 6,       # L2 (robot: match loader)
+}
+# 5 out of 127 is the dead zone the robot code defines (applyDeadband) but does
+# not currently use. A stick that rests a hair off zero should not creep.
+GAMEPAD_DEADZONE = 5.0 / 127.0
+
+def drive_curve(v):
+    # v is a stick position from -1 to 1. Linear is 1 to 1, which is how the
+    # robot drives right now. Cubic is the robot's applyCubicPowerRamp (written
+    # but switched off there): five parts cubed to one part straight, so small
+    # pushes are gentler and full push is still full power.
+    if sim.settings.get("drive_curve") == "cubic":
+        return (5.0 * v ** 3 + v) / 6.0
+    return v
+
+def gamepad_axis(name):
+    # Stick position from -1 to 1, 0 when there is no gamepad. The dead zone is
+    # scaled out so the robot eases in from 0 instead of jumping to 8% speed.
+    if joystick is None or GAMEPAD[name] >= joystick.get_numaxes():
+        return 0.0
+    v = joystick.get_axis(GAMEPAD[name])
+    if abs(v) < GAMEPAD_DEADZONE:
+        return 0.0
+    return math.copysign(min(1.0, (abs(v) - GAMEPAD_DEADZONE) / (1.0 - GAMEPAD_DEADZONE)), v)
+
+def gamepad_button(name):
+    if joystick is None or GAMEPAD[name] >= joystick.get_numbuttons():
+        return False
+    return bool(joystick.get_button(GAMEPAD[name]))
+
 def get_inputs(dt):
     max_speed = bot.base_max_speed * sim.settings["speed_scale"]
     left_speed, right_speed = 0.0, 0.0
+    forward, turn, left, right = 0.0, 0.0, 0.0, 0.0
+    in_down = out_down = score_down = False   # intake in / intake out / outtake buttons
 
     if sim.settings["input_mode"] == "keyboard":
         keys = pygame.key.get_pressed()
-        forward, turn, left, right = 0.0, 0.0, 0.0, 0.0
+        kb = sim.settings["keybinds"]
 
         if sim.settings["drive_mode"] in ("arcade","custom"):
-            kb = sim.settings["keybinds"]
             if keys[kb["arcade_fwd"]]: forward += 1.0
             if keys[kb["arcade_back"]]: forward -= 1.0
             if keys[kb["arcade_right"]]: turn -= 1.0
             if keys[kb["arcade_left"]]: turn += 1.0
         if sim.settings["drive_mode"] == "tank":
-            kb = sim.settings["keybinds"]
             if keys[kb["tank_left_fwd"]]: left += 1.0
             if keys[kb["tank_left_back"]]: left -= 1.0
             if keys[kb["tank_right_back"]]: right -= 1.0
             if keys[kb["tank_right_fwd"]]: right += 1.0
 
+        in_down, out_down, score_down = keys[kb["intake_in"]], keys[kb["intake_out"]], keys[kb["outtake_score"]]
+
+    elif sim.settings["input_mode"] == "controller":
+        # Same meaning as the keys, just analog: a gentle push drives slowly.
+        # Stick up is negative, so it is flipped to make up = forward.
         if sim.settings["drive_mode"] == "tank":
-            left_speed = max(-1.0, min(1.0, left)) * max_speed
-            right_speed = max(-1.0, min(1.0, right)) * max_speed
+            left = -drive_curve(gamepad_axis("left_y"))
+            right = -drive_curve(gamepad_axis("right_y"))
         else:
-            forward = max(-1.0, min(1.0, forward))
-            turn = max(-1.0, min(1.0, turn))
-            left_cmd = forward + turn
-            right_cmd = forward - turn
-            max_cmd = max(1.0, abs(left_cmd), abs(right_cmd))
-            left_speed = (left_cmd / max_cmd) * max_speed
-            right_speed = (right_cmd / max_cmd) * max_speed
-            
-        in_key = sim.settings["keybinds"]["intake_in"]
-        out_key = sim.settings["keybinds"]["intake_out"]
-        score_key = sim.settings["keybinds"]["outtake_score"]
-        
-        if sim.settings["intake_control_mode"] == "hold":
-            if keys[in_key]:
-                bot.intake_state = "in"
-            elif keys[out_key]:
-                bot.intake_state = "out"
-            elif keys[score_key]:
-                bot.outtake_state = "out"
-            else:
-                bot.intake_state = "off"
-        
+            forward = -drive_curve(gamepad_axis("left_y"))
+            turn = -drive_curve(gamepad_axis("right_x"))     # push right = turn right, like the D key
+        in_down, out_down, score_down = gamepad_button("intake_in"), gamepad_button("intake_out"), gamepad_button("outtake_score")
+
+    if sim.settings["drive_mode"] == "tank":
+        left_speed = max(-1.0, min(1.0, left)) * max_speed
+        right_speed = max(-1.0, min(1.0, right)) * max_speed
+    else:
+        forward = max(-1.0, min(1.0, forward))
+        turn = max(-1.0, min(1.0, turn))
+        # Same as the robot: forward and turn are just added, and a side that
+        # asks for more than full power is capped at full power. Nothing scales
+        # the other side down to match, so full forward with half turn keeps
+        # one side at 100% and the other at 50%.
+        left_speed = max(-1.0, min(1.0, forward + turn)) * max_speed
+        right_speed = max(-1.0, min(1.0, forward - turn)) * max_speed
+
+    # Hold mode: the intake runs only while the button is down. (Toggle mode is
+    # handled when the button is pressed, in the event loop.)
+    if sim.settings["intake_control_mode"] == "hold":
+        if in_down:
+            bot.intake_state = "in"
+        elif out_down:
+            bot.intake_state = "out"
+        elif score_down:
+            bot.outtake_state = "out"
+        else:
+            bot.intake_state = "off"
+
     return left_speed, right_speed
 
 #Run 60 times a second, do all the collisions, calculations, and visual updates
@@ -2364,6 +2421,10 @@ def toggle_alliance():
     sim.settings["alliance"] = "blue" if sim.settings.get("alliance", "red") == "red" else "red"
     save_settings()
 
+def toggle_drive_curve():
+    sim.settings["drive_curve"] = "cubic" if sim.settings.get("drive_curve") != "cubic" else "linear"
+    save_settings()
+
 def toggle_mode():
     sim.settings["intake_control_mode"] = "hold" if sim.settings["intake_control_mode"] == "toggle" else "toggle"
     save_settings()
@@ -2413,6 +2474,17 @@ def build_settings_page():
     settings_alliance_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_alliance)
     settings_list.add_child(settings_alliance_btn)
     y += SETTINGS_ROW_H
+    # How a stick push turns into power. Only the controller has this, keys are all or nothing.
+    settings_list.add_child(UILabel(14, y + 6, 380, 16, "CONTROLLER STICKS", (140, 200, 255)))
+    y += 30
+    settings_list.add_child(UILabel(14, y + 11, 200, 16, "Drive curve", WHITE))
+    global settings_curve_btn, settings_curve_hint
+    settings_curve_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_drive_curve)
+    settings_list.add_child(settings_curve_btn)
+    y += SETTINGS_ROW_H - 6
+    settings_curve_hint = UILabel(14, y, 390, 16, "", LIGHT_GRAY)
+    settings_list.add_child(settings_curve_hint)
+    y += 30
     settings_list.add_child(UILabel(0, y + 30, 1, 1, ""))   # breathing room at the bottom
     settings_list.scroll_speed = SETTINGS_ROW_H // 2
     return settings_mode_btn, hint
@@ -2440,6 +2512,10 @@ def draw_settings_page():
     red_side = sim.settings.get("alliance", "red") == "red"
     settings_alliance_btn.text = "RED" if red_side else "BLUE"
     settings_alliance_btn.default_color = (210, 90, 90) if red_side else (100, 100, 230)
+    cubic = sim.settings.get("drive_curve") == "cubic"
+    settings_curve_btn.text = "CUBIC" if cubic else "LINEAR"
+    settings_curve_hint.text = ("Gentler near center, the robot's cubic ramp" if cubic
+                                else "1 to 1, how the robot drives now")
     settings_mode_hint.text = ("Press once to start, again to stop" if mode == "toggle"
                                else "Works only while the key is held down")
     settings_list.draw(screen)
@@ -2594,7 +2670,11 @@ def set_drive_tank(): sim.settings["drive_mode"] = "tank"; save_settings()
 def set_drive_arcade(): sim.settings["drive_mode"] = "arcade"; save_settings()
 def set_drive_custom(): sim.settings["drive_mode"] = "custom"; save_settings()
 def set_input_keyboard(): sim.settings["input_mode"] = "keyboard"; save_settings()
-def set_input_controller(): sim.settings["input_mode"] = "controller"; save_settings()
+def set_input_controller():
+    sim.settings["input_mode"] = "controller"
+    save_settings()
+    if joystick is None:
+        show_toast("No controller found - plug it in")
 def action_reset(): bot.reset_to_start()
 def action_reset_center(): bot.reset_to_center()
 def action_run_auton(): 
@@ -4239,10 +4319,25 @@ while running:
                     bot.intake_state = "off" if bot.intake_state == "out" else "out"
                 elif event.key == sim.settings["keybinds"]["outtake_score"]:
                     bot.outtake_state = "off" if bot.outtake_state == "out" else "out"
+        elif (event.type == pygame.JOYBUTTONDOWN and sim.current_mode == "drive" and not sim.paused
+                and sim.settings["input_mode"] == "controller"):
+            # Gamepad version of the key presses above: feed a piece, and in
+            # toggle mode flip the intake or outtake on and off
+            if event.button == GAMEPAD["load_piece"]:
+                load_piece()
+            elif sim.settings["intake_control_mode"] == "toggle":
+                if event.button == GAMEPAD["intake_in"]:
+                    bot.intake_state = "off" if bot.intake_state == "in" else "in"
+                elif event.button == GAMEPAD["intake_out"]:
+                    bot.intake_state = "off" if bot.intake_state == "out" else "out"
+                elif event.button == GAMEPAD["outtake_score"]:
+                    bot.outtake_state = "off" if bot.outtake_state == "out" else "out"
         elif event.type == pygame.JOYDEVICEADDED and joystick is None:
             joystick = pygame.joystick.Joystick(event.device_index); joystick.init()
         elif event.type == pygame.JOYDEVICEREMOVED and joystick is not None and event.instance_id == joystick.get_instance_id():
             joystick = None
+            if sim.settings["input_mode"] == "controller":
+                show_toast("Controller unplugged")
 
     track_shape_undo()
 
