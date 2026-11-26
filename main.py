@@ -230,6 +230,24 @@ DEFAULT_KEYBINDS = {
     "tank_right_fwd": pygame.K_l, "tank_right_back": pygame.K_j,
 }
 
+# Gamepad axis and button numbers, as pygame reports them for a real V5
+# Controller plugged in over USB (checked by pushing every stick and button).
+# Sticks are axes where up is negative and can't be re-assigned. The four
+# button actions can be changed on the Settings page (click, then press).
+# The default buttons follow the team robot's driver code (main.cpp, opcontrol),
+# so practicing here builds the same habits: A grabs, X releases, R1 scores and
+# L2 goes to the match loader. The robot has no intake or outtake as such, so
+# A and X stand in for them here. L1, R2 and Y (the shifter) have no match yet.
+GAMEPAD = {
+    "left_x": 0, "left_y": 1, "right_x": 2, "right_y": 3,
+    "intake_in": 1,        # A  (robot: grab toggle)
+    "intake_out": 3,       # X  (robot: release toggle)
+    "outtake_score": 5,    # R1 (robot: score and release)
+    "load_piece": 6,       # L2 (robot: match loader)
+}
+GAMEPAD_BUTTON_ACTIONS = ("intake_in", "intake_out", "outtake_score", "load_piece")
+DEFAULT_GAMEPAD_BUTTONS = {a: GAMEPAD[a] for a in GAMEPAD_BUTTON_ACTIONS}
+
 class SimulatorState:
     def __init__(self):
         self.current_mode = "drive" # drive / edit / studio
@@ -237,6 +255,7 @@ class SimulatorState:
         self.paused = False
         self.paused_sub_menu = "main" # main / settings
         self.remapping_key = None
+        self.remapping_pad = None    # action waiting for a controller button press
         self.auton_mode = False
         # Cycles with the V key in Drive mode - see DEBUG_VIEW_MODES below.
         # For DEV_JOURNAL screenshots: "calc" = just the existing rays/
@@ -332,6 +351,11 @@ def load_all_data():
                 if "keybinds" in loaded_data:
                     sim.settings["keybinds"].update(loaded_data["keybinds"])
                     del loaded_data["keybinds"]
+                saved_pad = loaded_data.pop("gamepad", None)
+                if isinstance(saved_pad, dict):
+                    for action in GAMEPAD_BUTTON_ACTIONS:
+                        if isinstance(saved_pad.get(action), int):
+                            GAMEPAD[action] = saved_pad[action]
                 sim.settings.update(loaded_data)
                 bot.gear_in = sim.settings.get("gear_in", bot.gear_in)
                 bot.gear_out = sim.settings.get("gear_out", bot.gear_out)
@@ -1583,6 +1607,7 @@ def save_settings():
         sim.settings["outtake_offset"] = bot.outtake_offset
         sim.settings["delay_flag"] = bot.delay_flag
         sim.settings["timer_delay"] = bot.timer_delay
+        sim.settings["gamepad"] = {a: GAMEPAD[a] for a in GAMEPAD_BUTTON_ACTIONS}
         with open(SETTINGS_FILE, "w") as f: json.dump(sim.settings, f)
     except Exception as e: 
         print(f"Error saving settings: {e}")
@@ -1600,21 +1625,7 @@ remember_match_field()
 # 4. PHYSICS & MOVEMENT ENGINE
 # =====================================================================
 #===Gamepad (Controller input mode)===
-# Axis and button numbers are what pygame reports for a real V5 Controller
-# plugged in over USB (checked by pushing every stick and button). Sticks are
-# axes where up is negative. If another gamepad numbers things differently,
-# this table is the only place to change.
-# The default buttons follow the team robot's driver code (main.cpp, opcontrol),
-# so practicing here builds the same habits: A grabs, X releases, R1 scores and
-# L2 goes to the match loader. The robot has no intake or outtake as such, so
-# A and X stand in for them here. L1, R2 and Y (the shifter) have no match yet.
-GAMEPAD = {
-    "left_x": 0, "left_y": 1, "right_x": 2, "right_y": 3,
-    "intake_in": 1,        # A  (robot: grab toggle)
-    "intake_out": 3,       # X  (robot: release toggle)
-    "outtake_score": 5,    # R1 (robot: score and release)
-    "load_piece": 6,       # L2 (robot: match loader)
-}
+# (The GAMEPAD table with the axis and button numbers is up top, next to DEFAULT_KEYBINDS.)
 # 5 out of 127 is the dead zone the robot code defines (applyDeadband) but does
 # not currently use. A stick that rests a hair off zero should not creep.
 GAMEPAD_DEADZONE = 5.0 / 127.0
@@ -2387,6 +2398,11 @@ FIXED_KEYS = {
 }
 SETTINGS_ROW_H = 48
 SETTINGS_VISIBLE_H = 6 * SETTINGS_ROW_H
+# Two columns of buttons, Keyboard then Controller, with their titles pinned
+# above the list so they stay put while the rows scroll.
+SETTINGS_W = 640
+SETTINGS_LIST_TOP = 86
+SETTINGS_KEY_X, SETTINGS_PAD_X, SETTINGS_COL_W = 216, 396, 170
 
 def key_label(k):
     return pygame.key.name(k).upper() or f"KEY {k}"
@@ -2398,8 +2414,45 @@ def action_name(action):
                 return label
     return action
 
+# What each stick does, shown (greyed, not clickable) in the Controller column
+# because a stick can't be given a new job by pressing a button.
+STICK_LABELS = {
+    "arcade_fwd": "Left stick up", "arcade_back": "Left stick down",
+    "arcade_left": "Right stick left", "arcade_right": "Right stick right",
+    "tank_left_fwd": "Left stick up", "tank_left_back": "Left stick down",
+    "tank_right_fwd": "Right stick up", "tank_right_back": "Right stick down",
+}
+# Button names for the V5 Controller's numbering (see the GAMEPAD table)
+GAMEPAD_BUTTON_NAMES = {0: "B", 1: "A", 2: "Y", 3: "X", 4: "L1", 5: "R1", 6: "L2", 7: "R2",
+                        12: "Arrow up", 13: "Arrow down", 14: "Arrow left", 15: "Arrow right"}
+
+def gamepad_button_label(b):
+    return GAMEPAD_BUTTON_NAMES.get(b, f"Button {b}")
+
 def start_remap(action):
+    sim.remapping_pad = None
     sim.remapping_key = action
+
+def start_remap_pad(action):
+    # Needs the controller to be plugged in, otherwise nothing could answer
+    if joystick is None:
+        show_toast("Plug in a controller first")
+        return
+    sim.remapping_key = None
+    sim.remapping_pad = action
+
+def try_rebind_pad(button):
+    # Same rule as keys: a button that already does something is refused with
+    # a message, and the page keeps waiting for another one.
+    action = sim.remapping_pad
+    for other in GAMEPAD_BUTTON_ACTIONS:
+        if other != action and GAMEPAD[other] == button:
+            show_toast(f"{gamepad_button_label(button)} is already {action_name(other)}")
+            return False
+    GAMEPAD[action] = button
+    sim.remapping_pad = None
+    save_settings()
+    return True
 
 def try_rebind(key):
     # Returns True if the key was taken. A key that already does something
@@ -2431,17 +2484,21 @@ def toggle_mode():
 
 def reset_keybinds():
     sim.settings["keybinds"] = dict(DEFAULT_KEYBINDS)
+    GAMEPAD.update(DEFAULT_GAMEPAD_BUTTONS)
     sim.remapping_key = None
+    sim.remapping_pad = None
     save_settings()
 
 def close_settings():
     sim.remapping_key = None
+    sim.remapping_pad = None
     sim.paused_sub_menu = "main"
 
-settings_modal_rect = pygame.Rect(0, 0, 460, 56 + SETTINGS_VISIBLE_H + 8 + 14 + 36 + 10 + 36 + 20)
+settings_modal_rect = pygame.Rect(0, 0, SETTINGS_W, SETTINGS_LIST_TOP + SETTINGS_VISIBLE_H + 8 + 14 + 36 + 10 + 36 + 20)
 settings_modal_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-settings_list = ScrollView(settings_modal_rect.x + 20, settings_modal_rect.y + 56, 420, SETTINGS_VISIBLE_H + 8)
+settings_list = ScrollView(settings_modal_rect.x + 20, settings_modal_rect.y + SETTINGS_LIST_TOP, SETTINGS_W - 40, SETTINGS_VISIBLE_H + 8)
 settings_key_buttons = {}     # action name -> its button, so the draw code can show the current key
+settings_pad_buttons = {}     # same for the Controller column (only the four button actions)
 settings_dynamic_labels = []  # (label, function giving its text) pairs refreshed every frame
 
 def build_settings_page():
@@ -2451,19 +2508,28 @@ def build_settings_page():
         y += 30
         for action, label in rows:
             settings_list.add_child(UILabel(14, y + 11, 200, 16, label, WHITE))
-            btn = UIButton(236, y, 160, 36, "", action_callback=lambda a=action: start_remap(a))
+            btn = UIButton(SETTINGS_KEY_X, y, SETTINGS_COL_W, 36, "", action_callback=lambda a=action: start_remap(a))
             settings_key_buttons[action] = btn
             settings_list.add_child(btn)
+            if action in GAMEPAD_BUTTON_ACTIONS:
+                pad_btn = UIButton(SETTINGS_PAD_X, y, SETTINGS_COL_W, 36, "", action_callback=lambda a=action: start_remap_pad(a))
+                settings_pad_buttons[action] = pad_btn
+            else:
+                # A stick: shown flat and grey so it reads as "fixed", not a button
+                flat = (58, 58, 68)
+                pad_btn = UIButton(SETTINGS_PAD_X, y, SETTINGS_COL_W, 36, STICK_LABELS[action],
+                                   default_color=flat, hover_color=flat, text_color=LIGHT_GRAY)
+            settings_list.add_child(pad_btn)
             y += SETTINGS_ROW_H
         y += 6
     # How the intake and outtake keys act
-    settings_list.add_child(UILabel(14, y + 6, 380, 16, "KEY BEHAVIOR", (140, 200, 255)))
+    settings_list.add_child(UILabel(14, y + 6, 380, 16, "KEY AND BUTTON BEHAVIOR", (140, 200, 255)))
     y += 30
     settings_list.add_child(UILabel(14, y + 11, 200, 16, "Intake mode", WHITE))
-    settings_mode_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_mode)
+    settings_mode_btn = UIButton(SETTINGS_KEY_X, y, SETTINGS_PAD_X + SETTINGS_COL_W - SETTINGS_KEY_X, 36, "", action_callback=toggle_mode)
     settings_list.add_child(settings_mode_btn)
     y += SETTINGS_ROW_H - 6
-    hint = UILabel(14, y, 390, 16, "", LIGHT_GRAY)
+    hint = UILabel(14, y, 560, 16, "", LIGHT_GRAY)
     settings_list.add_child(hint)
     y += 30
     # Which side the user's robot plays for - decides whose color a toggle turns
@@ -2471,7 +2537,7 @@ def build_settings_page():
     y += 30
     settings_list.add_child(UILabel(14, y + 11, 200, 16, "Your alliance", WHITE))
     global settings_alliance_btn
-    settings_alliance_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_alliance)
+    settings_alliance_btn = UIButton(SETTINGS_KEY_X, y, SETTINGS_PAD_X + SETTINGS_COL_W - SETTINGS_KEY_X, 36, "", action_callback=toggle_alliance)
     settings_list.add_child(settings_alliance_btn)
     y += SETTINGS_ROW_H
     # How a stick push turns into power. Only the controller has this, keys are all or nothing.
@@ -2479,10 +2545,10 @@ def build_settings_page():
     y += 30
     settings_list.add_child(UILabel(14, y + 11, 200, 16, "Drive curve", WHITE))
     global settings_curve_btn, settings_curve_hint
-    settings_curve_btn = UIButton(236, y, 160, 36, "", action_callback=toggle_drive_curve)
+    settings_curve_btn = UIButton(SETTINGS_KEY_X, y, SETTINGS_PAD_X + SETTINGS_COL_W - SETTINGS_KEY_X, 36, "", action_callback=toggle_drive_curve)
     settings_list.add_child(settings_curve_btn)
     y += SETTINGS_ROW_H - 6
-    settings_curve_hint = UILabel(14, y, 390, 16, "", LIGHT_GRAY)
+    settings_curve_hint = UILabel(14, y, 560, 16, "", LIGHT_GRAY)
     settings_list.add_child(settings_curve_hint)
     y += 30
     settings_list.add_child(UILabel(0, y + 30, 1, 1, ""))   # breathing room at the bottom
@@ -2491,10 +2557,10 @@ def build_settings_page():
 
 settings_mode_btn, settings_mode_hint = build_settings_page()
 _sm_x = settings_modal_rect.x + 30
-_sm_y = settings_modal_rect.y + 56 + SETTINGS_VISIBLE_H + 8 + 14
+_sm_y = settings_modal_rect.y + SETTINGS_LIST_TOP + SETTINGS_VISIBLE_H + 8 + 14
 settings_ui = [
-    UIButton(_sm_x, _sm_y, 400, 36, "Reset keys to defaults", action_callback=reset_keybinds),
-    UIButton(_sm_x, _sm_y + 46, 400, 36, "Back to Pause Menu", action_callback=close_settings),
+    UIButton(_sm_x, _sm_y, SETTINGS_W - 60, 36, "Reset keys and buttons to defaults", action_callback=reset_keybinds),
+    UIButton(_sm_x, _sm_y + 46, SETTINGS_W - 60, 36, "Back to Pause Menu", action_callback=close_settings),
 ]
 
 def draw_settings_page():
@@ -2507,6 +2573,19 @@ def draw_settings_page():
         waiting = sim.remapping_key == action
         btn.text = "Press a key..." if waiting else key_label(sim.settings["keybinds"][action])
         btn.default_color = YELLOW if waiting else LIGHT_GRAY
+    for action, btn in settings_pad_buttons.items():
+        waiting = sim.remapping_pad == action
+        btn.text = "Press a button..." if waiting else gamepad_button_label(GAMEPAD[action])
+        btn.default_color = YELLOW if waiting else LIGHT_GRAY
+    # Column titles, pinned above the list. The one you are using right now is
+    # yellow, and a dot next to Controller shows if one is plugged in.
+    using_pad = sim.settings["input_mode"] == "controller"
+    list_x, head_y = settings_list.screen_rect.x, r.y + SETTINGS_LIST_TOP - 24
+    for text, col_x, active in (("Keyboard", SETTINGS_KEY_X, not using_pad), ("Controller", SETTINGS_PAD_X, using_pad)):
+        w = FONT.size(text)[0]
+        draw_text(text, list_x + col_x + (SETTINGS_COL_W - w) // 2, head_y, YELLOW if active else LIGHT_GRAY)
+    dot_x = list_x + SETTINGS_PAD_X + (SETTINGS_COL_W + FONT.size("Controller")[0]) // 2 + 12
+    pygame.draw.circle(screen, (110, 220, 140) if joystick is not None else (190, 70, 70), (dot_x, head_y + FONT.get_height() // 2), 5)
     mode = sim.settings["intake_control_mode"]
     settings_mode_btn.text = mode.upper()
     red_side = sim.settings.get("alliance", "red") == "red"
@@ -2517,11 +2596,14 @@ def draw_settings_page():
     settings_curve_hint.text = ("Gentler near center, the robot's cubic ramp" if cubic
                                 else "1 to 1, how the robot drives now")
     settings_mode_hint.text = ("Press once to start, again to stop" if mode == "toggle"
-                               else "Works only while the key is held down")
+                               else "Works only while the key or button is held down")
     settings_list.draw(screen)
     draw_list_scrollbar(settings_list)
     if sim.remapping_key is not None:
         msg = f"Press a key for '{action_name(sim.remapping_key)}'  (Esc cancels)"
+        draw_small(msg, r.centerx - SMALL_FONT.size(msg)[0] // 2, r.y + 44, (110, 220, 140))
+    elif sim.remapping_pad is not None:
+        msg = f"Press a controller button for '{action_name(sim.remapping_pad)}'  (Esc cancels)"
         draw_small(msg, r.centerx - SMALL_FONT.size(msg)[0] // 2, r.y + 44, (110, 220, 140))
     for element in settings_ui:
         element.draw(screen)
@@ -4256,9 +4338,10 @@ while running:
             # Global Pause Toggle (ESC Key)
             if event.key == pygame.K_ESCAPE:
                 sim.active_textbox = None
-                if sim.remapping_key is not None:
-                    # Esc while waiting for a key only cancels the rebind
+                if sim.remapping_key is not None or sim.remapping_pad is not None:
+                    # Esc while waiting for a key or button only cancels the rebind
                     sim.remapping_key = None
+                    sim.remapping_pad = None
                 elif sim.paused and sim.paused_sub_menu in ("settings", "maps", "controls"):
                     sim.paused_sub_menu = "main"
                 else:
@@ -4266,6 +4349,8 @@ while running:
                     sim.paused_sub_menu = "main"
             elif sim.remapping_key is not None:
                     try_rebind(event.key)
+            elif sim.remapping_pad is not None:
+                    pass    # waiting for a controller button, so other keys do nothing
             elif sim.current_mode == "edit" and event.key == pygame.K_a and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)) and not gesture_in_progress():
                 select_all_shapes()
             elif sim.current_mode == "edit" and event.key == pygame.K_z and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
@@ -4319,6 +4404,11 @@ while running:
                     bot.intake_state = "off" if bot.intake_state == "out" else "out"
                 elif event.key == sim.settings["keybinds"]["outtake_score"]:
                     bot.outtake_state = "off" if bot.outtake_state == "out" else "out"
+        elif event.type == pygame.JOYBUTTONDOWN and sim.remapping_pad is not None:
+            # Settings page is waiting for a button: the next press from the
+            # plugged-in controller becomes the new binding
+            if joystick is not None and event.instance_id == joystick.get_instance_id():
+                try_rebind_pad(event.button)
         elif (event.type == pygame.JOYBUTTONDOWN and sim.current_mode == "drive" and not sim.paused
                 and sim.settings["input_mode"] == "controller"):
             # Gamepad version of the key presses above: feed a piece, and in
@@ -4336,6 +4426,7 @@ while running:
             joystick = pygame.joystick.Joystick(event.device_index); joystick.init()
         elif event.type == pygame.JOYDEVICEREMOVED and joystick is not None and event.instance_id == joystick.get_instance_id():
             joystick = None
+            sim.remapping_pad = None
             if sim.settings["input_mode"] == "controller":
                 show_toast("Controller unplugged")
 
