@@ -21,21 +21,41 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The sim opens in Drive mode. Press **W A S D** to drive, **E** to intake, **Q** to score, **Esc** for the pause menu. You can change every key in Settings, and you can also use a controller.
+The sim opens in Drive mode. Press **W A S D** to drive, **E** to intake, **Q** to score, **Esc** for the pause menu. You can change every key in Settings. A VEX V5 controller works too, see [Using a controller](#using-a-controller).
 
 Built and tested with pygame 2.6.1 and pymunk 7.3.1. Pymunk 6 and 7 use different code, so please use version 7.
+
+## Using a controller
+
+A VEX V5 controller plugged into the computer with a USB cable (the one used to download code works) shows up as a normal gamepad, so there is nothing extra to install.
+
+1. Plug the controller in
+2. Open the sim and press **Controller** in the sidebar, next to Keyboard
+3. Drive: in Arcade the left stick goes forward and back and the right stick turns. In Tank each stick runs its own side
+
+| Button | Does |
+| --- | --- |
+| **A** | Intake in |
+| **X** | Intake out |
+| **R1** | Outtake (score) |
+| **L2** | Feed a piece, next to a loader |
+
+These follow our team robot’s driver code (team 72527A), where A grabs, X releases, R1 scores, and L2 goes to the loader. The robot has no intake or outtake, so A and X stand in for them. To change a button, open Settings, click its box in the **Controller** column, then press the new button on the controller. The sticks can’t be changed.
+
+Sticks are analog, so a small push drives slowly. Settings also has a **Drive curve** switch: Linear is 1 to 1 and is how our robot drives today, and Cubic is gentler near the center (the same formula as the cubic ramp in our robot code, which is switched off there).
 
 ## What it does
 
 **Drive mode**
-- Drive with arcade, tank, or custom controls on keyboard or controller
+- Drive with arcade, tank, or custom controls on keyboard or a V5 controller, with the controller’s buttons set up like our team robot’s
+- Change every key and controller button in Settings
 - Pick up, carry, and score pieces with an intake and outtake you can configure
 - Turn on the **Blocker**, an opponent robot with Easy, Medium, and Hard settings and three play styles (attack, defend, mix)
 - Start a 2:00 match (15 seconds of auto, then 105 of driver) with a score bar
 
 **Edit mode**
 - Build a field from walls, movable blocks, pass-through objects, goals, loaders, and toggles
-- Undo and redo, drag-select, rotate, and duplicate
+- Undo and redo, drag-select, rotate, duplicate, and nudge with the arrow keys (1 inch, or 6 with Shift)
 - Save fields, load built-in practice maps, and **share a field as a short code** a friend can paste in
 
 **Studio mode**
@@ -43,8 +63,8 @@ Built and tested with pygame 2.6.1 and pymunk 7.3.1. Pymunk 6 and 7 use differen
 
 **VEX V5 Override (2026-27) support**
 - Goals that stack pieces and score by color, with a choice of front, back, or both-sided scoring
-- Loaders that a human player feeds (press **G** next to one), toggles that turn to whoever touched them last, and descoring with the intake
-- Scoring that includes yellow pieces and robots in the midfield, which is a diamond like the tape on the real field. The diamond is drawn on the field and turns yellow while a robot is counting as inside it
+- Loaders that a human player feeds (press **G**, or L2 on a controller, next to one), toggles that turn to whoever touched them last, and descoring with the intake
+- Scoring that includes yellow pieces and robots in the midfield, which is a diamond like the tape on the real field. The diamond is drawn on the field and turns yellow while a robot is counted as inside it
 - An **Override Test** practice map with the goals, loaders, and toggles placed from the official field drawing
 
 <img src="images/editPreview3.png" alt="Edit mode with movable objects, the robot, the Blocker, and its Defend area" width="340"> <img src="images/studioPreview3 - page 1.png" alt="Studio mode where the robot's size, wheels, gears and motor are changed" width="340">
@@ -56,7 +76,7 @@ The Blocker was the hardest part, and I learned most of what I did from fixing i
 - **It sees with a fan of rays** (like LiDAR) and steers toward the open ones. This works for nearby walls, but it can’t see around corners.
 - **It remembers where the player has been.** The player’s last ~12 seconds of positions are a proven path, so when a wall blocks the view, the Blocker heads to one of those points. It commits to one point instead of switching every frame, and it needs more progress to say “I’m not stuck anymore” than it needs to say “I’m stuck”, so it doesn’t flip back and forth.
 - **It plans with a grid and A\*.** The field is turned into 6-inch cells every few frames, and A\* finds a route. I picked a grid over a visibility graph because every object on the field can be moved in Edit mode, and a grid just rebuilds itself from whatever is there.
-- **Difficulty is more than speed.** Easy turns slowly and stops 10 inches away. Hard predicts further ahead and drives right into the player. Each time, its speed is also randomly set within 10% of the player’s own average speed, so it feels like a person and not a script.
+- **Difficulty is more than speed.** Easy turns slowly and stops 10 inches away. Hard predicts further ahead and drives right into the player. Each time, its speed is also randomly set within 10% of the player’s average speed, so it feels like a person, not a script.
 
 A simplified view of what the Blocker does at each moment:
 
@@ -73,7 +93,7 @@ flowchart TD
     G -->|No| I["Follow an A* route over the 6 inch grid"]
 ```
 
-There is also an "A\* leads" mode (press N in Drive mode) where the route takes over as soon as the rays show nothing close, so you can compare the two.
+There is also an “A\* leads” mode (press N in Drive mode) where the route takes over as soon as the rays show nothing close, so you can compare the two.
 
 ## Key decisions
 
@@ -81,9 +101,11 @@ Choices I had to make while building this, and why I went the way I did. Each on
 
 | Choice | I picked | I passed on | Why |
 | --- | --- | --- | --- |
+| Matching our robot | Defaults copied from our robot’s driver code: linear arcade, and A, X, R1, L2 for the buttons. Cubic is a switch in Settings, off by default | Turning cubic on by default | The cubic ramp in our code is written but switched off, so the robot drives linear today. The sim should drive as the robot does now, and the switch lets us try cubic before turning it on for real |
+| Turning at full power | Each side caps at 100% and nothing scales the other side down, like our robot | Scaling both sides down to keep the turn ratio | Full forward plus a half turn gave about 100% and 33% in the sim but 100% and 50% on the robot, so turns felt softer here than on the real thing |
 | Planning routes | A grid with A\* | A graph of obstacle corners | Every object can be moved in Edit mode. A grid rebuilds itself from whatever is on the field, but a corner graph goes out of date the moment something moves |
-| Who steers | Rays for what is close, the route for the bigger picture | Planning every step from the grid | Rays react fast to something that just showed up. The grid answers "which way should I be heading overall" |
-| Changing its mind | Stick with one breadcrumb, and ask for more progress to leave "stuck" than to enter it | Picking the closest breadcrumb again every frame | It flipped back and forth over tiny wobbles and got nowhere |
+| Who steers | Rays for what is close, the route for the bigger picture | Planning every step from the grid | Rays react fast to something that just showed up. The grid answers “which way should I be heading overall” |
+| Changing its mind | Stick with one breadcrumb, and ask for more progress to leave “stuck” than to enter it | Picking the closest breadcrumb again every frame | It flipped back and forth over tiny wobbles and got nowhere |
 | Sharing fields | A compressed text code that gets checked before use | Encrypting it with a key | A field is not a secret, and a key would make sharing harder. The sim only reads a code as data, never runs it, and checks every size and count first |
 | Taking pieces out of goals | One piece every half second | The whole stack at once | Taking a stack in one frame would make descoring free |
 | A toggle both robots touch | It stays as it was | Giving it to whoever arrived first | Arrival order comes down to a few frames and would feel random |
@@ -104,9 +126,11 @@ Press Share on a saved field and you get something like `VEXF1:eNqtkk...`. It is
 
 - The Override Test map follows the official drawing for the goals, loaders, and toggles, but its 16 pieces are my own layout, not the official starting setup. There are no cups yet.
 - Pushing power is not matched to real robots yet. It needs real-world measurements.
-- Edit mode has no zoom, which makes small objects like the Override pieces hard to place by hand. With several objects selected you can only move them, not change their color, size, or angle.
+- Edit mode has no zoom, which makes small objects like the Override pieces hard to place by hand. With several objects selected, you can move, rotate, duplicate, and nudge them, but not change their color or size.
+- Top speed is not matched to our robot yet. The robot code says 450 RPM on 3.25-inch wheels, but the sim starts at 200 RPM with a 1:1 gear ratio, and setting it right requires our real gear teeth. The shifter is not in the sim either.
+- Controller buttons are numbered for the V5 controller, so another gamepad may number its buttons differently, and a trigger that reports as a stick can’t be chosen as a button. The in-game Controls page still lists keyboard keys only.
 - The Blocker stops when the match ends, but it is not started by the match clock. If you turn it on, it drives right away, even before you press start on a match.
 
 ## How it was made
 
-I designed the features, made the decisions, and tested it by driving it. I wrote the code with an AI assistant, and the journal notes where it helped. I also reviewed the Blocker’s code line by line so I could explain every part.
+I designed the features, made the decisions, and tested it by driving it. I wrote the code with an AI assistant and kept journal notes on where it helped. I also reviewed the Blocker’s code line by line so I could explain every part.
